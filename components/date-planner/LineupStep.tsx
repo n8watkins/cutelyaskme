@@ -1,7 +1,7 @@
 "use client";
 
 import confetti from "canvas-confetti";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ActivityOption } from "./types";
 import { OptionCard } from "./OptionCard";
 import { StepCard } from "./StepCard";
@@ -242,8 +242,11 @@ const slotPairs: Record<TimePeriod, ActivityOption[][]> = {
   ],
 };
 
+type AiSuggestion = { idea: string; fromCache: boolean };
+
 type LineupStepProps = {
   selectedTime: string | null;
+  selectedDateLabel?: string | null;
   selectedActivities: string[];
   onToggle: (activity: string) => void;
   onSetActivities: (activities: string[]) => void;
@@ -253,6 +256,7 @@ type LineupStepProps = {
 
 export function LineupStep({
   selectedTime,
+  selectedDateLabel,
   selectedActivities,
   onToggle,
   onSetActivities,
@@ -263,6 +267,11 @@ export function LineupStep({
   const [remainingPairs, setRemainingPairs] = useState<ActivityOption[][]>([]);
   const [lastPairKey, setLastPairKey] = useState<string | null>(null);
   const [isRolling, setIsRolling] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[] | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  // Prevent duplicate fetches for the same inputs
+  const lastAiKey = useRef<string | null>(null);
   const period = getTimePeriod(selectedTime);
   const activityOptions = useMemo(
     () =>
@@ -277,6 +286,35 @@ export function LineupStep({
       activity in activityDetails &&
       activityDetails[activity as ActivityOption].budget === "treat",
   );
+
+  async function fetchAiSuggestions() {
+    const aiKey = `${period}:${selectedTime ?? ""}:${selectedDateLabel ?? ""}`;
+    if (lastAiKey.current === aiKey) return; // already fetched for these inputs
+    lastAiKey.current = aiKey;
+    setAiLoading(true);
+    setAiError(null);
+
+    try {
+      const res = await fetch("/api/date-ideas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period, selectedTime, selectedDateLabel }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAiError((data as { message?: string }).message ?? "Could not get suggestions.");
+        lastAiKey.current = null;
+        return;
+      }
+      const data = await res.json() as { ideas: string[]; fromCache: boolean };
+      setAiSuggestions(data.ideas.map((idea) => ({ idea, fromCache: data.fromCache })));
+    } catch {
+      setAiError("Could not reach the AI. Try the spinner instead.");
+      lastAiKey.current = null;
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   function choose(activity: ActivityOption) {
     onToggle(activity);
@@ -361,6 +399,73 @@ export function LineupStep({
           </p>
         ) : null}
       </div>
+      {/* AI suggestions */}
+      <div className="mb-4 rounded-[24px] border-2 border-[#e7d9ff] bg-white/80 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.16em] text-[#8a6a78]">
+              ✨ AI picks
+            </p>
+            {aiSuggestions ? (
+              <div className="mt-2 grid gap-2">
+                {aiSuggestions.map(({ idea, fromCache }) => {
+                  const selected = selectedActivities.includes(idea);
+                  const disabled = !selected && selectedActivities.length >= 2;
+                  return (
+                    <button
+                      key={idea}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => onToggle(idea)}
+                      className={`flex items-center gap-2 rounded-2xl border-2 px-3 py-2 text-left text-sm font-black outline-none transition focus-visible:ring-4 focus-visible:ring-[#e7d9ff] ${
+                        selected
+                          ? "border-[#c7a6ff] bg-[#c7a6ff] text-white"
+                          : disabled
+                            ? "border-[#ffd6e8] text-[#c0a0b0]"
+                            : "border-[#e7d9ff] text-[#3a2530] hover:bg-[#f5f0ff]"
+                      }`}
+                    >
+                      <span>⭐</span>
+                      <span>{idea}</span>
+                      {fromCache && (
+                        <span className="ml-auto text-[10px] font-normal text-[#c0a0b0]">
+                          cached
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : aiError ? (
+              <p className="mt-1 text-xs text-red-400">{aiError}</p>
+            ) : (
+              <p className="mt-1 text-xs text-[#c0a0b0]">
+                Get two AI-personalised picks for this evening
+              </p>
+            )}
+          </div>
+          {!aiSuggestions && (
+            <button
+              type="button"
+              onClick={fetchAiSuggestions}
+              disabled={aiLoading}
+              className="shrink-0 rounded-full bg-[#c7a6ff] px-4 py-2 text-sm font-black text-white shadow-[0_8px_18px_rgba(199,166,255,0.3)] outline-none disabled:opacity-60 focus-visible:ring-4 focus-visible:ring-[#e7d9ff]"
+            >
+              {aiLoading ? "…" : "Ask AI"}
+            </button>
+          )}
+          {aiSuggestions && (
+            <button
+              type="button"
+              onClick={() => { setAiSuggestions(null); lastAiKey.current = null; }}
+              className="shrink-0 rounded-full border-2 border-[#e7d9ff] px-3 py-1.5 text-xs font-black text-[#8a6a78] outline-none focus-visible:ring-4 focus-visible:ring-[#e7d9ff]"
+            >
+              Refresh
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="cute-scrollbar max-h-[430px] overflow-y-auto rounded-[26px] border-2 border-[#ffd6e8] bg-[#fff7fb]/65 p-3 pr-2 shadow-inner">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {activityOptions.map((activity) => {

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest, NextResponse } from "next/server";
 import { generateItinerary } from "@/lib/itinerary";
+import { sendPlanNotificationEmail } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
   // Look up invite by token
   const { data: invite, error: inviteError } = await admin
     .from("invites")
-    .select("id, sender_id, status")
+    .select("id, sender_id, recipient_name, status")
     .eq("token", inviteToken)
     .single();
 
@@ -84,6 +85,22 @@ export async function POST(request: NextRequest) {
     .from("invites")
     .update({ status: "completed" })
     .eq("id", invite.id);
+
+  // Notify sender — get their email from auth
+  try {
+    const { data: senderAuth } = await admin.auth.admin.getUserById(invite.sender_id);
+    const senderEmail = senderAuth.user?.email;
+    if (senderEmail) {
+      await sendPlanNotificationEmail({
+        senderEmail,
+        recipientName: invite.recipient_name,
+        selectedDateLabel: selectedDateLabel ?? null,
+        planId: plan.id,
+      });
+    }
+  } catch {
+    // Non-blocking — plan is saved, notification is best-effort
+  }
 
   return NextResponse.json({ planId: plan.id });
 }

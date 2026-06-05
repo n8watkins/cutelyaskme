@@ -21,6 +21,12 @@ const rateLimit = new Map<string, { count: number; resetAt: number }>();
 const LIMIT = 6;
 const WINDOW_MS = 60 * 60 * 1000;
 
+// In-memory suggestion cache keyed by (period:time:date:entree).
+// Lives as long as the serverless instance stays warm — typically minutes to hours.
+// Identical inputs always get the same response without a Gemini call.
+const suggestionCache = new Map<string, { ideas: string[]; expiresAt: number }>();
+const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+
 export async function POST(request: NextRequest) {
   const key = process.env.GEMINI_API_KEY;
 
@@ -45,6 +51,14 @@ export async function POST(request: NextRequest) {
   }
 
   const body = (await request.json().catch(() => ({}))) as DateIdeasRequest;
+
+  // Check cache before consuming a Gemini call or a rate-limit slot
+  const cacheKey = `${body.period ?? "evening"}:${body.selectedTime ?? ""}:${body.selectedDateLabel ?? ""}:${body.selectedEntree ?? ""}`;
+  const cached = suggestionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return NextResponse.json({ ideas: cached.ideas, fromCache: true });
+  }
+
   const prompt = buildPrompt(body);
 
   let response: Response;
@@ -101,7 +115,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ideas: ideas.slice(0, 2) });
+  const finalIdeas = ideas.slice(0, 2);
+  suggestionCache.set(cacheKey, { ideas: finalIdeas, expiresAt: Date.now() + CACHE_TTL_MS });
+  return NextResponse.json({ ideas: finalIdeas, fromCache: false });
 }
 
 function buildPrompt({

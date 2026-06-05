@@ -168,6 +168,7 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
             <LineupStep
               key="lineup"
               selectedTime={state.selectedTime}
+              selectedDateLabel={state.selectedDateLabel}
               selectedActivities={state.selectedActivities}
               onToggle={toggleActivity}
               onSetActivities={(selectedActivities) =>

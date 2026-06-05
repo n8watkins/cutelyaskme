@@ -21,12 +21,19 @@ export default async function DashboardPage() {
     admin
       .from("date_plans")
       .select(
-        "id, selected_date_label, selected_entree, selected_activities, completed_at, sender_id, recipient_id",
+        "id, invite_id, selected_date_label, selected_entree, selected_activities, completed_at, sender_id, recipient_id",
       )
       .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
       .not("completed_at", "is", null)
       .order("completed_at", { ascending: false }),
   ]);
+
+  // Map invite_id → plan_id for quick lookup
+  const planByInvite = Object.fromEntries(
+    (myPlans ?? [])
+      .filter((p) => p.invite_id)
+      .map((p) => [p.invite_id, p.id]),
+  );
 
   return (
     <main className="mx-auto max-w-lg px-4 py-10">
@@ -49,36 +56,37 @@ export default async function DashboardPage() {
           <p className="text-sm text-[#c0a0b0]">No invites yet.</p>
         ) : (
           <div className="grid gap-3">
-            {sentInvites.map((invite) => (
-              <div
-                key={invite.id}
-                className="flex items-center justify-between rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4"
-              >
-                <div>
-                  <p className="font-black text-[#3a2530]">
-                    {invite.recipient_name}
-                  </p>
-                  <p className="text-xs text-[#c0a0b0]">
-                    {invite.recipient_email}
-                  </p>
+            {sentInvites.map((invite) => {
+              const planId = planByInvite[invite.id];
+              return (
+                <div
+                  key={invite.id}
+                  className="flex items-center justify-between gap-3 rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4"
+                >
+                  <div className="min-w-0">
+                    <p className="font-black text-[#3a2530]">
+                      {invite.recipient_name}
+                    </p>
+                    <p className="truncate text-xs text-[#c0a0b0]">
+                      {invite.recipient_email}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <StatusBadge status={invite.status} />
+                    {planId ? (
+                      <Link
+                        href={`/plan/${planId}`}
+                        className="rounded-full bg-[#ff7aaa] px-3 py-1 text-xs font-black text-white"
+                      >
+                        View plan →
+                      </Link>
+                    ) : (
+                      <CopyLinkButton token={invite.token} />
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <StatusBadge status={invite.status} />
-                  {invite.status === "pending" && (
-                    <button
-                      onClick={() =>
-                        navigator.clipboard.writeText(
-                          `${window.location.origin}/invite/${invite.token}`,
-                        )
-                      }
-                      className="rounded-full border-2 border-[#ffd6e8] px-3 py-1 text-xs font-black text-[#8a6a78]"
-                    >
-                      Copy link
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -126,5 +134,27 @@ function StatusBadge({ status }: { status: string }) {
     >
       {status}
     </span>
+  );
+}
+
+function CopyLinkButton({ token }: { token: string }) {
+  // Client component would be cleaner but this works via inline onclick
+  return (
+    <button
+      type="button"
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      onClick={(e: any) => {
+        navigator.clipboard.writeText(
+          `${window.location.origin}/invite/${token}`,
+        );
+        e.currentTarget.textContent = "Copied!";
+        setTimeout(() => {
+          e.currentTarget.textContent = "Copy link";
+        }, 1500);
+      }}
+      className="rounded-full border-2 border-[#ffd6e8] px-3 py-1 text-xs font-black text-[#8a6a78]"
+    >
+      Copy link
+    </button>
   );
 }
