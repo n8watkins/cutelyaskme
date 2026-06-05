@@ -1,6 +1,9 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResend() {
+  if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY not set");
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 const FROM = "Date Night <invites@datenightapp.com>";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -18,7 +21,7 @@ export async function sendInviteEmail({
 }) {
   const link = `${SITE_URL}/invite/${token}`;
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: FROM,
     to: recipientEmail,
     subject: `${senderName} wants to plan a date with you 💌`,
