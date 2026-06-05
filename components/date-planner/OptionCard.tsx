@@ -47,37 +47,39 @@ export function OptionCard({
           className="absolute right-2 top-2 h-12 w-12 rounded-full bg-[#c7a6ff]/20 blur-xl"
         />
       ) : null}
-      <span className="flex items-start gap-3 pr-8">
-        {icon ? (
-          <span
-            aria-hidden
-            className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#fff7fb] text-2xl shadow-inner"
-          >
-            {icon}
-          </span>
-        ) : null}
-        <span className="min-w-0">
+      <span className="block pr-8">
+        <span className="flex min-w-0 items-center gap-3">
+          {icon ? (
+            <span
+              aria-hidden
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#fff7fb] text-2xl shadow-inner"
+            >
+              {icon}
+            </span>
+          ) : null}
           <span className="block text-lg font-black leading-tight text-[#3a2530]">
             {title}
           </span>
-          {subtitle ? (
-            <span className="mt-1 block text-sm font-bold leading-5 text-[#8a6a78]">
-              {subtitle}
-            </span>
-          ) : null}
         </span>
+        {subtitle ? (
+          <span className="mt-3 block w-full text-sm font-bold leading-5 text-[#8a6a78]">
+            {subtitle}
+          </span>
+        ) : null}
       </span>
-      <span
-        className={cn(
-          "absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-full border text-sm font-black",
-          selected
-            ? "border-[#ff7aaa] bg-[#ff7aaa] text-white"
-            : "border-[#ffd6e8] bg-[#fff7fb] text-transparent",
-        )}
-        aria-hidden
-      >
-        {multi ? "✓" : "♥"}
-      </span>
+      {multi ? null : (
+        <span
+          className={cn(
+            "absolute right-3 top-3 grid h-7 w-7 place-items-center rounded-full border text-sm font-black",
+            selected
+              ? "border-[#ff7aaa] bg-[#ff7aaa] text-white"
+              : "border-[#ffd6e8] bg-[#fff7fb] text-transparent",
+          )}
+          aria-hidden
+        >
+          ♥
+        </span>
+      )}
     </motion.button>
   );
 }

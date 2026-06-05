@@ -1,21 +1,127 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { noButtonLabels } from "@/lib/planner-copy";
-import { cn } from "@/lib/utils";
+
+type Point = {
+  x: number;
+  y: number;
+};
+
+const FALLBACK_YES_HALF_SIZE = {
+  x: 88,
+  y: 40,
+};
+
+const RAY_EPSILON = 0.001;
+const MIN_DODGE_DISTANCE = 34;
 
 type EvasiveNoButtonProps = {
   attempts: number;
+  yesButtonRef: RefObject<HTMLButtonElement | null>;
   onAttempt: () => void;
+  onCommentary: (message: string) => void;
 };
 
-export function EvasiveNoButton({ attempts, onAttempt }: EvasiveNoButtonProps) {
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getYesHalfSize(yesButtonRef: RefObject<HTMLButtonElement | null>) {
+  const rect = yesButtonRef.current?.getBoundingClientRect();
+
+  if (!rect) {
+    return FALLBACK_YES_HALF_SIZE;
+  }
+
+  return {
+    x: rect.width / 2,
+    y: rect.height / 2,
+  };
+}
+
+function findPerimeterTarget(
+  currentPosition: Point,
+  direction: Point,
+  halfSize: Point,
+) {
+  const origin = {
+    x: clamp(currentPosition.x, -halfSize.x, halfSize.x),
+    y: clamp(currentPosition.y, -halfSize.y, halfSize.y),
+  };
+  const intersections: number[] = [];
+
+  if (direction.x > RAY_EPSILON) {
+    intersections.push((halfSize.x - origin.x) / direction.x);
+  } else if (direction.x < -RAY_EPSILON) {
+    intersections.push((-halfSize.x - origin.x) / direction.x);
+  }
+
+  if (direction.y > RAY_EPSILON) {
+    intersections.push((halfSize.y - origin.y) / direction.y);
+  } else if (direction.y < -RAY_EPSILON) {
+    intersections.push((-halfSize.y - origin.y) / direction.y);
+  }
+
+  const distanceToEdge = Math.min(
+    ...intersections.filter((distance) => distance > RAY_EPSILON),
+  );
+
+  if (!Number.isFinite(distanceToEdge)) {
+    return origin;
+  }
+
+  return {
+    x: clamp(origin.x + direction.x * distanceToEdge, -halfSize.x, halfSize.x),
+    y: clamp(origin.y + direction.y * distanceToEdge, -halfSize.y, halfSize.y),
+  };
+}
+
+function choosePerimeterDodgeTarget(currentPosition: Point, halfSize: Point) {
+  const origin = {
+    x: clamp(currentPosition.x, -halfSize.x, halfSize.x),
+    y: clamp(currentPosition.y, -halfSize.y, halfSize.y),
+  };
+  const hasDirectionToYes =
+    Math.abs(origin.x) > RAY_EPSILON || Math.abs(origin.y) > RAY_EPSILON;
+  const angleToYes = hasDirectionToYes
+    ? Math.atan2(-origin.y, -origin.x)
+    : Math.random() * Math.PI * 2;
+  let bestTarget = origin;
+  let bestDistance = 0;
+
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const angle = angleToYes + (Math.random() - 0.5) * Math.PI;
+    const direction = {
+      x: Math.cos(angle),
+      y: Math.sin(angle),
+    };
+    const target = findPerimeterTarget(origin, direction, halfSize);
+    const travelDistance = Math.hypot(target.x - origin.x, target.y - origin.y);
+
+    if (travelDistance > bestDistance) {
+      bestTarget = target;
+      bestDistance = travelDistance;
+    }
+
+    if (travelDistance >= MIN_DODGE_DISTANCE) {
+      return target;
+    }
+  }
+
+  return bestTarget;
+}
+
+export function EvasiveNoButton({
+  attempts,
+  yesButtonRef,
+  onAttempt,
+  onCommentary,
+}: EvasiveNoButtonProps) {
   const reduceMotion = useReducedMotion();
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const [position, setPosition] = useState({ x: -64, y: 30 });
-  const [previousSide, setPreviousSide] = useState<"left" | "right">("left");
-  const [bubbleText, setBubbleText] = useState<string>(noButtonLabels[0]);
+  const [position, setPosition] = useState<Point>({ x: -88, y: 0 });
   const [remainingLabels, setRemainingLabels] = useState<string[]>(
     noButtonLabels.slice(1),
   );
@@ -23,32 +129,27 @@ export function EvasiveNoButton({ attempts, onAttempt }: EvasiveNoButtonProps) {
   function dodge() {
     onAttempt();
 
-    setBubbleText((currentText) => {
-      const pool = remainingLabels.length
-        ? remainingLabels
-        : noButtonLabels.filter((label) => label !== currentText);
-      const nextText = pool[Math.floor(Math.random() * pool.length)] ?? noButtonLabels[0];
-      setRemainingLabels(pool.filter((label) => label !== nextText));
-      return nextText;
-    });
+    const lastText = remainingLabels.length
+      ? ""
+      : noButtonLabels[Math.min(attempts, noButtonLabels.length - 1)];
+    const pool = remainingLabels.length
+      ? remainingLabels
+      : noButtonLabels.filter((label) => label !== lastText);
+    const nextText = pool[Math.floor(Math.random() * pool.length)] ?? noButtonLabels[0];
+
+    onCommentary(nextText);
+    setRemainingLabels(pool.filter((label) => label !== nextText));
 
     if (reduceMotion || typeof window === "undefined") {
       return;
     }
 
-    const nextSide = previousSide === "left" ? "right" : "left";
-    const direction = nextSide === "right" ? 1 : -1;
-    const x = direction * (42 + Math.round(Math.random() * 28));
-    const yBase = previousSide === "left" ? -34 : 34;
-    const y = yBase + Math.round(Math.random() * 20 - 10);
-
-    setPreviousSide(nextSide);
-    setPosition({ x, y });
+    setPosition((currentPosition) =>
+      choosePerimeterDodgeTarget(currentPosition, getYesHalfSize(yesButtonRef)),
+    );
   }
 
   const scale = Math.max(0.86, 1 - attempts * 0.035);
-  const bubbleOnRight = position.x >= 0;
-
   return (
     <motion.div
       className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
@@ -56,20 +157,6 @@ export function EvasiveNoButton({ attempts, onAttempt }: EvasiveNoButtonProps) {
       animate={{ x: position.x, y: position.y, scale }}
       transition={{ type: "spring", stiffness: 420, damping: 26 }}
     >
-      <motion.div
-        aria-hidden
-        key={bubbleText}
-        initial={{ opacity: 0, y: 5, scale: 0.94 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        className={cn(
-          "absolute top-1/2 w-max max-w-52 -translate-y-1/2 rounded-[22px] border-2 border-[#ffd6e8] bg-white px-4 py-3 text-center text-sm font-black leading-tight text-[#8a6a78] shadow-[0_10px_22px_rgba(255,122,170,0.18)] after:absolute after:top-1/2 after:h-3 after:w-3 after:-translate-y-1/2 after:rotate-45 after:border-[#ffd6e8] after:bg-white",
-          bubbleOnRight
-            ? "left-[calc(100%+10px)] after:left-[-7px] after:border-b-2 after:border-l-2"
-            : "right-[calc(100%+10px)] after:right-[-7px] after:border-r-2 after:border-t-2",
-        )}
-      >
-        {bubbleText}
-      </motion.div>
       <button
         ref={buttonRef}
         type="button"

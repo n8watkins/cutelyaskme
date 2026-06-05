@@ -31,6 +31,30 @@ input {
   color: #3a2530;
 }
 
+.cute-scrollbar {
+  scrollbar-color: #ff7aaa #fff7fb;
+  scrollbar-width: thin;
+}
+
+.cute-scrollbar::-webkit-scrollbar {
+  width: 12px;
+}
+
+.cute-scrollbar::-webkit-scrollbar-track {
+  background: #fff7fb;
+  border-radius: 999px;
+}
+
+.cute-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #ff7aaa, #ffb6d5);
+  border: 3px solid #fff7fb;
+  border-radius: 999px;
+}
+
+.cute-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #ff5f99, #ff9bc8);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

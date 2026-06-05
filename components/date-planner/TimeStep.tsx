@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import { HoverBubble, type HoverBubbleState } from "./HoverBubble";
 import { StepCard } from "./StepCard";
 
 const timeOptions = [
@@ -65,6 +66,7 @@ export function TimeStep({
   onBack,
 }: TimeStepProps) {
   const [showCustom, setShowCustom] = useState(false);
+  const [hoverBubble, setHoverBubble] = useState<HoverBubbleState>(null);
   const selectedOption = timeOptions.find((option) => option.value === selectedTime);
   const isToday = selectedDate ? selectedDate === toDateValue(new Date()) : false;
   const nowMinutes = useMemo(() => {
@@ -109,6 +111,40 @@ export function TimeStep({
               <button
                 key={option.value}
                 type="button"
+                onMouseEnter={(event) => {
+                  setHoverBubble({
+                    text: getTimeHoverLine(option.value),
+                    x: event.clientX,
+                    y: event.clientY,
+                  });
+                }}
+                onMouseMove={(event) => {
+                  setHoverBubble((current) =>
+                    current
+                      ? {
+                          ...current,
+                          x: event.clientX,
+                          y: event.clientY,
+                        }
+                      : {
+                          text: getTimeHoverLine(option.value),
+                          x: event.clientX,
+                          y: event.clientY,
+                        },
+                  );
+                }}
+                onMouseLeave={() => setHoverBubble(null)}
+                onFocus={() => {
+                  setHoverBubble({
+                    text: getTimeHoverLine(option.value),
+                    x:
+                      typeof window === "undefined"
+                        ? 300
+                        : window.innerWidth - 130,
+                    y: 88,
+                  });
+                }}
+                onBlur={() => setHoverBubble(null)}
                 onClick={() => onSelect(option.value, fullLabel)}
                 className={cn(
                   "min-h-20 rounded-[22px] border-2 p-3 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-[#ffd6e8]",
@@ -237,8 +273,22 @@ export function TimeStep({
           continue
         </button>
       </div>
+      <HoverBubble bubble={hoverBubble} />
     </StepCard>
   );
+}
+
+function getTimeHoverLine(value: string) {
+  const lines: Record<string, string> = {
+    "10:00": "morning date means I get to be charming with coffee",
+    "13:00": "daytime plans are dangerously easy to say yes to",
+    "16:30": "golden hour is basically doing half the flirting",
+    "18:30": "dinner time, very classic, very cute",
+    "20:00": "movie-ish timing, shared snacks implied",
+    "21:30": "late plans need cozy chaos and good lighting",
+  };
+
+  return lines[value] ?? "this time could work if the vibes are sweet";
 }
 
 function toDateValue(date: Date) {

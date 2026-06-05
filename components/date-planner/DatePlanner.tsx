@@ -2,7 +2,7 @@
 
 import { AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DateStep } from "./DateStep";
 import { DateAvatar } from "./DateAvatar";
 import { EntreeStep } from "./EntreeStep";
@@ -35,6 +35,17 @@ export function DatePlanner({ recipientName }: DatePlannerProps) {
     noAttempts: 0,
     hasAccepted: false,
   });
+  const [cursorMessage, setCursorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!cursorMessage) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setCursorMessage(null), 2200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [cursorMessage]);
 
   const canShowSummary = useMemo(
     () =>
@@ -74,6 +85,7 @@ export function DatePlanner({ recipientName }: DatePlannerProps) {
       step: "date",
       hasAccepted: true,
     }));
+    setCursorMessage(null);
   }
 
   function toggleActivity(activity: string) {
@@ -91,7 +103,7 @@ export function DatePlanner({ recipientName }: DatePlannerProps) {
   return (
     <main className="relative isolate flex min-h-svh flex-1 items-center justify-center overflow-hidden px-4 py-5 sm:px-6">
       <FloatingDecor />
-      <PersonCursor />
+      <PersonCursor message={cursorMessage} />
       <DateAvatar step={state.step} />
       <div className="relative z-10 w-full max-w-lg">
         <ProgressHearts currentStep={state.step} />
@@ -107,6 +119,9 @@ export function DatePlanner({ recipientName }: DatePlannerProps) {
                   noAttempts: current.noAttempts + 1,
                 }))
               }
+              onNoCommentary={(message) => {
+                setCursorMessage(message);
+              }}
               onAccept={handleAccept}
             />
           ) : null}

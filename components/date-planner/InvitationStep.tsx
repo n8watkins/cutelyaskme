@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { motion } from "framer-motion";
 import { EvasiveNoButton } from "./EvasiveNoButton";
 import { StepCard } from "./StepCard";
@@ -8,6 +9,7 @@ type InvitationStepProps = {
   recipientName: string;
   noAttempts: number;
   onNoAttempt: () => void;
+  onNoCommentary: (message: string) => void;
   onAccept: () => void;
 };
 
@@ -15,8 +17,11 @@ export function InvitationStep({
   recipientName,
   noAttempts,
   onNoAttempt,
+  onNoCommentary,
   onAccept,
 }: InvitationStepProps) {
+  const yesButtonRef = useRef<HTMLButtonElement>(null);
+
   return (
     <StepCard
       stickerSrc="/assets/heart-envelope.svg"
@@ -31,6 +36,7 @@ export function InvitationStep({
         </p>
         <div className="relative mt-8 grid min-h-56 place-items-center">
           <motion.button
+            ref={yesButtonRef}
             type="button"
             onClick={onAccept}
             whileHover={{ scale: 1.05 }}
@@ -46,7 +52,12 @@ export function InvitationStep({
           >
             Yes! ♥
           </motion.button>
-          <EvasiveNoButton attempts={noAttempts} onAttempt={onNoAttempt} />
+          <EvasiveNoButton
+            attempts={noAttempts}
+            yesButtonRef={yesButtonRef}
+            onAttempt={onNoAttempt}
+            onCommentary={onNoCommentary}
+          />
         </div>
       </div>
     </StepCard>

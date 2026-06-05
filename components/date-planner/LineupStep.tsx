@@ -361,7 +361,7 @@ export function LineupStep({
           </p>
         ) : null}
       </div>
-      <div className="max-h-[430px] overflow-y-auto rounded-[26px] border-2 border-[#ffd6e8] bg-[#fff7fb]/65 p-3 pr-2 shadow-inner">
+      <div className="cute-scrollbar max-h-[430px] overflow-y-auto rounded-[26px] border-2 border-[#ffd6e8] bg-[#fff7fb]/65 p-3 pr-2 shadow-inner">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {activityOptions.map((activity) => {
           const selected = selectedActivities.includes(activity);
