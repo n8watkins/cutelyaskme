@@ -17,11 +17,12 @@ import type { DatePlanState, PlannerStep } from "./types";
 
 type DatePlannerProps = {
   recipientName: string;
+  inviteToken?: string;
 };
 
 const initialStep: PlannerStep = "invite";
 
-export function DatePlanner({ recipientName }: DatePlannerProps) {
+export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
   const [state, setState] = useState<DatePlanState>({
     recipientName,
     step: initialStep,
@@ -197,6 +198,9 @@ export function DatePlanner({ recipientName }: DatePlannerProps) {
               selectedTimeLabel={state.selectedTimeLabel ?? ""}
               selectedEntree={state.selectedEntree ?? ""}
               selectedActivities={state.selectedActivities}
+              inviteToken={inviteToken}
+              selectedDate={state.selectedDate ?? undefined}
+              selectedTime={state.selectedTime ?? undefined}
               onEditDate={() => setStep("date")}
               onEditTime={() => setStep("time")}
               onEditEntree={() => setStep("entree")}

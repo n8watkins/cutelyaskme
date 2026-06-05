@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { entreeIcons } from "@/lib/food-options";
 import { StepCard } from "./StepCard";
 import { SharePlanButton } from "./SharePlanButton";
@@ -7,10 +8,13 @@ import type { EntreeOption } from "./types";
 
 type SummaryStepProps = {
   recipientName: string;
+  selectedDate?: string;
   selectedDateLabel: string;
+  selectedTime?: string;
   selectedTimeLabel: string;
   selectedEntree: string;
   selectedActivities: string[];
+  inviteToken?: string;
   onEditDate: () => void;
   onEditTime: () => void;
   onEditEntree: () => void;
@@ -19,19 +23,54 @@ type SummaryStepProps = {
 
 export function SummaryStep({
   recipientName,
+  selectedDate,
   selectedDateLabel,
+  selectedTime,
   selectedTimeLabel,
   selectedEntree,
   selectedActivities,
+  inviteToken,
   onEditDate,
   onEditTime,
   onEditEntree,
   onEditLineup,
 }: SummaryStepProps) {
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
   const foodIcon =
     selectedEntree in entreeIcons
       ? entreeIcons[selectedEntree as EntreeOption]
       : "🍽️";
+
+  async function handleLockIn() {
+    if (!inviteToken) return;
+    setSubmitting(true);
+    setSubmitError(null);
+
+    const res = await fetch("/api/plans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        inviteToken,
+        selectedDate,
+        selectedDateLabel,
+        selectedTime,
+        selectedTimeLabel,
+        selectedEntree,
+        selectedActivities,
+      }),
+    });
+
+    if (!res.ok) {
+      setSubmitting(false);
+      setSubmitError("Couldn't save the plan. Try again.");
+      return;
+    }
+
+    const { planId } = await res.json();
+    window.location.href = `/plan/${planId}`;
+  }
 
   return (
     <StepCard
@@ -70,13 +109,29 @@ export function SummaryStep({
         </dl>
       </div>
       <div className="mt-5">
-        <SharePlanButton
-          recipientName={recipientName}
-          selectedDateLabel={selectedDateLabel}
-          selectedTimeLabel={selectedTimeLabel}
-          selectedEntree={selectedEntree}
-          selectedActivities={selectedActivities}
-        />
+        {inviteToken ? (
+          <div className="grid gap-3">
+            {submitError && (
+              <p className="text-center text-sm text-red-500">{submitError}</p>
+            )}
+            <button
+              type="button"
+              onClick={handleLockIn}
+              disabled={submitting}
+              className="min-h-14 rounded-full bg-[#ff7aaa] px-5 py-3 text-lg font-black text-white shadow-[0_14px_30px_rgba(255,122,170,0.32)] outline-none transition disabled:opacity-60 focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
+            >
+              {submitting ? "Locking it in…" : "Lock it in 🔒"}
+            </button>
+          </div>
+        ) : (
+          <SharePlanButton
+            recipientName={recipientName}
+            selectedDateLabel={selectedDateLabel}
+            selectedTimeLabel={selectedTimeLabel}
+            selectedEntree={selectedEntree}
+            selectedActivities={selectedActivities}
+          />
+        )}
       </div>
     </StepCard>
   );
@@ -110,9 +165,7 @@ function SummaryRow({
         <dt className="text-xs font-black uppercase tracking-[0.16em] text-[#8a6a78]">
           {label}
         </dt>
-        <dd className="mt-1 text-lg font-black text-[#3a2530]">
-          {value}
-        </dd>
+        <dd className="mt-1 text-lg font-black text-[#3a2530]">{value}</dd>
       </div>
       <span
         aria-hidden

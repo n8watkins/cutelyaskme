@@ -1,0 +1,41 @@
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+const FROM = "Date Night <invites@datenightapp.com>";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+
+export async function sendInviteEmail({
+  recipientName,
+  recipientEmail,
+  senderName,
+  token,
+}: {
+  recipientName: string;
+  recipientEmail: string;
+  senderName: string;
+  token: string;
+}) {
+  const link = `${SITE_URL}/invite/${token}`;
+
+  await resend.emails.send({
+    from: FROM,
+    to: recipientEmail,
+    subject: `${senderName} wants to plan a date with you 💌`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #fff7fb; padding: 32px; border-radius: 24px;">
+        <h1 style="color: #3a2530; font-size: 24px; margin-bottom: 8px;">Hey ${recipientName}! 💌</h1>
+        <p style="color: #8a6a78; font-size: 16px; line-height: 1.6;">
+          <strong>${senderName}</strong> wants to plan a date night with you.
+          Click below to see the invite and pick what sounds good.
+        </p>
+        <a href="${link}" style="display: inline-block; margin: 24px 0; padding: 14px 28px; background: #ff7aaa; color: white; text-decoration: none; border-radius: 999px; font-weight: bold; font-size: 16px;">
+          Open my invite ✨
+        </a>
+        <p style="color: #c0a0b0; font-size: 13px;">
+          Or paste this link: ${link}
+        </p>
+      </div>
+    `,
+  });
+}
