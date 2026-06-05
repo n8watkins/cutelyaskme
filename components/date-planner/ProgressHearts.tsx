@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import type { PlannerStep } from "./types";
 
-const steps: PlannerStep[] = ["date", "time", "lineup", "entree", "summary"];
+const steps: PlannerStep[] = ["date", "time", "lineup", "entree", "dress", "summary"];
 
 export function ProgressHearts({ currentStep }: { currentStep: PlannerStep }) {
   const currentIndex = steps.indexOf(currentStep);

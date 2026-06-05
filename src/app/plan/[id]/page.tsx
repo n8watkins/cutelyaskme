@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound } from "next/navigation";
 import { RatingWidget } from "@/components/RatingWidget";
+import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
 import type { ItineraryJson } from "@/lib/supabase/types";
 
 type PlanPageProps = {
@@ -24,12 +25,35 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
   if (!plan) notFound();
 
-  // Only sender or recipient can view
   if (user && user.id !== plan.sender_id && user.id !== plan.recipient_id) {
     notFound();
   }
 
-  // Get profiles for display names
+  const isSender = user?.id === plan.sender_id;
+
+  // Sender sees planning view when plan isn't finalized
+  if (isSender) {
+    const { data: invite } = await admin
+      .from("invites")
+      .select("recipient_name")
+      .eq("id", plan.invite_id ?? "")
+      .single();
+
+    return (
+      <SenderPlanningView
+        plan={{
+          selectedDateLabel: plan.selected_date_label,
+          selectedTimeLabel: plan.selected_time_label,
+          selectedEntree: plan.selected_entree,
+          selectedActivities: plan.selected_activities as string[],
+          dressVibe: (plan as Record<string, unknown>).dress_vibe as string | null ?? null,
+          recipientName: invite?.recipient_name ?? "her",
+        }}
+      />
+    );
+  }
+
+  // Recipient / shared plan view
   const participantIds = [plan.sender_id, plan.recipient_id].filter(Boolean) as string[];
   const { data: profiles } = await admin
     .from("profiles")
@@ -60,7 +84,6 @@ export default async function PlanPage({ params }: PlanPageProps) {
         )}
       </div>
 
-      {/* Plan details */}
       <div className="mb-6 rounded-[24px] border-2 border-[#ffd6e8] bg-white/90 p-5 shadow-sm">
         <dl className="grid gap-3">
           <PlanRow icon="📅" label="Date" value={plan.selected_date_label ?? "—"} />
@@ -83,12 +106,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </div>
       </div>
 
-      {/* Itinerary */}
       {itinerary?.timeline && itinerary.timeline.length > 0 && (
         <div className="mb-6">
-          <h2 className="mb-3 text-lg font-black text-[#3a2530]">
-            Tonight&apos;s lineup
-          </h2>
+          <h2 className="mb-3 text-lg font-black text-[#3a2530]">Tonight&apos;s lineup</h2>
           <div className="grid gap-3">
             {itinerary.timeline.map((entry, i) => (
               <div
@@ -97,9 +117,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
               >
                 <div className="shrink-0 text-center">
                   <div className="text-2xl">{entry.emoji}</div>
-                  <div className="mt-1 text-xs font-black text-[#c0a0b0]">
-                    {entry.time}
-                  </div>
+                  <div className="mt-1 text-xs font-black text-[#c0a0b0]">{entry.time}</div>
                 </div>
                 <div>
                   <p className="font-black text-[#3a2530]">{entry.activity}</p>
@@ -111,7 +129,6 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </div>
       )}
 
-      {/* Tips */}
       {itinerary?.tips && itinerary.tips.length > 0 && (
         <div className="mb-6 rounded-[24px] border-2 border-[#ffd6e8] bg-[#fff7fb] p-5">
           <h2 className="mb-2 font-black text-[#3a2530]">Pro tips 💡</h2>
@@ -126,12 +143,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </div>
       )}
 
-      {/* Ratings */}
       {user && (
         <div className="mt-8">
-          <h2 className="mb-3 text-center font-black text-[#3a2530]">
-            How did it go?
-          </h2>
+          <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
           <RatingWidget
             planId={id}
             existingRating={userRating ?? null}
@@ -143,24 +157,14 @@ export default async function PlanPage({ params }: PlanPageProps) {
   );
 }
 
-function PlanRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-}) {
+function PlanRow({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <div className="flex items-start gap-3">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#fff7fb] text-xl">
         {icon}
       </span>
       <div>
-        <dt className="text-xs font-black uppercase tracking-[0.14em] text-[#c0a0b0]">
-          {label}
-        </dt>
+        <dt className="text-xs font-black uppercase tracking-[0.14em] text-[#c0a0b0]">{label}</dt>
         <dd className="font-black text-[#3a2530]">{value}</dd>
       </div>
     </div>

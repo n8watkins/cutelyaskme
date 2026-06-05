@@ -10,6 +10,7 @@ const avatarCopy: Record<PlannerStep, string> = {
   time: "Pick whatever feels easiest.",
   lineup: "Two little moments. Keep it cute.",
   entree: "Food can be the finale.",
+  dress: "No wrong answers here.",
   summary: "This plan is adorable.",
 };
 

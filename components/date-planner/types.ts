@@ -5,7 +5,14 @@ export type PlannerStep =
   | "time"
   | "entree"
   | "lineup"
+  | "dress"
   | "summary";
+
+export type DressVibe =
+  | "casual"
+  | "casual-cute"
+  | "dress-up"
+  | "match-you";
 
 export type EntreeOption =
   | "Pizza"
@@ -59,6 +66,7 @@ export type DatePlanState = {
   selectedEntree: EntreeOption | null;
   selectedDessert: DessertOption | null;
   selectedActivities: string[];
+  dressVibe: DressVibe | null;
   noAttempts: number;
   hasAccepted: boolean;
 };

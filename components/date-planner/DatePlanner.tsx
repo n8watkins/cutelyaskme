@@ -5,6 +5,7 @@ import confetti from "canvas-confetti";
 import { useEffect, useMemo, useState } from "react";
 import { DateStep } from "./DateStep";
 import { DateAvatar } from "./DateAvatar";
+import { DressStep } from "./DressStep";
 import { EntreeStep } from "./EntreeStep";
 import { FloatingDecor } from "./FloatingDecor";
 import { InvitationStep } from "./InvitationStep";
@@ -33,6 +34,7 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
     selectedEntree: null,
     selectedDessert: null,
     selectedActivities: [],
+    dressVibe: null,
     noAttempts: 0,
     hasAccepted: false,
   });
@@ -54,7 +56,8 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
         state.selectedDateLabel &&
           state.selectedTimeLabel &&
           state.selectedEntree &&
-          state.selectedActivities.length === 2,
+          state.selectedActivities.length === 2 &&
+          state.dressVibe,
       ),
     [
       state.selectedActivities.length,
@@ -187,6 +190,18 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
                 setState((current) => ({ ...current, selectedEntree }))
               }
               onBack={() => setStep("lineup")}
+              onNext={() => setStep("dress")}
+            />
+          ) : null}
+
+          {state.step === "dress" ? (
+            <DressStep
+              key="dress"
+              selected={state.dressVibe}
+              onSelect={(dressVibe) =>
+                setState((current) => ({ ...current, dressVibe }))
+              }
+              onBack={() => setStep("entree")}
               onNext={() => setStep("summary")}
             />
           ) : null}
@@ -199,6 +214,7 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
               selectedTimeLabel={state.selectedTimeLabel ?? ""}
               selectedEntree={state.selectedEntree ?? ""}
               selectedActivities={state.selectedActivities}
+              dressVibe={state.dressVibe}
               inviteToken={inviteToken}
               selectedDate={state.selectedDate ?? undefined}
               selectedTime={state.selectedTime ?? undefined}
@@ -206,6 +222,7 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
               onEditTime={() => setStep("time")}
               onEditEntree={() => setStep("entree")}
               onEditLineup={() => setStep("lineup")}
+              onEditDress={() => setStep("dress")}
             />
           ) : null}
         </AnimatePresence>

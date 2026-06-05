@@ -4,7 +4,14 @@ import { useState } from "react";
 import { entreeIcons } from "@/lib/food-options";
 import { StepCard } from "./StepCard";
 import { SharePlanButton } from "./SharePlanButton";
-import type { EntreeOption } from "./types";
+import type { DressVibe, EntreeOption } from "./types";
+
+const DRESS_LABELS: Record<DressVibe, string> = {
+  casual: "🧢 Keep it casual",
+  "casual-cute": "🌸 Casual but cute",
+  "dress-up": "👗 Ready to dress up",
+  "match-you": "✨ I'll match whatever",
+};
 
 type SummaryStepProps = {
   recipientName: string;
@@ -14,11 +21,13 @@ type SummaryStepProps = {
   selectedTimeLabel: string;
   selectedEntree: string;
   selectedActivities: string[];
+  dressVibe: DressVibe | null;
   inviteToken?: string;
   onEditDate: () => void;
   onEditTime: () => void;
   onEditEntree: () => void;
   onEditLineup: () => void;
+  onEditDress: () => void;
 };
 
 export function SummaryStep({
@@ -29,11 +38,13 @@ export function SummaryStep({
   selectedTimeLabel,
   selectedEntree,
   selectedActivities,
+  dressVibe,
   inviteToken,
   onEditDate,
   onEditTime,
   onEditEntree,
   onEditLineup,
+  onEditDress,
 }: SummaryStepProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -59,6 +70,7 @@ export function SummaryStep({
         selectedTimeLabel,
         selectedEntree,
         selectedActivities,
+        dressVibe,
       }),
     });
 
@@ -106,6 +118,14 @@ export function SummaryStep({
             value={selectedEntree}
             onEdit={onEditEntree}
           />
+          {dressVibe && (
+            <SummaryRow
+              icon="👗"
+              label="Your vibe"
+              value={DRESS_LABELS[dressVibe]}
+              onEdit={onEditDress}
+            />
+          )}
         </dl>
       </div>
       <div className="mt-5">
