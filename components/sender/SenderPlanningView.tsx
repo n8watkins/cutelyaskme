@@ -193,6 +193,9 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   const [pinMode, setPinMode] = useState(false);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
 
+  // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
+  const [lovedByActivity, setLovedByActivity] = useState<Record<string, Venue[]>>({});
+
   const hasFetched = useRef(false);
 
   function isNatural(key: string): boolean {
@@ -259,6 +262,26 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     hasFetched.current = true;
     fetchAll(radius, searchLocation);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load the sender's liked spots once, so the picker can recommend favorites.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/verdicts?liked=true")
+      .then((r) => (r.ok ? r.json() : { verdicts: [] }))
+      .then((data: { verdicts?: { activity: string | null; venue: Venue }[] }) => {
+        if (!active) return;
+        const grouped: Record<string, Venue[]> = {};
+        for (const v of data.verdicts ?? []) {
+          const key = v.activity ?? "__other__";
+          (grouped[key] ??= []).push(v.venue);
+        }
+        setLovedByActivity(grouped);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, []);
 
   function handleRadiusChange(val: string) {
@@ -510,7 +533,9 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 const query = getStopQuery(key);
                 const hasVenueSearch = !!query && !NO_VENUE_ACTIVITIES.has(key);
                 const selected = getSelectedVenue(key);
-                const rawResults = venueResults[key] ?? [];
+                const lovedVenues = lovedByActivity[key] ?? [];
+                const lovedIds = new Set(lovedVenues.map((v) => v.id));
+                const rawResults = (venueResults[key] ?? []).filter((v) => !lovedIds.has(v.id));
                 const results =
                   priceFilter === null || isNatural(key)
                     ? rawResults
@@ -527,6 +552,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                     icon={icon}
                     hasQuery={hasVenueSearch}
                     selected={selected}
+                    lovedVenues={lovedVenues}
                     results={results}
                     loading={loading}
                     hasMore={hasMore}
@@ -746,6 +772,7 @@ function StopCard({
   icon,
   hasQuery,
   selected,
+  lovedVenues,
   results,
   loading,
   hasMore,
@@ -764,6 +791,7 @@ function StopCard({
   icon: string;
   hasQuery: boolean;
   selected: Venue | null;
+  lovedVenues: Venue[];
   results: Venue[];
   loading: boolean;
   hasMore: boolean;
@@ -841,6 +869,24 @@ function StopCard({
         </div>
       </div>
 
+      {/* Places you loved (from past 👍 swipes for this activity) */}
+      {lovedVenues.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-1.5 text-xs font-black text-[#c0a0b0]">💘 Places you loved</p>
+          <div className="grid gap-2">
+            {lovedVenues.map((v) => (
+              <VenueCard
+                key={`loved-${v.id}`}
+                venue={v}
+                selected={selected?.id === v.id}
+                loved
+                onSelect={() => onSelect(selected?.id === v.id ? null : v)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Venue results */}
       {hasQuery && (
         <div className="mt-3 grid gap-2">
@@ -892,10 +938,12 @@ function VenueCard({
   venue,
   selected,
   onSelect,
+  loved = false,
 }: {
   venue: Venue;
   selected: boolean;
   onSelect: () => void;
+  loved?: boolean;
 }) {
   return (
     <div
@@ -923,11 +971,15 @@ function VenueCard({
         onClick={onSelect}
         className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#ff7aaa]"
       >
-        <p className="truncate font-black text-[#3a2530]">{venue.name}</p>
+        <p className="truncate font-black text-[#3a2530]">
+          {loved && <span className="mr-1">💘</span>}
+          {venue.name}
+        </p>
         <p className="truncate text-xs text-[#8a6a78]">{venue.address}</p>
         <p className="text-xs font-black text-[#8a6a78]">
-          {venue.rating > 0 ? `★ ${venue.rating.toFixed(1)}` : "Free"} ·{" "}
-          {venue.priceLevel === 1 ? "Free" : PRICE_LABELS[venue.priceLevel]}
+          {loved
+            ? "You loved this"
+            : `${venue.rating > 0 ? `★ ${venue.rating.toFixed(1)}` : "Free"} · ${venue.priceLevel === 1 ? "Free" : PRICE_LABELS[venue.priceLevel]}`}
         </p>
       </button>
 

@@ -5,6 +5,35 @@ import type { Venue } from "@/lib/venues";
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+// List the current user's verdicts (optionally only liked ones), newest first.
+export async function GET(request: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ verdicts: [] }, { status: 401 });
+  }
+
+  const likedOnly = request.nextUrl.searchParams.get("liked") === "true";
+
+  const rows = await db
+    .select()
+    .from(venueVerdicts)
+    .where(
+      likedOnly
+        ? and(eq(venueVerdicts.userId, userId), eq(venueVerdicts.liked, true))
+        : eq(venueVerdicts.userId, userId),
+    );
+
+  const verdicts = rows
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .map((r) => ({
+      activity: r.activity,
+      liked: r.liked,
+      venue: JSON.parse(r.venue) as Venue,
+    }));
+
+  return NextResponse.json({ verdicts });
+}
+
 // Record (or update) a "would we go back?" verdict for one venue.
 export async function POST(request: NextRequest) {
   const { userId } = await auth();

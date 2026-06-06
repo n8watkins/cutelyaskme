@@ -110,9 +110,11 @@ and a "reminisce" option to deliberately revisit a favorite.
 - [x] Swipe UI (`VenueVerdicts`) + `POST`/`DELETE /api/verdicts`. Currently lives
       on the plan page; move to the memory page once that exists.
 - [x] De-dupe — unique `(user_id, venue_id)` so re-swiping updates in place.
-- [ ] **NEXT:** liked-places query by `user_id` + `activity`; wire as a result
-      source in `SenderPlanningView`'s venue picker ("Places you loved").
-- [ ] "Reminisce" mode — entry point in the planner that lists liked venues.
+- [x] Liked-places query (`GET /api/verdicts?liked=true`) wired into
+      `SenderPlanningView` — "💘 Places you loved" surfaces matching past
+      favorites at the top of each stop's picker, deduped against fresh results.
+- [ ] **NEXT:** "Reminisce" mode — entry point in the planner that lists liked
+      venues (across activities) to rebuild a date from favorites.
 
 ---
 
