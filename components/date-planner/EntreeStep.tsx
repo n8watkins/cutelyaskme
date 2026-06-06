@@ -61,6 +61,7 @@ export function EntreeStep({
       const res = await fetch(
         `/api/places?q=${encodeURIComponent(selectedEntree + " restaurants")}&location=${encodeURIComponent(location)}`,
       );
+      if (!res.ok) { setVenues([]); return; }
       const data = await res.json() as { venues: Venue[] };
       setVenues(data.venues ?? []);
     } catch {
@@ -92,7 +93,7 @@ export function EntreeStep({
         ))}
       </div>
 
-      {location && selectedEntree && (
+      {location && selectedEntree && selectedEntree !== "Surprise me" && (
         <div className="mt-4 rounded-[24px] border-2 border-[#ffd6e8] bg-white/80 p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-black text-[#3a2530]">
@@ -129,7 +130,7 @@ export function EntreeStep({
                     <p className="font-black text-[#3a2530]">{v.name}</p>
                     <p className="text-sm text-[#8a6a78]">{v.address}</p>
                     <p className="mt-0.5 text-xs font-black text-[#8a6a78]">
-                      ★ {v.rating.toFixed(1)} · {PRICE_LABELS[v.priceLevel]}
+                      {v.rating > 0 ? `★ ${v.rating.toFixed(1)}` : "No rating"} · {PRICE_LABELS[v.priceLevel]}
                     </p>
                   </button>
                 ))

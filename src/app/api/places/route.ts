@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { placeCache } from "@/lib/db/schema";
@@ -24,6 +25,11 @@ function mapPrice(price: string | undefined): 1 | 2 | 3 | 4 {
 }
 
 export async function GET(request: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ venues: [] }, { status: 401 });
+  }
+
   const apiKey = process.env.YELP_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ venues: [] });
@@ -74,7 +80,7 @@ export async function GET(request: NextRequest) {
       id: b.id,
       name: b.name,
       address: b.location.display_address.join(", "),
-      rating: b.rating,
+      rating: b.rating ?? 0,
       priceLevel: mapPrice(b.price),
       lat: b.coordinates.latitude,
       lng: b.coordinates.longitude,

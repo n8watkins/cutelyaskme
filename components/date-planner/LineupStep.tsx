@@ -358,6 +358,9 @@ export function LineupStep({
     setRemainingPairs(fallbackPool.slice(1));
     setLastPairKey(pair.join("|"));
     onSetActivities(pair);
+    setActivityVenueMap({});
+    setActivityVenueOpen({});
+    setActivityVenueLoading({});
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!reduceMotion) {
@@ -381,6 +384,7 @@ export function LineupStep({
       const res = await fetch(
         `/api/places?q=${encodeURIComponent(query)}&location=${encodeURIComponent(location)}`,
       );
+      if (!res.ok) { setActivityVenueMap((prev) => ({ ...prev, [activity]: [] })); return; }
       const data = await res.json() as { venues: Venue[] };
       setActivityVenueMap((prev) => ({ ...prev, [activity]: data.venues ?? [] }));
     } catch {
@@ -592,7 +596,7 @@ export function LineupStep({
                           <p className="font-black text-[#3a2530]">{v.name}</p>
                           <p className="text-sm text-[#8a6a78]">{v.address}</p>
                           <p className="mt-0.5 text-xs font-black text-[#8a6a78]">
-                            ★ {v.rating.toFixed(1)} · {PRICE_LABELS[v.priceLevel]}
+                            {v.rating > 0 ? `★ ${v.rating.toFixed(1)}` : "No rating"} · {PRICE_LABELS[v.priceLevel]}
                           </p>
                         </button>
                       ))

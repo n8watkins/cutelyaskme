@@ -110,7 +110,6 @@ export const NO_VENUE_ACTIVITIES = new Set([
   "Thrift browse",
   "Record store",
   "Plant shop",
-  "Board games",
   "Tea stop",
   "Surprise ending",
 ]);

@@ -98,7 +98,15 @@ export function SummaryStep({
       return;
     }
 
-    const { planId } = await res.json();
+    let planId: string;
+    try {
+      const data = await res.json() as { planId: string };
+      planId = data.planId;
+    } catch {
+      setSubmitting(false);
+      setSubmitError("Couldn't save the plan. Try again.");
+      return;
+    }
     setSubmitting(false);
     onConfirmed(planId);
   }

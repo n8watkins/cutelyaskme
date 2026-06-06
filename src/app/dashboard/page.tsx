@@ -66,6 +66,11 @@ export default async function DashboardPage() {
                     <p className="truncate text-xs text-[#c0a0b0]">
                       {invite.recipientEmail}
                     </p>
+                    {invite.location && (
+                      <p className="truncate text-xs text-[#c0a0b0]">
+                        📍 {invite.location}
+                      </p>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <StatusBadge status={invite.status} />
