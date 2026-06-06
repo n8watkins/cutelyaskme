@@ -5,7 +5,9 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
 }
 
-const FROM = "Date Night <invites@datenightapp.com>";
+// NOTE: this domain must be verified in Resend (Domains → add cutelyask.me →
+// DNS records) before any email will actually send. Override via env if needed.
+const FROM = process.env.EMAIL_FROM ?? "Date Night <invites@cutelyask.me>";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 export async function sendPlanNotificationEmail({
