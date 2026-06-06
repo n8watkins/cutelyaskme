@@ -280,6 +280,7 @@ export function LineupStep({
   const [activityVenueMap, setActivityVenueMap] = useState<Record<string, Venue[]>>({});
   const [activityVenueLoading, setActivityVenueLoading] = useState<Record<string, boolean>>({});
   const [activityVenueOpen, setActivityVenueOpen] = useState<Record<string, boolean>>({});
+  const [activityVenueError, setActivityVenueError] = useState<Record<string, string>>({});
   // Prevent duplicate fetches for the same inputs
   const lastAiKey = useRef<string | null>(null);
   const period = getTimePeriod(selectedTime);
@@ -328,6 +329,11 @@ export function LineupStep({
 
   function choose(activity: ActivityOption) {
     onToggle(activity);
+    setActivityVenueMap((prev) => { const next = { ...prev }; delete next[activity]; return next; });
+    setActivityVenueOpen((prev) => { const next = { ...prev }; delete next[activity]; return next; });
+    setActivityVenueLoading((prev) => { const next = { ...prev }; delete next[activity]; return next; });
+    setActivityVenueError((prev) => { const next = { ...prev }; delete next[activity]; return next; });
+    onActivityVenueSelect(activity, null);
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (activity === "Surprise ending" && !reduceMotion) {
@@ -361,6 +367,7 @@ export function LineupStep({
     setActivityVenueMap({});
     setActivityVenueOpen({});
     setActivityVenueLoading({});
+    setActivityVenueError({});
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!reduceMotion) {
@@ -380,11 +387,19 @@ export function LineupStep({
     if (!query) return;
     setActivityVenueLoading((prev) => ({ ...prev, [activity]: true }));
     setActivityVenueOpen((prev) => ({ ...prev, [activity]: true }));
+    setActivityVenueError((prev) => { const next = { ...prev }; delete next[activity]; return next; });
     try {
       const res = await fetch(
         `/api/places?q=${encodeURIComponent(query)}&location=${encodeURIComponent(location)}`,
       );
-      if (!res.ok) { setActivityVenueMap((prev) => ({ ...prev, [activity]: [] })); return; }
+      if (!res.ok) {
+        if (res.status === 401) {
+          setActivityVenueError((prev) => ({ ...prev, [activity]: "Session expired — please refresh the page." }));
+        } else {
+          setActivityVenueMap((prev) => ({ ...prev, [activity]: [] }));
+        }
+        return;
+      }
       const data = await res.json() as { venues: Venue[] };
       setActivityVenueMap((prev) => ({ ...prev, [activity]: data.venues ?? [] }));
     } catch {
@@ -579,7 +594,9 @@ export function LineupStep({
                 </div>
                 {open && !loading && (
                   <div className="mt-3 grid gap-2">
-                    {venues.length === 0 ? (
+                    {activityVenueError[activity] ? (
+                      <p className="text-sm text-red-400">{activityVenueError[activity]}</p>
+                    ) : venues.length === 0 ? (
                       <p className="text-sm text-[#8a6a78]">No venues found.</p>
                     ) : (
                       venues.map((v) => (

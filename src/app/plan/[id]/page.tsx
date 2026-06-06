@@ -4,6 +4,7 @@ import { datePlans, invites, dateRatings } from "@/lib/db/schema";
 import type { ItineraryJson } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
+import type { Venue } from "@/lib/venues";
 import { RatingWidget } from "@/components/RatingWidget";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
 
@@ -35,6 +36,11 @@ export default async function PlanPage({ params }: PlanPageProps) {
     notFound();
   }
 
+  const itinerary = safeParse<ItineraryJson | null>(plan.itinerary, null);
+  const activities = safeParse<string[]>(plan.selectedActivities, []);
+  const ratings = await db.select().from(dateRatings).where(eq(dateRatings.planId, id));
+  const userRating = ratings.find((r) => r.raterId === userId) ?? null;
+
   if (isSender) {
     const invite = plan.inviteId
       ? (await db
@@ -44,19 +50,31 @@ export default async function PlanPage({ params }: PlanPageProps) {
           .limit(1))[0]
       : undefined;
 
-    const activities = safeParse<string[]>(plan.selectedActivities, []);
+    const entreeVenue = safeParse<Venue | null>(plan.selectedEntreeVenue ?? null, null);
+    const activityVenues = safeParse<Record<string, Venue>>(plan.selectedActivityVenues, {});
 
     return (
-      <SenderPlanningView
-        plan={{
-          selectedDateLabel: plan.selectedDateLabel,
-          selectedTimeLabel: plan.selectedTimeLabel,
-          selectedEntree: plan.selectedEntree,
-          selectedActivities: activities,
-          dressVibe: plan.dressVibe,
-          recipientName: invite?.recipientName ?? "her",
-        }}
-      />
+      <>
+        <SenderPlanningView
+          plan={{
+            selectedDateLabel: plan.selectedDateLabel,
+            selectedTimeLabel: plan.selectedTimeLabel,
+            selectedEntree: plan.selectedEntree,
+            selectedActivities: activities,
+            dressVibe: plan.dressVibe,
+            recipientName: invite?.recipientName ?? "her",
+            selectedEntreeVenue: entreeVenue,
+            selectedActivityVenues: activityVenues,
+          }}
+        />
+        <div className="mx-auto max-w-lg px-4 pb-12">
+          <ItinerarySection itinerary={itinerary} />
+          <div className="mt-8">
+            <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
+            <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
+          </div>
+        </div>
+      </>
     );
   }
 
@@ -70,15 +88,6 @@ export default async function PlanPage({ params }: PlanPageProps) {
       sender.emailAddresses[0]?.emailAddress?.split("@")[0] ??
       "someone special";
   } catch {}
-
-  const ratings = await db
-    .select()
-    .from(dateRatings)
-    .where(eq(dateRatings.planId, id));
-
-  const userRating = ratings.find((r) => r.raterId === userId) ?? null;
-  const itinerary = safeParse<ItineraryJson | null>(plan.itinerary, null);
-  const activities = safeParse<string[]>(plan.selectedActivities, []);
 
   return (
     <main className="mx-auto max-w-lg px-4 py-10">
@@ -96,11 +105,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
         <dl className="grid gap-3">
           <PlanRow icon="📅" label="Date" value={plan.selectedDateLabel ?? "—"} />
           <PlanRow icon="🕰️" label="Time" value={plan.selectedTimeLabel ?? "—"} />
-          <PlanRow
-            icon="💌"
-            label="Activities"
-            value={activities.join(" + ") || "—"}
-          />
+          <PlanRow icon="💌" label="Activities" value={activities.join(" + ") || "—"} />
           <PlanRow icon="🍽️" label="Dinner" value={plan.selectedEntree ?? "—"} />
         </dl>
         <div className="mt-4 flex gap-2 text-xs text-[#c0a0b0]">
@@ -108,11 +113,25 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </div>
       </div>
 
-      {itinerary?.timeline && itinerary.timeline.length > 0 && (
+      <ItinerarySection itinerary={itinerary} />
+
+      {userId && (
+        <div className="mt-8">
+          <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
+          <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
+        </div>
+      )}
+    </main>
+  );
+}
+
+function ItinerarySection({ itinerary }: { itinerary: ItineraryJson | null }) {
+  if (!itinerary) return null;
+  return (
+    <>
+      {itinerary.timeline && itinerary.timeline.length > 0 && (
         <div className="mb-6">
-          <h2 className="mb-3 text-lg font-black text-[#3a2530]">
-            Tonight&apos;s lineup
-          </h2>
+          <h2 className="mb-3 text-lg font-black text-[#3a2530]">Tonight&apos;s lineup</h2>
           <div className="grid gap-3">
             {itinerary.timeline.map((entry, i) => (
               <div
@@ -121,9 +140,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
               >
                 <div className="shrink-0 text-center">
                   <div className="text-2xl">{entry.emoji}</div>
-                  <div className="mt-1 text-xs font-black text-[#c0a0b0]">
-                    {entry.time}
-                  </div>
+                  <div className="mt-1 text-xs font-black text-[#c0a0b0]">{entry.time}</div>
                 </div>
                 <div>
                   <p className="font-black text-[#3a2530]">{entry.activity}</p>
@@ -134,8 +151,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
           </div>
         </div>
       )}
-
-      {itinerary?.tips && itinerary.tips.length > 0 && (
+      {itinerary.tips && itinerary.tips.length > 0 && (
         <div className="mb-6 rounded-[24px] border-2 border-[#ffd6e8] bg-[#fff7fb] p-5">
           <h2 className="mb-2 font-black text-[#3a2530]">Pro tips 💡</h2>
           <ul className="grid gap-1.5">
@@ -148,41 +164,18 @@ export default async function PlanPage({ params }: PlanPageProps) {
           </ul>
         </div>
       )}
-
-      {userId && (
-        <div className="mt-8">
-          <h2 className="mb-3 text-center font-black text-[#3a2530]">
-            How did it go?
-          </h2>
-          <RatingWidget
-            planId={id}
-            existingRating={userRating}
-            allRatings={ratings}
-          />
-        </div>
-      )}
-    </main>
+    </>
   );
 }
 
-function PlanRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: string;
-  label: string;
-  value: string;
-}) {
+function PlanRow({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <div className="flex items-start gap-3">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#fff7fb] text-xl">
         {icon}
       </span>
       <div>
-        <dt className="text-xs font-black uppercase tracking-[0.14em] text-[#c0a0b0]">
-          {label}
-        </dt>
+        <dt className="text-xs font-black uppercase tracking-[0.14em] text-[#c0a0b0]">{label}</dt>
         <dd className="font-black text-[#3a2530]">{value}</dd>
       </div>
     </div>

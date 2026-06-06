@@ -74,6 +74,8 @@ export async function POST(request: NextRequest) {
         selectedTimeLabel: selectedTimeLabel ?? null,
         selectedEntree: selectedEntree ?? null,
         selectedActivities: JSON.stringify(selectedActivities ?? []),
+        selectedEntreeVenue: selectedEntreeVenue ? JSON.stringify(selectedEntreeVenue) : null,
+        selectedActivityVenues: JSON.stringify(selectedActivityVenues ?? {}),
         itinerary: null,
         itineraryGeneratedAt: null,
         dressVibe: dressVibe ?? null,

@@ -27,6 +27,8 @@ export const datePlans = sqliteTable("date_plans", {
   selectedTimeLabel: text("selected_time_label"),
   selectedEntree: text("selected_entree"),
   selectedActivities: text("selected_activities").notNull().default("[]"),
+  selectedEntreeVenue: text("selected_entree_venue"),
+  selectedActivityVenues: text("selected_activity_venues").notNull().default("{}"),
   itinerary: text("itinerary"),
   itineraryGeneratedAt: text("itinerary_generated_at"),
   dressVibe: text("dress_vibe"),

@@ -34,11 +34,13 @@ export function EntreeStep({
   const [venues, setVenues] = useState<Venue[]>([]);
   const [venueLoading, setVenueLoading] = useState(false);
   const [venueOpen, setVenueOpen] = useState(false);
+  const [venueError, setVenueError] = useState<string | null>(null);
 
   function chooseEntree(entree: EntreeOption) {
     onSelectEntree(entree);
     setVenues([]);
     setVenueOpen(false);
+    setVenueError(null);
     onVenueSelect(null);
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -57,11 +59,19 @@ export function EntreeStep({
     if (!selectedEntree || !location) return;
     setVenueLoading(true);
     setVenueOpen(true);
+    setVenueError(null);
     try {
       const res = await fetch(
         `/api/places?q=${encodeURIComponent(selectedEntree + " restaurants")}&location=${encodeURIComponent(location)}`,
       );
-      if (!res.ok) { setVenues([]); return; }
+      if (!res.ok) {
+        if (res.status === 401) {
+          setVenueError("Session expired — please refresh the page.");
+        } else {
+          setVenues([]);
+        }
+        return;
+      }
       const data = await res.json() as { venues: Venue[] };
       setVenues(data.venues ?? []);
     } catch {
@@ -113,7 +123,9 @@ export function EntreeStep({
 
           {venueOpen && !venueLoading && (
             <div className="mt-3 grid gap-2">
-              {venues.length === 0 ? (
+              {venueError ? (
+                <p className="text-sm text-red-400">{venueError}</p>
+              ) : venues.length === 0 ? (
                 <p className="text-sm text-[#8a6a78]">No venues found. Try a different food type.</p>
               ) : (
                 venues.map((v) => (

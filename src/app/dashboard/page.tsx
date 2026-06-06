@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { invites, datePlans } from "@/lib/db/schema";
-import { eq, or, desc } from "drizzle-orm";
+import { eq, or, inArray, desc } from "drizzle-orm";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 
@@ -32,6 +32,16 @@ export default async function DashboardPage() {
       .map((p) => [p.inviteId!, p.id]),
   );
 
+  // Fetch invite details for completed plans so we can show recipient names
+  const inviteIds = completedPlans.map((p) => p.inviteId).filter(Boolean) as string[];
+  const planInvites = inviteIds.length
+    ? await db
+        .select({ id: invites.id, recipientName: invites.recipientName })
+        .from(invites)
+        .where(inArray(invites.id, inviteIds))
+    : [];
+  const inviteRecipientName = Object.fromEntries(planInvites.map((i) => [i.id, i.recipientName]));
+
   return (
     <main className="mx-auto max-w-lg px-4 py-10">
       <div className="mb-8 flex items-center justify-between">
@@ -60,16 +70,10 @@ export default async function DashboardPage() {
                   className="flex items-center justify-between gap-3 rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4"
                 >
                   <div className="min-w-0">
-                    <p className="font-black text-[#3a2530]">
-                      {invite.recipientName}
-                    </p>
-                    <p className="truncate text-xs text-[#c0a0b0]">
-                      {invite.recipientEmail}
-                    </p>
+                    <p className="font-black text-[#3a2530]">{invite.recipientName}</p>
+                    <p className="truncate text-xs text-[#c0a0b0]">{invite.recipientEmail}</p>
                     {invite.location && (
-                      <p className="truncate text-xs text-[#c0a0b0]">
-                        📍 {invite.location}
-                      </p>
+                      <p className="truncate text-xs text-[#c0a0b0]">📍 {invite.location}</p>
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -111,19 +115,39 @@ export default async function DashboardPage() {
             {completedPlans.map((plan) => {
               let activities: string[] = [];
               try { activities = JSON.parse(plan.selectedActivities) as string[]; } catch {}
+
+              const isSender = plan.senderId === userId;
+              const recipientName = plan.inviteId ? inviteRecipientName[plan.inviteId] : null;
+
+              const who = isSender
+                ? recipientName ? `Date with ${recipientName}` : "You planned this"
+                : "Planned for you";
+
+              const when = [plan.selectedDateLabel, plan.selectedTimeLabel]
+                .filter(Boolean)
+                .join(" at ");
+
               return (
                 <Link
                   key={plan.id}
                   href={`/plan/${plan.id}`}
                   className="block rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4 transition hover:bg-[#fff7fb]"
                 >
-                  <p className="font-black text-[#3a2530]">
-                    {plan.selectedDateLabel ?? "A date"}
-                  </p>
-                  <p className="mt-0.5 text-sm text-[#8a6a78]">
-                    {activities.join(" + ")}
-                    {plan.selectedEntree ? ` · ${plan.selectedEntree}` : ""}
-                  </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-black text-[#3a2530]">{who}</p>
+                      {when && (
+                        <p className="mt-0.5 text-sm text-[#8a6a78]">{when}</p>
+                      )}
+                      {activities.length > 0 && (
+                        <p className="mt-0.5 text-xs text-[#c0a0b0]">
+                          {activities.join(" + ")}
+                          {plan.selectedEntree ? ` · ${plan.selectedEntree}` : ""}
+                        </p>
+                      )}
+                    </div>
+                    <span className="shrink-0 text-xs text-[#c0a0b0]">→</span>
+                  </div>
                 </Link>
               );
             })}
@@ -141,9 +165,7 @@ function StatusBadge({ status }: { status: string }) {
     cancelled: "bg-gray-100 text-gray-500",
   };
   return (
-    <span
-      className={`rounded-full px-2.5 py-0.5 text-xs font-black ${styles[status] ?? styles.pending}`}
-    >
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-black ${styles[status] ?? styles.pending}`}>
       {status}
     </span>
   );

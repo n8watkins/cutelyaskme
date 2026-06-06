@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { MockVenue } from "@/lib/mock-venues";
+import type { Venue } from "@/lib/venues";
 
 type DateMapProps = {
-  stops: (MockVenue | null)[];
+  stops: (Venue | null)[];
 };
 
 // Leaflet needs to be loaded client-side only. We load it dynamically to
@@ -58,14 +58,14 @@ export function DateMap({ stops }: DateMapProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stops]);
 
-  function renderStops(L: typeof import("leaflet"), stops: (MockVenue | null)[]) {
+  function renderStops(L: typeof import("leaflet"), stops: (Venue | null)[]) {
     const layer = layerRef.current;
     const map = mapRef.current;
     if (!layer || !map) return;
 
     layer.clearLayers();
 
-    const filled = stops.filter(Boolean) as MockVenue[];
+    const filled = stops.filter(Boolean) as Venue[];
     if (!filled.length) {
       map.setView([40.73, -73.99], 13);
       return;
@@ -86,7 +86,7 @@ export function DateMap({ stops }: DateMapProps) {
 
       L.marker([venue.lat, venue.lng], { icon })
         .addTo(layer)
-        .bindPopup(`<strong>${venue.name}</strong><br>${venue.address}<br><em>${venue.note}</em>`);
+        .bindPopup(`<strong>${venue.name}</strong><br>${venue.address}`);
     });
 
     // Draw route polyline
