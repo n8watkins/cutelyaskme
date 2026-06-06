@@ -29,6 +29,15 @@ export async function POST(
     return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
 
+  // Mark the plan confirmed (first time only) — this is what unlocks post-date
+  // reviews. Independent of whether the email below succeeds.
+  if (!plan.confirmedAt) {
+    await db
+      .update(datePlans)
+      .set({ confirmedAt: new Date().toISOString() })
+      .where(and(eq(datePlans.id, id), eq(datePlans.senderId, userId)));
+  }
+
   if (!plan.inviteId) {
     return NextResponse.json({ message: "No invite linked to this plan" }, { status: 400 });
   }

@@ -101,8 +101,9 @@ pile we own, and that pile powers two things: smarter recommendations next time,
 and a "reminisce" option to deliberately revisit a favorite.
 
 ### 1. The swipe
-- Per visited venue, a binary **👍 would go back / 👎 wouldn't**. One tap, no
-  required typing. Per-user (each person swipes their own verdict).
+- Per visited venue, **three states** — 👍 loved / 😐 neutral (default; didn't go
+  / closed) / 👎 nope. One tap, per-user. Only available once the plan is
+  **confirmed**.
 - Captured on the post-date memory page, alongside the poem/photos.
 
 ### 2. Recommend what we loved
@@ -118,10 +119,10 @@ and a "reminisce" option to deliberately revisit a favorite.
 
 ### Sub-tasks
 - [x] Schema: `venue_verdicts` (`user_id`, `plan_id`, `activity`, `venue` JSON
-      snapshot, `liked`, `created_at`) — pushed to Turso.
-- [x] Swipe UI (`VenueVerdicts`) + `POST`/`DELETE /api/verdicts`. Currently lives
-      on the plan page; move to the memory page once that exists.
-- [x] De-dupe — unique `(user_id, venue_id)` so re-swiping updates in place.
+      snapshot, `status`, `created_at`) — pushed to Turso.
+- [x] Three-state swipe UI (`VenueVerdicts`) + `POST /api/verdicts`, gated on the
+      plan being confirmed (`confirmedAt`).
+- [x] De-dupe — unique `(user_id, venue_id)` so re-rating updates in place.
 - [x] Liked-places query (`GET /api/verdicts?liked=true`) wired into
       `SenderPlanningView` — "💘 Places you loved" surfaces matching past
       favorites at the top of each stop's picker, deduped against fresh results.

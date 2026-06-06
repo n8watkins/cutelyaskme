@@ -33,6 +33,8 @@ export const datePlans = sqliteTable("date_plans", {
   itinerary: text("itinerary"),
   itineraryGeneratedAt: text("itinerary_generated_at"),
   dressVibe: text("dress_vibe"),
+  // Set when the sender locks venues + hits Share/Surprise. Gates post-date reviews.
+  confirmedAt: text("confirmed_at"),
   completedAt: text("completed_at"),
   createdAt: text("created_at")
     .notNull()
@@ -69,7 +71,10 @@ export const venueVerdicts = sqliteTable(
     activity: text("activity"), // e.g. "Coffee", "__entree__"
     venueId: text("venue_id").notNull(),
     venue: text("venue").notNull(), // JSON snapshot of the Venue
-    liked: integer("liked", { mode: "boolean" }).notNull(),
+    // neutral = default / didn't go / closed; only "liked" feeds Reminisce.
+    status: text("status", { enum: ["liked", "disliked", "neutral"] })
+      .notNull()
+      .default("neutral"),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),

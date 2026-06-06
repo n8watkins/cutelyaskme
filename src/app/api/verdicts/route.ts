@@ -5,6 +5,9 @@ import type { Venue } from "@/lib/venues";
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+const STATUSES = ["liked", "disliked", "neutral"] as const;
+type VerdictStatus = (typeof STATUSES)[number];
+
 // List the current user's verdicts (optionally only liked ones), newest first.
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
@@ -19,7 +22,7 @@ export async function GET(request: NextRequest) {
     .from(venueVerdicts)
     .where(
       likedOnly
-        ? and(eq(venueVerdicts.userId, userId), eq(venueVerdicts.liked, true))
+        ? and(eq(venueVerdicts.userId, userId), eq(venueVerdicts.status, "liked"))
         : eq(venueVerdicts.userId, userId),
     );
 
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest) {
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .map((r) => ({
       activity: r.activity,
-      liked: r.liked,
+      status: r.status,
       venue: JSON.parse(r.venue) as Venue,
     }));
 
@@ -45,9 +48,9 @@ export async function POST(request: NextRequest) {
   const planId = body?.planId as string | undefined;
   const activity = (body?.activity as string | undefined) ?? null;
   const venue = body?.venue as Venue | undefined;
-  const liked = body?.liked;
+  const status = body?.status as VerdictStatus | undefined;
 
-  if (!planId || !venue?.id || typeof liked !== "boolean") {
+  if (!planId || !venue?.id || !status || !STATUSES.includes(status)) {
     return NextResponse.json({ message: "Invalid payload" }, { status: 400 });
   }
 
@@ -62,33 +65,13 @@ export async function POST(request: NextRequest) {
       activity,
       venueId: venue.id,
       venue: JSON.stringify(venue),
-      liked,
+      status,
       createdAt: now,
     })
     .onConflictDoUpdate({
       target: [venueVerdicts.userId, venueVerdicts.venueId],
-      set: { liked, planId, activity, venue: JSON.stringify(venue), createdAt: now },
+      set: { status, planId, activity, venue: JSON.stringify(venue), createdAt: now },
     });
-
-  return NextResponse.json({ ok: true });
-}
-
-// Clear a verdict (toggling the swipe back off).
-export async function DELETE(request: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
-  const body = await request.json().catch(() => null);
-  const venueId = body?.venueId as string | undefined;
-  if (!venueId) {
-    return NextResponse.json({ message: "Invalid payload" }, { status: 400 });
-  }
-
-  await db
-    .delete(venueVerdicts)
-    .where(and(eq(venueVerdicts.userId, userId), eq(venueVerdicts.venueId, venueId)));
 
   return NextResponse.json({ ok: true });
 }

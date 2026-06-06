@@ -105,9 +105,10 @@ if Web Push proves insufficient.
       `push_subscriptions` table, send on plan-confirmed/updated.
 - [ ] **Claim-on-login** — when a recipient signs in via an invite, attach the
       plan to her `recipientId`; add a recipient "my dates" view.
-- [ ] **`confirmedAt`** on `date_plans`, set by the notify action; gate the
-      post-date review UI on it.
-- [ ] **Three-state verdicts** — migrate `venue_verdicts.liked` (bool) →
-      `status` (`liked` | `disliked` | `neutral`); only `liked` feeds Reminisce.
+- [x] **`confirmedAt`** on `date_plans`, set by the notify action; post-date
+      review + keepsake UI is gated on it.
+- [x] **Three-state verdicts** — `venue_verdicts.status`
+      (`liked` | `disliked` | `neutral`, neutral default); only `liked` feeds
+      "Places you loved" / Reminisce.
 - [ ] **Reminisce mode** — pick a date from past liked spots.
 - [ ] Mobile-first passes on the existing screens (sender planner is desktop-ish).

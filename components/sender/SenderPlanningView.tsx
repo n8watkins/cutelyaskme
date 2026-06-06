@@ -389,8 +389,12 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode }),
       });
-      if (res.ok) setNotifyStatus("sent");
-      else setNotifyStatus("error");
+      if (res.ok) {
+        setNotifyStatus("sent");
+        router.refresh(); // plan is now confirmed → reveal the post-date review section
+      } else {
+        setNotifyStatus("error");
+      }
     } catch {
       setNotifyStatus("error");
     }

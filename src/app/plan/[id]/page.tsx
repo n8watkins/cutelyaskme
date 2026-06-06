@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { Venue } from "@/lib/venues";
 import { RatingWidget } from "@/components/RatingWidget";
-import { VenueVerdicts, type VerdictStop } from "@/components/VenueVerdicts";
+import { VenueVerdicts, type VerdictStop, type VerdictStatus } from "@/components/VenueVerdicts";
 import { MemoryKeepsake } from "@/components/MemoryKeepsake";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
 
@@ -52,14 +52,17 @@ export default async function PlanPage({ params }: PlanPageProps) {
       .map((a) => ({ activity: a, venue: activityVenues[a] })),
     ...(entreeVenue ? [{ activity: "__entree__", venue: entreeVenue }] : []),
   ];
-  let userVerdicts: Record<string, boolean> = {};
+  let userVerdicts: Record<string, VerdictStatus> = {};
   if (userId && verdictStops.length > 0) {
     const rows = await db
       .select()
       .from(venueVerdicts)
       .where(and(eq(venueVerdicts.userId, userId), eq(venueVerdicts.planId, id)));
-    userVerdicts = Object.fromEntries(rows.map((r) => [r.venueId, r.liked]));
+    userVerdicts = Object.fromEntries(rows.map((r) => [r.venueId, r.status]));
   }
+
+  // Reviews + keepsake unlock only once the sender has confirmed the plan.
+  const isConfirmed = plan.confirmedAt !== null;
 
   // This user's keepsake (notes + poem + photos) for the date.
   let userMemory: {
@@ -115,19 +118,23 @@ export default async function PlanPage({ params }: PlanPageProps) {
             <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
             <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
           </div>
-          {verdictStops.length > 0 && (
-            <div className="mt-8">
-              <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
-            </div>
+          {isConfirmed && (
+            <>
+              {verdictStops.length > 0 && (
+                <div className="mt-8">
+                  <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
+                </div>
+              )}
+              <div className="mt-8">
+                <MemoryKeepsake
+                  planId={id}
+                  initialNotes={userMemory?.notes ?? ""}
+                  initialPoem={userMemory?.poem ?? null}
+                  initialPhotos={userMemory?.photos ?? []}
+                />
+              </div>
+            </>
           )}
-          <div className="mt-8">
-            <MemoryKeepsake
-              planId={id}
-              initialNotes={userMemory?.notes ?? ""}
-              initialPoem={userMemory?.poem ?? null}
-              initialPhotos={userMemory?.photos ?? []}
-            />
-          </div>
         </div>
       </>
     );
@@ -177,13 +184,13 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </div>
       )}
 
-      {userId && verdictStops.length > 0 && (
+      {userId && isConfirmed && verdictStops.length > 0 && (
         <div className="mt-8">
           <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
         </div>
       )}
 
-      {userId && (
+      {userId && isConfirmed && (
         <div className="mt-8">
           <MemoryKeepsake
             planId={id}
