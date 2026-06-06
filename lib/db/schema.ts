@@ -7,6 +7,7 @@ export const invites = sqliteTable("invites", {
   senderId: text("sender_id").notNull(),
   recipientName: text("recipient_name").notNull(),
   recipientEmail: text("recipient_email").notNull(),
+  location: text("location"),
   status: text("status", { enum: ["pending", "completed", "cancelled"] })
     .notNull()
     .default("pending"),
@@ -52,6 +53,13 @@ export const dateRatings = sqliteTable(
     check("score_range", sql`${table.score} >= 1 AND ${table.score} <= 5`),
   ],
 );
+
+export const placeCache = sqliteTable("place_cache", {
+  id: text("id").primaryKey(),
+  cacheKey: text("cache_key").notNull().unique(),
+  results: text("results").notNull(),
+  expiresAt: text("expires_at").notNull(),
+});
 
 export type ItineraryJson = {
   title: string;

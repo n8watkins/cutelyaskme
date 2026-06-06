@@ -7,6 +7,7 @@ type Stage = "form" | "sent";
 export function SendInviteForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [location, setLocation] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("form");
@@ -26,7 +27,7 @@ export function SendInviteForm() {
     const res = await fetch("/api/invites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipientName: name, recipientEmail: email }),
+      body: JSON.stringify({ recipientName: name, recipientEmail: email, location: location.trim() || null }),
     });
 
     setLoading(false);
@@ -104,6 +105,18 @@ export function SendInviteForm() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="alex@email.com"
           required
+          className="w-full rounded-2xl border-2 border-[#ffd6e8] bg-white px-4 py-3 font-black text-[#3a2530] placeholder:font-normal placeholder:text-[#c0a0b0] focus:border-[#ff7aaa] focus:outline-none"
+        />
+      </div>
+      <div className="space-y-2">
+        <label className="block text-sm font-black text-[#8a6a78]">
+          Where are you thinking?
+        </label>
+        <input
+          type="text"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="Brooklyn, NY"
           className="w-full rounded-2xl border-2 border-[#ffd6e8] bg-white px-4 py-3 font-black text-[#3a2530] placeholder:font-normal placeholder:text-[#c0a0b0] focus:border-[#ff7aaa] focus:outline-none"
         />
       </div>

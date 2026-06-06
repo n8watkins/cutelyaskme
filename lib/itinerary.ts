@@ -5,6 +5,8 @@ type ItineraryInput = {
   selectedTimeLabel: string | null;
   selectedEntree: string | null;
   selectedActivities: string[];
+  selectedEntreeVenue?: { name: string; address: string } | null;
+  selectedActivityVenues?: Record<string, { name: string; address: string }>;
 };
 
 export async function generateItinerary(
@@ -66,17 +68,31 @@ function buildItineraryPrompt({
   selectedTimeLabel,
   selectedEntree,
   selectedActivities,
+  selectedEntreeVenue,
+  selectedActivityVenues,
 }: ItineraryInput) {
+  const dinnerLine = selectedEntreeVenue
+    ? `Dinner: ${selectedEntree} at ${selectedEntreeVenue.name}, ${selectedEntreeVenue.address}.`
+    : `Dinner: ${selectedEntree ?? "dinner"}.`;
+
+  const activityLines = selectedActivities
+    .map((act) => {
+      const venue = selectedActivityVenues?.[act];
+      return venue ? `${act} at ${venue.name}, ${venue.address}` : act;
+    })
+    .join(" and ");
+
   return [
     'Return JSON only in this exact shape: {"title":"string","summary":"one romantic sentence","timeline":[{"time":"H:MM PM","emoji":"emoji","activity":"short name","note":"1-sentence tip or detail"}],"tips":["short tip","short tip"]}.',
     "Create a detailed, romantic date night itinerary with 4-6 timeline entries.",
     "The timeline should flow naturally from arrival time through dinner and activities.",
     "Each entry has a realistic time, one emoji, a short activity name, and a brief note.",
+    "When a real venue name and address are given, use them verbatim in the activity name and note.",
     "Tips should be thoughtful, practical suggestions (reservation reminder, vibe tip, etc).",
     "Keep the tone warm, playful, and slightly romantic. No generic advice.",
     `Date: ${selectedDateLabel ?? "upcoming"}.`,
     `Start time: ${selectedTimeLabel ?? "evening"}.`,
-    `Dinner: ${selectedEntree ?? "dinner"}.`,
-    `Activities: ${selectedActivities.join(" and ") || "a fun evening"}.`,
+    dinnerLine,
+    `Activities: ${activityLines || "a fun evening"}.`,
   ].join("\n");
 }

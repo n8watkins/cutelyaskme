@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null);
-  const { recipientName, recipientEmail } = body ?? {};
+  const { recipientName, recipientEmail, location } = body ?? {};
 
   if (
     typeof recipientName !== "string" ||
@@ -38,6 +38,9 @@ export async function POST(request: NextRequest) {
   ) {
     return NextResponse.json({ message: "Missing or invalid fields" }, { status: 400 });
   }
+
+  const locationValue =
+    typeof location === "string" && location.trim() ? location.trim() : null;
 
   if (!checkRateLimit(userId)) {
     return NextResponse.json({ message: "Too many invites. Try again later." }, { status: 429 });
@@ -60,6 +63,7 @@ export async function POST(request: NextRequest) {
       senderId: userId,
       recipientName: recipientName.trim(),
       recipientEmail: recipientEmail.trim().toLowerCase(),
+      location: locationValue,
     });
   } catch {
     return NextResponse.json({ message: "Failed to create invite" }, { status: 500 });

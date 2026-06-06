@@ -2,7 +2,8 @@
 
 import confetti from "canvas-confetti";
 import { useMemo, useRef, useState } from "react";
-import type { ActivityOption } from "./types";
+import type { ActivityOption, Venue } from "./types";
+import { ACTIVITY_PLACE_QUERY, PRICE_LABELS } from "@/lib/venues";
 import { OptionCard } from "./OptionCard";
 import { StepCard } from "./StepCard";
 
@@ -250,6 +251,9 @@ type LineupStepProps = {
   selectedActivities: string[];
   onToggle: (activity: string) => void;
   onSetActivities: (activities: string[]) => void;
+  location: string | null;
+  selectedActivityVenues: Record<string, Venue>;
+  onActivityVenueSelect: (activity: string, venue: Venue | null) => void;
   onNext: () => void;
   onBack: () => void;
 };
@@ -260,6 +264,9 @@ export function LineupStep({
   selectedActivities,
   onToggle,
   onSetActivities,
+  location,
+  selectedActivityVenues,
+  onActivityVenueSelect,
   onNext,
   onBack,
 }: LineupStepProps) {
@@ -270,6 +277,9 @@ export function LineupStep({
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[] | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [activityVenueMap, setActivityVenueMap] = useState<Record<string, Venue[]>>({});
+  const [activityVenueLoading, setActivityVenueLoading] = useState<Record<string, boolean>>({});
+  const [activityVenueOpen, setActivityVenueOpen] = useState<Record<string, boolean>>({});
   // Prevent duplicate fetches for the same inputs
   const lastAiKey = useRef<string | null>(null);
   const period = getTimePeriod(selectedTime);
@@ -358,6 +368,25 @@ export function LineupStep({
         scalar: 0.58,
         colors: ["#ff7aaa", "#ffd6e8", "#fff3d6", "#b9e4ff"],
       });
+    }
+  }
+
+  async function findVenuesForActivity(activity: string) {
+    if (!location) return;
+    const query = ACTIVITY_PLACE_QUERY[activity];
+    if (!query) return;
+    setActivityVenueLoading((prev) => ({ ...prev, [activity]: true }));
+    setActivityVenueOpen((prev) => ({ ...prev, [activity]: true }));
+    try {
+      const res = await fetch(
+        `/api/places?q=${encodeURIComponent(query)}&location=${encodeURIComponent(location)}`,
+      );
+      const data = await res.json() as { venues: Venue[] };
+      setActivityVenueMap((prev) => ({ ...prev, [activity]: data.venues ?? [] }));
+    } catch {
+      setActivityVenueMap((prev) => ({ ...prev, [activity]: [] }));
+    } finally {
+      setActivityVenueLoading((prev) => ({ ...prev, [activity]: false }));
     }
   }
 
@@ -521,6 +550,68 @@ export function LineupStep({
           ? "perfect, that's the cute part of the plan"
           : `choose ${2 - selectedActivities.length} more`}
       </div>
+      {location && selectedActivities.length === 2 && (
+        <div className="mt-4 grid gap-3">
+          {selectedActivities.map((activity) => {
+            if (!ACTIVITY_PLACE_QUERY[activity]) return null;
+            const open = activityVenueOpen[activity];
+            const loading = activityVenueLoading[activity];
+            const venues = activityVenueMap[activity] ?? [];
+            const selected = selectedActivityVenues[activity] ?? null;
+            return (
+              <div key={activity} className="rounded-[24px] border-2 border-[#ffd6e8] bg-white/80 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-black text-[#3a2530]">
+                    {selected ? `📍 ${selected.name}` : `Find ${activity} near ${location}`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => findVenuesForActivity(activity)}
+                    disabled={loading}
+                    className="shrink-0 rounded-full bg-[#ff7aaa] px-4 py-2 text-sm font-black text-white shadow-[0_8px_18px_rgba(255,122,170,0.28)] outline-none disabled:opacity-60 focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
+                  >
+                    {loading ? "…" : "Find near →"}
+                  </button>
+                </div>
+                {open && !loading && (
+                  <div className="mt-3 grid gap-2">
+                    {venues.length === 0 ? (
+                      <p className="text-sm text-[#8a6a78]">No venues found.</p>
+                    ) : (
+                      venues.map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => onActivityVenueSelect(activity, selected?.id === v.id ? null : v)}
+                          className={`w-full rounded-2xl border-2 px-3 py-2 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-[#ffd6e8] ${
+                            selected?.id === v.id
+                              ? "border-[#ff7aaa] bg-[#fff7fb]"
+                              : "border-[#ffd6e8] bg-white hover:bg-[#fff7fb]"
+                          }`}
+                        >
+                          <p className="font-black text-[#3a2530]">{v.name}</p>
+                          <p className="text-sm text-[#8a6a78]">{v.address}</p>
+                          <p className="mt-0.5 text-xs font-black text-[#8a6a78]">
+                            ★ {v.rating.toFixed(1)} · {PRICE_LABELS[v.priceLevel]}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { onActivityVenueSelect(activity, null); setActivityVenueOpen((prev) => ({ ...prev, [activity]: false })); }}
+                      className="mt-1 text-center text-xs font-black text-[#8a6a78] underline underline-offset-2 outline-none focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
+                    >
+                      skip / pick later
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div className="mt-6 grid grid-cols-[0.8fr_1.2fr] gap-3">
         <button
           type="button"

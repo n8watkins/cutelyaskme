@@ -1,3 +1,7 @@
+import type { Venue } from "@/lib/venues";
+
+export type { Venue };
+
 export type PlannerStep =
   | "invite"
   | "accepted"
@@ -71,4 +75,7 @@ export type DatePlanState = {
   noAttempts: number;
   hasAccepted: boolean;
   confirmedPlanId: string | null;
+  location: string | null;
+  selectedEntreeVenue: Venue | null;
+  selectedActivityVenues: Record<string, Venue>;
 };

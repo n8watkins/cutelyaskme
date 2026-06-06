@@ -22,6 +22,8 @@ export async function POST(request: NextRequest) {
     selectedEntree,
     selectedActivities,
     dressVibe,
+    selectedEntreeVenue,
+    selectedActivityVenues,
   } = body ?? {};
 
   if (!inviteToken) {
@@ -93,6 +95,8 @@ export async function POST(request: NextRequest) {
       selectedTimeLabel,
       selectedEntree,
       selectedActivities: selectedActivities ?? [],
+      selectedEntreeVenue: selectedEntreeVenue ?? null,
+      selectedActivityVenues: selectedActivityVenues ?? {},
     }).catch(() => null),
     clerkClient()
       .then((clerk) => clerk.users.getUser(invite.senderId))
