@@ -38,26 +38,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Invite not found" }, { status: 404 });
   }
 
-  // Fast-path exit to avoid a Gemini call on a definitely-completed invite.
+  // Fast-path exit to avoid wasting work on a definitely-completed invite.
   // The transaction below is the authoritative race-safe check.
   if (invite.status === "completed") {
     return NextResponse.json({ message: "Invite already completed" }, { status: 409 });
   }
-
-  const itinerary = await generateItinerary({
-    selectedDateLabel,
-    selectedTimeLabel,
-    selectedEntree,
-    selectedActivities: selectedActivities ?? [],
-  }).catch(() => null);
 
   let planId!: string;
   let alreadyCompleted = false;
 
   try {
     await db.transaction(async (tx) => {
-      const now = new Date().toISOString();
-
       // Atomically claim the invite — only one concurrent request can win this.
       const updated = await tx
         .update(invites)
@@ -81,10 +72,10 @@ export async function POST(request: NextRequest) {
         selectedTimeLabel: selectedTimeLabel ?? null,
         selectedEntree: selectedEntree ?? null,
         selectedActivities: JSON.stringify(selectedActivities ?? []),
-        itinerary: itinerary ? JSON.stringify(itinerary) : null,
-        itineraryGeneratedAt: itinerary ? now : null,
+        itinerary: null,
+        itineraryGeneratedAt: null,
         dressVibe: dressVibe ?? null,
-        completedAt: now,
+        completedAt: new Date().toISOString(),
       });
     });
   } catch {
@@ -94,20 +85,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Failed to save plan" }, { status: 500 });
   }
 
-  try {
-    const clerk = await clerkClient();
-    const senderUser = await clerk.users.getUser(invite.senderId);
-    const senderEmail = senderUser.emailAddresses[0]?.emailAddress;
-    if (senderEmail) {
-      await sendPlanNotificationEmail({
-        senderEmail,
-        recipientName: invite.recipientName,
-        selectedDateLabel: selectedDateLabel ?? null,
-        planId,
-      });
-    }
-  } catch {
-    // Non-blocking
+  // Run Gemini and sender notification in parallel after the transaction commits —
+  // neither should block the response or roll back the plan if they fail.
+  const [itinerary] = await Promise.all([
+    generateItinerary({
+      selectedDateLabel,
+      selectedTimeLabel,
+      selectedEntree,
+      selectedActivities: selectedActivities ?? [],
+    }).catch(() => null),
+    clerkClient()
+      .then((clerk) => clerk.users.getUser(invite.senderId))
+      .then(async (senderUser) => {
+        const senderEmail = senderUser.emailAddresses[0]?.emailAddress;
+        if (senderEmail) {
+          await sendPlanNotificationEmail({
+            senderEmail,
+            recipientName: invite.recipientName,
+            selectedDateLabel: selectedDateLabel ?? null,
+            planId,
+          });
+        }
+      })
+      .catch(() => null),
+  ]);
+
+  if (itinerary) {
+    await db
+      .update(datePlans)
+      .set({
+        itinerary: JSON.stringify(itinerary),
+        itineraryGeneratedAt: new Date().toISOString(),
+      })
+      .where(eq(datePlans.id, planId))
+      .catch(() => null);
   }
 
   return NextResponse.json({ planId });
