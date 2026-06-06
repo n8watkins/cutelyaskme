@@ -64,9 +64,18 @@ back to later.
 - [ ] Schema: add memory fields to `date_ratings` (or a new `date_memories`
       table) — `poem TEXT`, `highlights TEXT (JSON)`, `private_note TEXT`,
       `photo_refs TEXT (JSON)`, `generated_at`.
-- [ ] **Photo storage** — Turso has no blob store. Pick one: Vercel Blob,
-      Supabase Storage (a `supabase/` dir already exists), or Cloudinary.
-      Decide before building upload.
+- [ ] **Photo storage** — Turso has no blob store; not using Supabase.
+      Free-tier options (researched June 2026):
+      - **Cloudinary** — ~25 GB (25 credits/mo; 1 credit = 1 GB storage / 1 GB
+        bandwidth / 1k transforms, shared). Built-in resize/optimize/CDN. Best
+        for an image feature; ~5× Vercel's storage. **Recommended.**
+      - **Vercel Blob** — 5 GB, 100 GB transfer, on our existing stack, hard cap
+        with no overage billing. Simplest, but we'd resize images ourselves.
+        ~3,000–5,000 photos @ 1–1.5 MB.
+      - **Cloudflare R2** — 10 GB, **zero egress fees ever**, 1M writes / 10M
+        reads free. Best raw-storage + free-serving option (needs S3 plumbing).
+      - Decision: lean **Cloudinary** (optimization + most storage) unless we
+        want to stay 100% on Vercel (then Blob).
 - [ ] Poem prompt design + JSON/plain-text handling + graceful fallback when
       `GEMINI_API_KEY` is unset.
 - [ ] Privacy model: enforce per-user private notes server-side.
@@ -79,19 +88,20 @@ back to later.
 **Goal:** pull the user's *own* Yelp tastes (saved/favorited spots, past reviews,
 preferences) into our venue suggestions.
 
-**Status: NEEDS VERIFICATION — not yet confirmed.**
-Preliminary understanding (to validate against current Yelp developer docs): the
-**Yelp Fusion API is app-level** (a single API key), **not** a per-user OAuth
-login. It exposes public business data (search, details, a few review excerpts)
-but historically does **not** give third parties access to a consumer's personal
-account — their saved/favorited businesses, preferences, or full review history.
-There is no consumer "Log in with Yelp" flow for reading personal activity.
+**Status: CONFIRMED — not possible (verified June 2026 against Yelp docs).**
+The Yelp Fusion API authenticates with an **app-level API key** (OAuth 2.0 for
+queries was removed in 2018). The only OAuth flow that exists is for **Yelp for
+Business accounts** — it lets a partner manage a business owner's claimed
+listings / respond to reviews ("Get Businesses Associated with Access Token"
+returns claimed *business* IDs). There is **no consumer "Log in with Yelp"**
+flow and **no endpoint** that exposes an individual's saved/favorited
+businesses, personal preferences, or their own reviews.
 
-- [ ] Confirm against current developer.yelp.com offerings (Fusion scopes, any
-      partner/consumer OAuth program).
-- [ ] **If unavailable (likely):** build our *own* preference signal instead —
-      let users favorite spots in-app and learn from their picks + post-date
-      ratings (ties directly into the preference profile under the memory feature).
+- [x] Verified against developer.yelp.com — consumer account access is not offered.
+- [ ] **Plan B — build our own preference signal:** let users favorite spots
+      in-app and learn from their picks + post-date ratings (the "never going
+      back here" verdict above), forming a preference profile we own. This is the
+      realistic path and ties directly into the memory feature.
 
 ---
 
