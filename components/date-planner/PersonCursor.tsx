@@ -3,26 +3,20 @@
 import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
-export function PersonCursor({ message }: { message: string | null }) {
+export function PersonCursor({ message, avatarSrc }: { message: string | null; avatarSrc: string | null }) {
   const reduceMotion = useReducedMotion();
   const [point, setPoint] = useState({ x: -100, y: -100 });
 
   useEffect(() => {
-    if (reduceMotion) {
-      return;
-    }
-
+    if (reduceMotion) return;
     function handleMove(event: MouseEvent) {
       setPoint({ x: event.clientX, y: event.clientY });
     }
-
     window.addEventListener("mousemove", handleMove);
     return () => window.removeEventListener("mousemove", handleMove);
   }, [reduceMotion]);
 
-  if (reduceMotion) {
-    return null;
-  }
+  if (reduceMotion) return null;
 
   return (
     <motion.div
@@ -41,8 +35,11 @@ export function PersonCursor({ message }: { message: string | null }) {
           {message}
         </motion.div>
       ) : null}
-      <div className="grid h-10 w-10 place-items-center rounded-full border-2 border-[#3a2530] bg-[#fff3d6] text-xl shadow-[0_10px_20px_rgba(58,37,48,0.16)]">
-        🙂
+      <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border-2 border-[#3a2530] bg-[#fff3d6] text-xl shadow-[0_10px_20px_rgba(58,37,48,0.16)]">
+        {avatarSrc
+          ? <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+          : <span>🙂</span>
+        }
       </div>
     </motion.div>
   );

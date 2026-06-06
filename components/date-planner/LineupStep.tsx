@@ -535,9 +535,6 @@ export function LineupStep({
           );
         })}
         </div>
-        <div className="py-4 text-center text-xs font-black uppercase tracking-[0.14em] text-[#8a6a78]">
-          more pre-made ideas below
-        </div>
       </div>
       <div className="mt-5 rounded-[24px] border-2 border-[#e7d9ff] bg-white/80 p-4">
         <div className="flex items-center justify-between gap-3">
@@ -551,7 +548,9 @@ export function LineupStep({
               }`}
             >
               {selectedActivities.length
-                ? selectedActivities.join(" + ")
+                ? selectedActivities
+                    .map((a) => `${activityDetails[a as ActivityOption]?.icon ?? ""} ${a}`)
+                    .join("  +  ")
                 : "roll two for me"}
             </p>
           </div>
@@ -648,7 +647,7 @@ export function LineupStep({
           className="min-h-14 rounded-full bg-[#ff7aaa] px-5 py-3 font-black text-white shadow-[0_14px_30px_rgba(255,122,170,0.32)] outline-none transition disabled:cursor-not-allowed disabled:bg-[#ffd6e8] disabled:text-[#8a6a78] focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
         >
           {selectedActivities.length === 2
-            ? `${selectedActivities[0]} + ${selectedActivities[1]} →`
+            ? selectedActivities.map((a) => `${activityDetails[a as ActivityOption]?.icon ?? ""} ${a}`).join(" + ") + " →"
             : "finish plan"}
         </button>
       </div>

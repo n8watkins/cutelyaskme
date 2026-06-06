@@ -45,6 +45,7 @@ export function DatePlanner({ recipientName, inviteToken, location }: DatePlanne
     selectedActivityVenues: {},
   });
   const [cursorMessage, setCursorMessage] = useState<string | null>(null);
+  const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!cursorMessage) {
@@ -126,8 +127,8 @@ export function DatePlanner({ recipientName, inviteToken, location }: DatePlanne
   return (
     <main className="relative isolate flex min-h-svh flex-1 items-center justify-center overflow-hidden px-4 py-5 sm:px-6">
       <FloatingDecor />
-      <PersonCursor message={cursorMessage} />
-      <DateAvatar step={state.step} />
+      <PersonCursor message={cursorMessage} avatarSrc={avatarSrc} />
+      <DateAvatar step={state.step} avatarSrc={avatarSrc} onAvatarChange={setAvatarSrc} />
       <div className="relative z-10 w-full max-w-lg">
         <ProgressHearts currentStep={state.step} />
         <AnimatePresence mode="wait">

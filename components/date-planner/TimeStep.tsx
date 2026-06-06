@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { HoverBubble, type HoverBubbleState } from "./HoverBubble";
 import { StepCard } from "./StepCard";
@@ -67,6 +67,7 @@ export function TimeStep({
 }: TimeStepProps) {
   const [showCustom, setShowCustom] = useState(false);
   const [hoverBubble, setHoverBubble] = useState<HoverBubbleState>(null);
+  const leaveTimer = useRef<number | null>(null);
   const selectedOption = timeOptions.find((option) => option.value === selectedTime);
   const isToday = selectedDate ? selectedDate === toDateValue(new Date()) : false;
   const nowMinutes = useMemo(() => {
@@ -112,39 +113,27 @@ export function TimeStep({
                 key={option.value}
                 type="button"
                 onMouseEnter={(event) => {
-                  setHoverBubble({
-                    text: getTimeHoverLine(option.value),
-                    x: event.clientX,
-                    y: event.clientY,
-                  });
+                  if (leaveTimer.current !== null) { window.clearTimeout(leaveTimer.current); leaveTimer.current = null; }
+                  setHoverBubble({ text: getTimeHoverLine(option.value), x: event.clientX, y: event.clientY });
                 }}
                 onMouseMove={(event) => {
+                  if (leaveTimer.current !== null) { window.clearTimeout(leaveTimer.current); leaveTimer.current = null; }
                   setHoverBubble((current) =>
                     current
-                      ? {
-                          ...current,
-                          x: event.clientX,
-                          y: event.clientY,
-                        }
-                      : {
-                          text: getTimeHoverLine(option.value),
-                          x: event.clientX,
-                          y: event.clientY,
-                        },
+                      ? { ...current, x: event.clientX, y: event.clientY }
+                      : { text: getTimeHoverLine(option.value), x: event.clientX, y: event.clientY },
                   );
                 }}
-                onMouseLeave={() => setHoverBubble(null)}
-                onFocus={() => {
-                  setHoverBubble({
-                    text: getTimeHoverLine(option.value),
-                    x:
-                      typeof window === "undefined"
-                        ? 300
-                        : window.innerWidth - 130,
-                    y: 88,
-                  });
+                onMouseLeave={() => {
+                  leaveTimer.current = window.setTimeout(() => { setHoverBubble(null); leaveTimer.current = null; }, 150);
                 }}
-                onBlur={() => setHoverBubble(null)}
+                onFocus={() => {
+                  if (leaveTimer.current !== null) { window.clearTimeout(leaveTimer.current); leaveTimer.current = null; }
+                  setHoverBubble({ text: getTimeHoverLine(option.value), x: typeof window === "undefined" ? 300 : window.innerWidth - 130, y: 88 });
+                }}
+                onBlur={() => {
+                  leaveTimer.current = window.setTimeout(() => { setHoverBubble(null); leaveTimer.current = null; }, 150);
+                }}
                 onClick={() => onSelect(option.value, fullLabel)}
                 className={cn(
                   "min-h-20 rounded-[22px] border-2 p-3 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-[#ffd6e8]",
