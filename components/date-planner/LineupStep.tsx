@@ -2,8 +2,7 @@
 
 import confetti from "canvas-confetti";
 import { useMemo, useRef, useState } from "react";
-import type { ActivityOption, Venue } from "./types";
-import { ACTIVITY_PLACE_QUERY, PRICE_LABELS } from "@/lib/venues";
+import type { ActivityOption } from "./types";
 import { OptionCard } from "./OptionCard";
 import { StepCard } from "./StepCard";
 
@@ -18,12 +17,6 @@ const activityDetails: Record<
     note: "warm drinks and easy talking",
     icon: "☕",
     periods: ["morning", "afternoon"],
-    budget: "low-key",
-  },
-  Walk: {
-    note: "low pressure, high cute potential",
-    icon: "🌷",
-    periods: ["morning", "afternoon", "evening"],
     budget: "low-key",
   },
   Movie: {
@@ -62,22 +55,10 @@ const activityDetails: Record<
     periods: ["morning", "afternoon", "evening"],
     budget: "treat",
   },
-  "Farmers market": {
-    note: "snacks, flowers, tiny browsing",
-    icon: "🍓",
-    periods: ["morning", "afternoon"],
-    budget: "low-key",
-  },
   "Sunset view": {
     note: "pretty sky, very cute timing",
     icon: "🌅",
     periods: ["evening"],
-    budget: "low-key",
-  },
-  "Night market": {
-    note: "lights, snacks, wandering",
-    icon: "🌙",
-    periods: ["night"],
     budget: "low-key",
   },
   "Gallery stroll": {
@@ -162,37 +143,23 @@ const activityDetails: Record<
 
 const slotPairs: Record<TimePeriod, ActivityOption[][]> = {
   morning: [
-    ["Coffee", "Farmers market"],
-    ["Walk", "Bookstore"],
     ["Mini golf", "Coffee"],
-    ["Farmers market", "Surprise ending"],
-    ["Walk", "Coffee"],
-    ["Bookstore", "Farmers market"],
     ["Mini golf", "Bookstore"],
-    ["Coffee", "Walk"],
-    ["Farmers market", "Photo booth"],
     ["Bookstore", "Surprise ending"],
-    ["Walk", "Mini golf"],
     ["Coffee", "Bookstore"],
     ["Plant shop", "Coffee"],
     ["Thrift browse", "Bookstore"],
     ["Gallery stroll", "Tea stop"],
     ["Museum", "Park picnic"],
-    ["Walk", "Plant shop"],
     ["Coffee", "Gallery stroll"],
   ],
   afternoon: [
     ["Bookstore", "Photo booth"],
     ["Mini golf", "Arcade"],
-    ["Walk", "Movie"],
-    ["Farmers market", "Surprise ending"],
     ["Coffee", "Bookstore"],
     ["Photo booth", "Arcade"],
-    ["Mini golf", "Walk"],
     ["Movie", "Photo booth"],
-    ["Farmers market", "Bookstore"],
     ["Arcade", "Surprise ending"],
-    ["Walk", "Coffee"],
     ["Bookstore", "Movie"],
     ["Gallery stroll", "Record store"],
     ["Plant shop", "Tea stop"],
@@ -204,12 +171,10 @@ const slotPairs: Record<TimePeriod, ActivityOption[][]> = {
   evening: [
     ["Sunset view", "Photo booth"],
     ["Arcade", "Drinks"],
-    ["Movie", "Walk"],
     ["Mini golf", "Surprise ending"],
     ["Bookstore", "Sunset view"],
     ["Photo booth", "Drinks"],
     ["Mini golf", "Sunset view"],
-    ["Walk", "Drinks"],
     ["Movie", "Photo booth"],
     ["Arcade", "Surprise ending"],
     ["Bookstore", "Drinks"],
@@ -223,21 +188,15 @@ const slotPairs: Record<TimePeriod, ActivityOption[][]> = {
   ],
   night: [
     ["Movie", "Drinks"],
-    ["Night market", "Photo booth"],
     ["Arcade", "Surprise ending"],
-    ["Drinks", "Night market"],
     ["Movie", "Photo booth"],
     ["Arcade", "Drinks"],
-    ["Night market", "Surprise ending"],
     ["Photo booth", "Drinks"],
-    ["Movie", "Night market"],
     ["Arcade", "Photo booth"],
     ["Drinks", "Surprise ending"],
-    ["Night market", "Movie"],
     ["Stargazing", "Scenic drive"],
     ["Karaoke", "Photo booth"],
     ["Live music", "Drinks"],
-    ["Board games", "Night market"],
     ["Stargazing", "Surprise ending"],
     ["Scenic drive", "Movie"],
   ],
@@ -251,9 +210,6 @@ type LineupStepProps = {
   selectedActivities: string[];
   onToggle: (activity: string) => void;
   onSetActivities: (activities: string[]) => void;
-  location: string | null;
-  selectedActivityVenues: Record<string, Venue>;
-  onActivityVenueSelect: (activity: string, venue: Venue | null) => void;
   onNext: () => void;
   onBack: () => void;
 };
@@ -264,9 +220,6 @@ export function LineupStep({
   selectedActivities,
   onToggle,
   onSetActivities,
-  location,
-  selectedActivityVenues,
-  onActivityVenueSelect,
   onNext,
   onBack,
 }: LineupStepProps) {
@@ -277,10 +230,6 @@ export function LineupStep({
   const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[] | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [activityVenueMap, setActivityVenueMap] = useState<Record<string, Venue[]>>({});
-  const [activityVenueLoading, setActivityVenueLoading] = useState<Record<string, boolean>>({});
-  const [activityVenueOpen, setActivityVenueOpen] = useState<Record<string, boolean>>({});
-  const [activityVenueError, setActivityVenueError] = useState<Record<string, string>>({});
   // Prevent duplicate fetches for the same inputs
   const lastAiKey = useRef<string | null>(null);
   const period = getTimePeriod(selectedTime);
@@ -329,11 +278,6 @@ export function LineupStep({
 
   function choose(activity: ActivityOption) {
     onToggle(activity);
-    setActivityVenueMap((prev) => { const next = { ...prev }; delete next[activity]; return next; });
-    setActivityVenueOpen((prev) => { const next = { ...prev }; delete next[activity]; return next; });
-    setActivityVenueLoading((prev) => { const next = { ...prev }; delete next[activity]; return next; });
-    setActivityVenueError((prev) => { const next = { ...prev }; delete next[activity]; return next; });
-    onActivityVenueSelect(activity, null);
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (activity === "Surprise ending" && !reduceMotion) {
@@ -364,10 +308,6 @@ export function LineupStep({
     setRemainingPairs(fallbackPool.slice(1));
     setLastPairKey(pair.join("|"));
     onSetActivities(pair);
-    setActivityVenueMap({});
-    setActivityVenueOpen({});
-    setActivityVenueLoading({});
-    setActivityVenueError({});
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (!reduceMotion) {
@@ -378,34 +318,6 @@ export function LineupStep({
         scalar: 0.58,
         colors: ["#ff7aaa", "#ffd6e8", "#fff3d6", "#b9e4ff"],
       });
-    }
-  }
-
-  async function findVenuesForActivity(activity: string) {
-    if (!location) return;
-    const query = ACTIVITY_PLACE_QUERY[activity];
-    if (!query) return;
-    setActivityVenueLoading((prev) => ({ ...prev, [activity]: true }));
-    setActivityVenueOpen((prev) => ({ ...prev, [activity]: true }));
-    setActivityVenueError((prev) => { const next = { ...prev }; delete next[activity]; return next; });
-    try {
-      const res = await fetch(
-        `/api/places?q=${encodeURIComponent(query)}&location=${encodeURIComponent(location)}`,
-      );
-      if (!res.ok) {
-        if (res.status === 401) {
-          setActivityVenueError((prev) => ({ ...prev, [activity]: "Session expired — please refresh the page." }));
-        } else {
-          setActivityVenueMap((prev) => ({ ...prev, [activity]: [] }));
-        }
-        return;
-      }
-      const data = await res.json() as { venues: Venue[] };
-      setActivityVenueMap((prev) => ({ ...prev, [activity]: data.venues ?? [] }));
-    } catch {
-      setActivityVenueMap((prev) => ({ ...prev, [activity]: [] }));
-    } finally {
-      setActivityVenueLoading((prev) => ({ ...prev, [activity]: false }));
     }
   }
 
@@ -568,69 +480,6 @@ export function LineupStep({
           ? "perfect, that's the cute part of the plan"
           : `choose ${2 - selectedActivities.length} more`}
       </div>
-      {location && selectedActivities.length === 2 && (
-        <div className="mt-4 grid gap-3">
-          {selectedActivities.map((activity) => {
-            if (!ACTIVITY_PLACE_QUERY[activity]) return null;
-            const open = activityVenueOpen[activity];
-            const loading = activityVenueLoading[activity];
-            const venues = activityVenueMap[activity] ?? [];
-            const selected = selectedActivityVenues[activity] ?? null;
-            return (
-              <div key={activity} className="rounded-[24px] border-2 border-[#ffd6e8] bg-white/80 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-black text-[#3a2530]">
-                    {selected ? `📍 ${selected.name}` : `Find ${activity} near ${location}`}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => findVenuesForActivity(activity)}
-                    disabled={loading}
-                    className="shrink-0 rounded-full bg-[#ff7aaa] px-4 py-2 text-sm font-black text-white shadow-[0_8px_18px_rgba(255,122,170,0.28)] outline-none disabled:opacity-60 focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
-                  >
-                    {loading ? "…" : "Find near →"}
-                  </button>
-                </div>
-                {open && !loading && (
-                  <div className="mt-3 grid gap-2">
-                    {activityVenueError[activity] ? (
-                      <p className="text-sm text-red-400">{activityVenueError[activity]}</p>
-                    ) : venues.length === 0 ? (
-                      <p className="text-sm text-[#8a6a78]">No venues found.</p>
-                    ) : (
-                      venues.map((v) => (
-                        <button
-                          key={v.id}
-                          type="button"
-                          onClick={() => onActivityVenueSelect(activity, selected?.id === v.id ? null : v)}
-                          className={`w-full rounded-2xl border-2 px-3 py-2 text-left outline-none transition focus-visible:ring-4 focus-visible:ring-[#ffd6e8] ${
-                            selected?.id === v.id
-                              ? "border-[#ff7aaa] bg-[#fff7fb]"
-                              : "border-[#ffd6e8] bg-white hover:bg-[#fff7fb]"
-                          }`}
-                        >
-                          <p className="font-black text-[#3a2530]">{v.name}</p>
-                          <p className="text-sm text-[#8a6a78]">{v.address}</p>
-                          <p className="mt-0.5 text-xs font-black text-[#8a6a78]">
-                            {v.rating > 0 ? `★ ${v.rating.toFixed(1)}` : "No rating"} · {PRICE_LABELS[v.priceLevel]}
-                          </p>
-                        </button>
-                      ))
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => { onActivityVenueSelect(activity, null); setActivityVenueOpen((prev) => ({ ...prev, [activity]: false })); }}
-                      className="mt-1 text-center text-xs font-black text-[#8a6a78] underline underline-offset-2 outline-none focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
-                    >
-                      skip / pick later
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       <div className="mt-6 grid grid-cols-[0.8fr_1.2fr] gap-3">
         <button

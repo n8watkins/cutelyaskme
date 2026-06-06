@@ -44,7 +44,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
   if (isSender) {
     const invite = plan.inviteId
       ? (await db
-          .select({ recipientName: invites.recipientName })
+          .select({ recipientName: invites.recipientName, location: invites.location })
           .from(invites)
           .where(eq(invites.id, plan.inviteId))
           .limit(1))[0]
@@ -56,13 +56,17 @@ export default async function PlanPage({ params }: PlanPageProps) {
     return (
       <>
         <SenderPlanningView
+          planId={id}
           plan={{
+            selectedDate: plan.selectedDate,
             selectedDateLabel: plan.selectedDateLabel,
+            selectedTime: plan.selectedTime,
             selectedTimeLabel: plan.selectedTimeLabel,
             selectedEntree: plan.selectedEntree,
             selectedActivities: activities,
             dressVibe: plan.dressVibe,
             recipientName: invite?.recipientName ?? "her",
+            location: invite?.location ?? null,
             selectedEntreeVenue: entreeVenue,
             selectedActivityVenues: activityVenues,
           }}

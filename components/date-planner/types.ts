@@ -37,16 +37,13 @@ export type DessertOption =
 
 export type ActivityOption =
   | "Coffee"
-  | "Walk"
   | "Movie"
   | "Arcade"
   | "Bookstore"
   | "Drinks"
   | "Photo booth"
   | "Mini golf"
-  | "Farmers market"
   | "Sunset view"
-  | "Night market"
   | "Gallery stroll"
   | "Park picnic"
   | "Thrift browse"
@@ -76,6 +73,4 @@ export type DatePlanState = {
   hasAccepted: boolean;
   confirmedPlanId: string | null;
   location: string | null;
-  selectedEntreeVenue: Venue | null;
-  selectedActivityVenues: Record<string, Venue>;
 };
