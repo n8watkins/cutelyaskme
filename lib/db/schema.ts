@@ -57,6 +57,26 @@ export const dateRatings = sqliteTable(
   ],
 );
 
+// One pass/fail verdict per user per venue ("would we go back?").
+// Unique on (user, venue) so re-swiping a place updates rather than duplicating —
+// this is also how we de-dupe a spot liked across multiple dates.
+export const venueVerdicts = sqliteTable(
+  "venue_verdicts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull(),
+    planId: text("plan_id").notNull(),
+    activity: text("activity"), // e.g. "Coffee", "__entree__"
+    venueId: text("venue_id").notNull(),
+    venue: text("venue").notNull(), // JSON snapshot of the Venue
+    liked: integer("liked", { mode: "boolean" }).notNull(),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [unique("verdict_user_venue_unique").on(table.userId, table.venueId)],
+);
+
 export const placeCache = sqliteTable("place_cache", {
   id: text("id").primaryKey(),
   cacheKey: text("cache_key").notNull().unique(),

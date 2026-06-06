@@ -104,15 +104,15 @@ and a "reminisce" option to deliberately revisit a favorite.
   re-pick a favorite instead of searching from scratch — a whole date built from
   greatest hits.
 
-### Open sub-tasks
-- [ ] Schema: `venue_verdicts` — `user_id`, `plan_id`, `activity`, `venue` (JSON:
-      name/address/lat/lng/id), `liked` (bool), `created_at`. (Venue data is
-      snapshotted so it survives even if the source listing changes.)
-- [ ] Swipe UI on the memory page; `POST` endpoint to record a verdict.
-- [ ] Liked-places query by `user_id` + `activity`; wire as a result source in
-      `SenderPlanningView`'s venue picker ("Places you loved").
-- [ ] "Reminisce" toggle/entry point in the planner that lists liked venues.
-- [ ] De-dupe: same place liked across multiple dates → one entry, most recent.
+### Sub-tasks
+- [x] Schema: `venue_verdicts` (`user_id`, `plan_id`, `activity`, `venue` JSON
+      snapshot, `liked`, `created_at`) — pushed to Turso.
+- [x] Swipe UI (`VenueVerdicts`) + `POST`/`DELETE /api/verdicts`. Currently lives
+      on the plan page; move to the memory page once that exists.
+- [x] De-dupe — unique `(user_id, venue_id)` so re-swiping updates in place.
+- [ ] **NEXT:** liked-places query by `user_id` + `activity`; wire as a result
+      source in `SenderPlanningView`'s venue picker ("Places you loved").
+- [ ] "Reminisce" mode — entry point in the planner that lists liked venues.
 
 ---
 

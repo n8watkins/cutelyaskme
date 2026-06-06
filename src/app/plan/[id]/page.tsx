@@ -1,11 +1,12 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { datePlans, invites, dateRatings } from "@/lib/db/schema";
+import { datePlans, invites, dateRatings, venueVerdicts } from "@/lib/db/schema";
 import type { ItineraryJson } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { Venue } from "@/lib/venues";
 import { RatingWidget } from "@/components/RatingWidget";
+import { VenueVerdicts, type VerdictStop } from "@/components/VenueVerdicts";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
 
 type PlanPageProps = {
@@ -41,6 +42,24 @@ export default async function PlanPage({ params }: PlanPageProps) {
   const ratings = await db.select().from(dateRatings).where(eq(dateRatings.planId, id));
   const userRating = ratings.find((r) => r.raterId === userId) ?? null;
 
+  // Chosen venues + this user's "would we go back?" swipes (for both views).
+  const entreeVenue = safeParse<Venue | null>(plan.selectedEntreeVenue ?? null, null);
+  const activityVenues = safeParse<Record<string, Venue>>(plan.selectedActivityVenues, {});
+  const verdictStops: VerdictStop[] = [
+    ...activities
+      .filter((a) => activityVenues[a])
+      .map((a) => ({ activity: a, venue: activityVenues[a] })),
+    ...(entreeVenue ? [{ activity: "__entree__", venue: entreeVenue }] : []),
+  ];
+  let userVerdicts: Record<string, boolean> = {};
+  if (userId && verdictStops.length > 0) {
+    const rows = await db
+      .select()
+      .from(venueVerdicts)
+      .where(and(eq(venueVerdicts.userId, userId), eq(venueVerdicts.planId, id)));
+    userVerdicts = Object.fromEntries(rows.map((r) => [r.venueId, r.liked]));
+  }
+
   if (isSender) {
     const invite = plan.inviteId
       ? (await db
@@ -49,9 +68,6 @@ export default async function PlanPage({ params }: PlanPageProps) {
           .where(eq(invites.id, plan.inviteId))
           .limit(1))[0]
       : undefined;
-
-    const entreeVenue = safeParse<Venue | null>(plan.selectedEntreeVenue ?? null, null);
-    const activityVenues = safeParse<Record<string, Venue>>(plan.selectedActivityVenues, {});
 
     return (
       <>
@@ -77,6 +93,11 @@ export default async function PlanPage({ params }: PlanPageProps) {
             <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
             <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
           </div>
+          {verdictStops.length > 0 && (
+            <div className="mt-8">
+              <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
+            </div>
+          )}
         </div>
       </>
     );
@@ -123,6 +144,12 @@ export default async function PlanPage({ params }: PlanPageProps) {
         <div className="mt-8">
           <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
           <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
+        </div>
+      )}
+
+      {userId && verdictStops.length > 0 && (
+        <div className="mt-8">
+          <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
         </div>
       )}
     </main>
