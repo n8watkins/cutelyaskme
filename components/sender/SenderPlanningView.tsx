@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Venue } from "@/lib/venues";
 import {
@@ -161,6 +162,7 @@ function downloadICS(timeline: TimelineStop[], selectedDate: string | null, plan
 }
 
 export function SenderPlanningView({ planId, plan }: { planId: string; plan: PlanData }) {
+  const router = useRouter();
   const [stopOrder, setStopOrder] = useState<string[]>(() => buildStops(plan));
   const [activityVenues, setActivityVenues] = useState<Record<string, Venue>>(plan.selectedActivityVenues);
   const [entreeVenue, setEntreeVenue] = useState<Venue | null>(plan.selectedEntreeVenue);
@@ -384,8 +386,15 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
           activityOrder: stopOrder.filter((k) => k !== ENTREE_KEY),
         }),
       });
-      if (res.ok) setSaved(true);
-      else setSaveError("Couldn't save. Try again.");
+      if (res.ok) {
+        setSaved(true);
+        const data = (await res.json().catch(() => null)) as { itineraryUpdated?: boolean } | null;
+        // The plan page renders the itinerary server-side, so refresh to show the
+        // version that was just regenerated from the chosen venues.
+        if (data?.itineraryUpdated) router.refresh();
+      } else {
+        setSaveError("Couldn't save. Try again.");
+      }
     } catch {
       setSaveError("Couldn't save. Try again.");
     } finally {
