@@ -4,6 +4,7 @@ import { invites, datePlans } from "@/lib/db/schema";
 import { and, eq, ne, or, inArray, desc, sql } from "drizzle-orm";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { EnableNotifications } from "@/components/EnableNotifications";
 
 export default async function DashboardPage() {
   const { userId } = await auth();
@@ -74,6 +75,10 @@ export default async function DashboardPage() {
         >
           + New invite
         </Link>
+      </div>
+
+      <div className="mb-8">
+        <EnableNotifications />
       </div>
 
       {invitedToMe.length > 0 && (

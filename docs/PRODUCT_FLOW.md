@@ -101,8 +101,10 @@ if Web Push proves insufficient.
 
 ## Build implications (not yet done)
 
-- [ ] **PWA + Web Push** — manifest, service worker, install prompt, VAPID keys,
-      `push_subscriptions` table, send on plan-confirmed/updated.
+- [x] **PWA + Web Push** — manifest (`app/manifest.ts`), service worker
+      (`public/sw.js`), VAPID keys, `push_subscriptions` table,
+      `EnableNotifications` on the dashboard, push sent to the recipient from the
+      notify route. (iOS requires Add-to-Home-Screen first.)
 - [x] **Claim-on-login** — recipient's plan is claimed by email-match (on plan
       view), and the dashboard shows a "Dates you're invited to" section.
 - [x] **`confirmedAt`** on `date_plans`, set by the notify action; post-date

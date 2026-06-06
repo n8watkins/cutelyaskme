@@ -4,6 +4,7 @@ import { datePlans, invites } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { sendSpotReadyEmail } from "@/lib/email";
+import { sendPushToUser } from "@/lib/push";
 import type { Venue } from "@/lib/venues";
 
 export async function POST(
@@ -77,6 +78,19 @@ export async function POST(
         ...(entreeVenue ? [{ name: entreeVenue.name, address: entreeVenue.address }] : []),
       ];
     } catch {}
+  }
+
+  // Track B: push the recipient if she's signed in + subscribed (best-effort).
+  if (plan.recipientId) {
+    const body =
+      mode === "share"
+        ? `${senderName} locked in the spots for your date — tap to see the plan.`
+        : `${senderName} has a date all planned for you ✨`;
+    await sendPushToUser(plan.recipientId, {
+      title: mode === "share" ? "Your date is set! 📍" : "A surprise awaits ✨",
+      body,
+      url: `/plan/${plan.id}`,
+    }).catch(() => 0);
   }
 
   try {

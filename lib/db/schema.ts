@@ -103,6 +103,18 @@ export const dateMemories = sqliteTable(
   (table) => [unique("memory_plan_author_unique").on(table.planId, table.authorId)],
 );
 
+// Web Push subscriptions — one row per device a user enabled notifications on.
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 export const placeCache = sqliteTable("place_cache", {
   id: text("id").primaryKey(),
   cacheKey: text("cache_key").notNull().unique(),
