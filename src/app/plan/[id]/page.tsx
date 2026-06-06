@@ -1,4 +1,4 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { datePlans, invites, dateRatings, venueVerdicts, dateMemories } from "@/lib/db/schema";
 import type { ItineraryJson } from "@/lib/db/schema";
@@ -36,6 +36,24 @@ export default async function PlanPage({ params }: PlanPageProps) {
   // Block logged-in non-participants from viewing plans where the recipient is known
   if (userId && !isSender && plan.recipientId !== null && plan.recipientId !== userId) {
     notFound();
+  }
+
+  // Claim the plan for the recipient when she opens it signed in with the invited
+  // email — links it to her account so it shows on her dashboard.
+  if (userId && !isSender && plan.recipientId === null && plan.inviteId) {
+    const me = await currentUser();
+    const myEmail = me?.emailAddresses?.[0]?.emailAddress?.toLowerCase();
+    if (myEmail) {
+      const [inv] = await db
+        .select({ email: invites.recipientEmail })
+        .from(invites)
+        .where(eq(invites.id, plan.inviteId))
+        .limit(1);
+      if (inv && inv.email.toLowerCase() === myEmail) {
+        await db.update(datePlans).set({ recipientId: userId }).where(eq(datePlans.id, id));
+        plan.recipientId = userId;
+      }
+    }
   }
 
   const itinerary = safeParse<ItineraryJson | null>(plan.itinerary, null);

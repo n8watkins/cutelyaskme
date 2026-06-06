@@ -103,8 +103,8 @@ if Web Push proves insufficient.
 
 - [ ] **PWA + Web Push** — manifest, service worker, install prompt, VAPID keys,
       `push_subscriptions` table, send on plan-confirmed/updated.
-- [ ] **Claim-on-login** — when a recipient signs in via an invite, attach the
-      plan to her `recipientId`; add a recipient "my dates" view.
+- [x] **Claim-on-login** — recipient's plan is claimed by email-match (on plan
+      view), and the dashboard shows a "Dates you're invited to" section.
 - [x] **`confirmedAt`** on `date_plans`, set by the notify action; post-date
       review + keepsake UI is gated on it.
 - [x] **Three-state verdicts** — `venue_verdicts.status`
