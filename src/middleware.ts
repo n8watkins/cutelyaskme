@@ -1,6 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-const isProtected = createRouteMatcher(["/send(.*)", "/dashboard(.*)", "/plan(.*)"]);
+const isProtected = createRouteMatcher(["/send(.*)", "/dashboard(.*)", "/plan(.*)", "/invite(.*)"]);
 // /login and all its children must stay public so Clerk's sign-in flow works
 
 export default clerkMiddleware(async (auth, request) => {
