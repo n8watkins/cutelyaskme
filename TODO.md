@@ -126,8 +126,8 @@ and a "reminisce" option to deliberately revisit a favorite.
 - [x] Liked-places query (`GET /api/verdicts?liked=true`) wired into
       `SenderPlanningView` — "💘 Places you loved" surfaces matching past
       favorites at the top of each stop's picker, deduped against fresh results.
-- [ ] **NEXT:** "Reminisce" mode — entry point in the planner that lists liked
-      venues (across activities) to rebuild a date from favorites.
+- [x] "Reminisce" mode — collapsible panel in the planner listing all liked
+      venues; one-tap "Use for [activity]" drops a favorite into a matching stop.
 
 ---
 

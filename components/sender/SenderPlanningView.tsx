@@ -195,6 +195,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
   const [lovedByActivity, setLovedByActivity] = useState<Record<string, Venue[]>>({});
+  const [showReminisce, setShowReminisce] = useState(false);
 
   const hasFetched = useRef(false);
 
@@ -527,6 +528,67 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 ))}
               </div>
             </div>
+
+            {/* Reminisce — rebuild a date from past favorites */}
+            {Object.keys(lovedByActivity).length > 0 && (
+              <div className="mb-4 rounded-2xl border-2 border-[#e7d9ff] bg-[#faf7ff] p-3">
+                <button
+                  type="button"
+                  onClick={() => setShowReminisce((s) => !s)}
+                  className="flex w-full items-center justify-between text-sm font-black text-[#7c5aa0]"
+                >
+                  <span>💘 Reminisce — your favorite spots</span>
+                  <span className="text-xs">{showReminisce ? "▲ hide" : "▼ show"}</span>
+                </button>
+
+                {showReminisce && (
+                  <div className="mt-3 grid gap-2">
+                    {Object.entries(lovedByActivity).flatMap(([activity, venues]) =>
+                      venues.map((v) => {
+                        const inLineup = stopOrder.includes(activity);
+                        const selectedId =
+                          activity === ENTREE_KEY ? entreeVenue?.id : activityVenues[activity]?.id;
+                        const isSelected = selectedId === v.id;
+                        const label =
+                          activity === ENTREE_KEY ? (plan.selectedEntree ?? "Food") : activity;
+                        const icon =
+                          activity === ENTREE_KEY ? "🍽️" : (ACTIVITY_ICONS[activity] ?? "✨");
+
+                        return (
+                          <div
+                            key={`${activity}-${v.id}`}
+                            className="flex items-center gap-3 rounded-xl border-2 border-[#e7d9ff] bg-white p-2.5"
+                          >
+                            <span className="text-lg">{icon}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-black text-[#3a2530]">{v.name}</p>
+                              <p className="truncate text-xs text-[#8a6a78]">{v.address}</p>
+                            </div>
+                            {inLineup ? (
+                              <button
+                                type="button"
+                                onClick={() => selectVenue(activity, isSelected ? null : v)}
+                                className={`shrink-0 rounded-full px-3 py-1 text-xs font-black transition ${
+                                  isSelected
+                                    ? "bg-[#5fd97f] text-white"
+                                    : "border-2 border-[#c7a6ff] text-[#7c5aa0] hover:bg-[#f5f0ff]"
+                                }`}
+                              >
+                                {isSelected ? "Added ✓" : `Use for ${label}`}
+                              </button>
+                            ) : (
+                              <span className="shrink-0 text-[10px] font-black text-[#c0a0b0]">
+                                not in this date
+                              </span>
+                            )}
+                          </div>
+                        );
+                      }),
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Stop cards */}
             <div className="grid gap-3">

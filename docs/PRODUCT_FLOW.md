@@ -110,5 +110,6 @@ if Web Push proves insufficient.
 - [x] **Three-state verdicts** — `venue_verdicts.status`
       (`liked` | `disliked` | `neutral`, neutral default); only `liked` feeds
       "Places you loved" / Reminisce.
-- [ ] **Reminisce mode** — pick a date from past liked spots.
+- [x] **Reminisce mode** — in-planner panel of liked spots; "Use for [activity]"
+      assigns a favorite to a matching stop.
 - [ ] Mobile-first passes on the existing screens (sender planner is desktop-ish).
