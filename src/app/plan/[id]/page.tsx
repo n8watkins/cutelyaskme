@@ -61,15 +61,25 @@ export default async function PlanPage({ params }: PlanPageProps) {
     userVerdicts = Object.fromEntries(rows.map((r) => [r.venueId, r.liked]));
   }
 
-  // This user's keepsake (notes + poem) for the date.
-  let userMemory: { notes: string; poem: string | null } | null = null;
+  // This user's keepsake (notes + poem + photos) for the date.
+  let userMemory: {
+    notes: string;
+    poem: string | null;
+    photos: { url: string; publicId: string }[];
+  } | null = null;
   if (userId) {
     const [mem] = await db
       .select()
       .from(dateMemories)
       .where(and(eq(dateMemories.planId, id), eq(dateMemories.authorId, userId)))
       .limit(1);
-    if (mem) userMemory = { notes: mem.notes ?? "", poem: mem.poem };
+    if (mem) {
+      userMemory = {
+        notes: mem.notes ?? "",
+        poem: mem.poem,
+        photos: safeParse<{ url: string; publicId: string }[]>(mem.photoRefs, []),
+      };
+    }
   }
 
   if (isSender) {
@@ -115,6 +125,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
               planId={id}
               initialNotes={userMemory?.notes ?? ""}
               initialPoem={userMemory?.poem ?? null}
+              initialPhotos={userMemory?.photos ?? []}
             />
           </div>
         </div>
@@ -178,6 +189,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
             planId={id}
             initialNotes={userMemory?.notes ?? ""}
             initialPoem={userMemory?.poem ?? null}
+            initialPhotos={userMemory?.photos ?? []}
           />
         </div>
       )}

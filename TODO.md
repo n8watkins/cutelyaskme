@@ -65,9 +65,12 @@ back to later.
 - [x] Privacy — participant-only check server-side; one memory per author.
 - [x] Capture + display UI — `MemoryKeepsake` on the plan page (notes textarea,
       generate/rewrite, poem card). _(Move to a dedicated memory page later.)_
-- [ ] **NEXT (Slice B) — Photo upload to Cloudinary** — creds verified (cloud
-      `dmwqypbnu`). Add upload (signed) → store `{url, publicId}` in `photo_refs`
-      → render a little gallery on the keepsake.
+- [x] **Photo upload to Cloudinary** — signed direct uploads (`GET
+      /api/memories/sign` → browser → Cloudinary), refs persisted via
+      `PUT /api/memories/photos`, optimized thumbnail gallery in `MemoryKeepsake`.
+      Verified end-to-end (upload + destroy).
+- [ ] Orphan cleanup — removing a photo drops it from `photo_refs` but leaves the
+      Cloudinary asset; add a `destroy` call later if storage matters.
 - [ ] Photo storage notes — Turso has no blob store; not using Supabase.
       Free-tier options (researched June 2026):
       - **Cloudinary** — ~25 GB (25 credits/mo; 1 credit = 1 GB storage / 1 GB
