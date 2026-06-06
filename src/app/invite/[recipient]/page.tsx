@@ -1,5 +1,7 @@
 import { DatePlanner } from "@/components/date-planner/DatePlanner";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { db } from "@/lib/db";
+import { invites } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { formatRecipientName } from "@/lib/planner-copy";
 
 type InvitePageProps = {
@@ -12,14 +14,12 @@ const UUID_RE =
 export default async function InvitePage({ params }: InvitePageProps) {
   const { recipient } = await params;
 
-  // Token-based invite (new flow)
   if (UUID_RE.test(recipient)) {
-    const admin = createAdminClient();
-    const { data: invite } = await admin
-      .from("invites")
-      .select("recipient_name, status, token")
-      .eq("token", recipient)
-      .single();
+    const [invite] = await db
+      .select({ recipientName: invites.recipientName, status: invites.status, token: invites.token })
+      .from(invites)
+      .where(eq(invites.token, recipient))
+      .limit(1);
 
     if (!invite) {
       return (
@@ -61,12 +61,11 @@ export default async function InvitePage({ params }: InvitePageProps) {
 
     return (
       <DatePlanner
-        recipientName={formatRecipientName(invite.recipient_name)}
+        recipientName={formatRecipientName(invite.recipientName)}
         inviteToken={invite.token}
       />
     );
   }
 
-  // Name-based preview (legacy / demo)
   return <DatePlanner recipientName={formatRecipientName(recipient)} />;
 }

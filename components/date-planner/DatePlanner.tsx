@@ -3,6 +3,7 @@
 import { AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useEffect, useMemo, useState } from "react";
+import { ConfirmedStep } from "./ConfirmedStep";
 import { DateStep } from "./DateStep";
 import { DateAvatar } from "./DateAvatar";
 import { DressStep } from "./DressStep";
@@ -37,6 +38,7 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
     dressVibe: null,
     noAttempts: 0,
     hasAccepted: false,
+    confirmedPlanId: null,
   });
   const [cursorMessage, setCursorMessage] = useState<string | null>(null);
 
@@ -64,6 +66,7 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
       state.selectedDateLabel,
       state.selectedEntree,
       state.selectedTimeLabel,
+      state.dressVibe,
     ],
   );
 
@@ -218,12 +221,23 @@ export function DatePlanner({ recipientName, inviteToken }: DatePlannerProps) {
               inviteToken={inviteToken}
               selectedDate={state.selectedDate ?? undefined}
               selectedTime={state.selectedTime ?? undefined}
+              onConfirmed={(planId) =>
+                setState((current) => ({
+                  ...current,
+                  step: "confirmed",
+                  confirmedPlanId: planId,
+                }))
+              }
               onEditDate={() => setStep("date")}
               onEditTime={() => setStep("time")}
               onEditEntree={() => setStep("entree")}
               onEditLineup={() => setStep("lineup")}
               onEditDress={() => setStep("dress")}
             />
+          ) : null}
+
+          {state.step === "confirmed" && state.confirmedPlanId ? (
+            <ConfirmedStep key="confirmed" planId={state.confirmedPlanId} />
           ) : null}
         </AnimatePresence>
       </div>

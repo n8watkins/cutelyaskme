@@ -12,6 +12,7 @@ const avatarCopy: Record<PlannerStep, string> = {
   entree: "Food can be the finale.",
   dress: "No wrong answers here.",
   summary: "This plan is adorable.",
+  confirmed: "They're gonna love this.",
 };
 
 export function DateAvatar({ step }: { step: PlannerStep }) {

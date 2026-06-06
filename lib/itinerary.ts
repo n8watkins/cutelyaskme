@@ -1,4 +1,4 @@
-import type { ItineraryJson } from "./supabase/types";
+import type { ItineraryJson } from "./db/schema";
 
 type ItineraryInput = {
   selectedDateLabel: string | null;

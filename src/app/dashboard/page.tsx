@@ -1,38 +1,35 @@
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/lib/db";
+import { invites, datePlans } from "@/lib/db/schema";
+import { eq, or, desc } from "drizzle-orm";
 import Link from "next/link";
+import { CopyLinkButton } from "@/components/CopyLinkButton";
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { userId } = await auth();
+  if (!userId) return null;
 
-  if (!user) return null;
-
-  const admin = createAdminClient();
-
-  const [{ data: sentInvites }, { data: myPlans }] = await Promise.all([
-    admin
-      .from("invites")
-      .select("id, token, recipient_name, recipient_email, status, created_at")
-      .eq("sender_id", user.id)
-      .order("created_at", { ascending: false }),
-    admin
-      .from("date_plans")
-      .select(
-        "id, invite_id, selected_date_label, selected_entree, selected_activities, completed_at, sender_id, recipient_id",
+  const [sentInvites, myPlans] = await Promise.all([
+    db
+      .select()
+      .from(invites)
+      .where(eq(invites.senderId, userId))
+      .orderBy(desc(invites.createdAt)),
+    db
+      .select()
+      .from(datePlans)
+      .where(
+        or(eq(datePlans.senderId, userId), eq(datePlans.recipientId, userId)),
       )
-      .or(`sender_id.eq.${user.id},recipient_id.eq.${user.id}`)
-      .not("completed_at", "is", null)
-      .order("completed_at", { ascending: false }),
+      .orderBy(desc(datePlans.completedAt)),
   ]);
 
-  // Map invite_id → plan_id for quick lookup
+  const completedPlans = myPlans.filter((p) => p.completedAt !== null);
+
   const planByInvite = Object.fromEntries(
-    (myPlans ?? [])
-      .filter((p) => p.invite_id)
-      .map((p) => [p.invite_id, p.id]),
+    completedPlans
+      .filter((p) => p.inviteId)
+      .map((p) => [p.inviteId!, p.id]),
   );
 
   return (
@@ -47,12 +44,11 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* Sent invites */}
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
           Sent invites
         </h2>
-        {!sentInvites?.length ? (
+        {!sentInvites.length ? (
           <p className="text-sm text-[#c0a0b0]">No invites yet.</p>
         ) : (
           <div className="grid gap-3">
@@ -65,10 +61,10 @@ export default async function DashboardPage() {
                 >
                   <div className="min-w-0">
                     <p className="font-black text-[#3a2530]">
-                      {invite.recipient_name}
+                      {invite.recipientName}
                     </p>
                     <p className="truncate text-xs text-[#c0a0b0]">
-                      {invite.recipient_email}
+                      {invite.recipientEmail}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -81,7 +77,15 @@ export default async function DashboardPage() {
                         View plan →
                       </Link>
                     ) : (
-                      <CopyLinkButton token={invite.token} />
+                      <div className="flex items-center gap-2">
+                        <Link
+                          href={`/invite/${invite.token}`}
+                          className="rounded-full border-2 border-[#ffd6e8] px-3 py-1 text-xs font-black text-[#8a6a78]"
+                        >
+                          Preview →
+                        </Link>
+                        <CopyLinkButton token={invite.token} />
+                      </div>
                     )}
                   </div>
                 </div>
@@ -91,30 +95,33 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {/* Past dates */}
       <section>
         <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
           Past dates
         </h2>
-        {!myPlans?.length ? (
+        {!completedPlans.length ? (
           <p className="text-sm text-[#c0a0b0]">No completed dates yet.</p>
         ) : (
           <div className="grid gap-3">
-            {myPlans.map((plan) => (
-              <Link
-                key={plan.id}
-                href={`/plan/${plan.id}`}
-                className="block rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4 transition hover:bg-[#fff7fb]"
-              >
-                <p className="font-black text-[#3a2530]">
-                  {plan.selected_date_label ?? "A date"}
-                </p>
-                <p className="mt-0.5 text-sm text-[#8a6a78]">
-                  {(plan.selected_activities as string[]).join(" + ")}
-                  {plan.selected_entree ? ` · ${plan.selected_entree}` : ""}
-                </p>
-              </Link>
-            ))}
+            {completedPlans.map((plan) => {
+              let activities: string[] = [];
+              try { activities = JSON.parse(plan.selectedActivities) as string[]; } catch {}
+              return (
+                <Link
+                  key={plan.id}
+                  href={`/plan/${plan.id}`}
+                  className="block rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4 transition hover:bg-[#fff7fb]"
+                >
+                  <p className="font-black text-[#3a2530]">
+                    {plan.selectedDateLabel ?? "A date"}
+                  </p>
+                  <p className="mt-0.5 text-sm text-[#8a6a78]">
+                    {activities.join(" + ")}
+                    {plan.selectedEntree ? ` · ${plan.selectedEntree}` : ""}
+                  </p>
+                </Link>
+              );
+            })}
           </div>
         )}
       </section>
@@ -134,27 +141,5 @@ function StatusBadge({ status }: { status: string }) {
     >
       {status}
     </span>
-  );
-}
-
-function CopyLinkButton({ token }: { token: string }) {
-  // Client component would be cleaner but this works via inline onclick
-  return (
-    <button
-      type="button"
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onClick={(e: any) => {
-        navigator.clipboard.writeText(
-          `${window.location.origin}/invite/${token}`,
-        );
-        e.currentTarget.textContent = "Copied!";
-        setTimeout(() => {
-          e.currentTarget.textContent = "Copy link";
-        }, 1500);
-      }}
-      className="rounded-full border-2 border-[#ffd6e8] px-3 py-1 text-xs font-black text-[#8a6a78]"
-    >
-      Copy link
-    </button>
   );
 }

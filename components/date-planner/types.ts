@@ -6,7 +6,8 @@ export type PlannerStep =
   | "entree"
   | "lineup"
   | "dress"
-  | "summary";
+  | "summary"
+  | "confirmed";
 
 export type DressVibe =
   | "casual"
@@ -69,4 +70,5 @@ export type DatePlanState = {
   dressVibe: DressVibe | null;
   noAttempts: number;
   hasAccepted: boolean;
+  confirmedPlanId: string | null;
 };

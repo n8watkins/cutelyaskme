@@ -1,14 +1,12 @@
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { auth } from "@clerk/nextjs/server";
+import { db } from "@/lib/db";
+import { datePlans, dateRatings } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  const { userId } = await auth();
+  if (!userId) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
@@ -19,27 +17,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Invalid rating" }, { status: 400 });
   }
 
-  const admin = createAdminClient();
+  const [plan] = await db
+    .select({ senderId: datePlans.senderId, recipientId: datePlans.recipientId })
+    .from(datePlans)
+    .where(eq(datePlans.id, planId))
+    .limit(1);
 
-  // Verify user is a participant
-  const { data: plan } = await admin
-    .from("date_plans")
-    .select("sender_id, recipient_id")
-    .eq("id", planId)
-    .single();
-
-  if (!plan || (plan.sender_id !== user.id && plan.recipient_id !== user.id)) {
+  if (!plan || (plan.senderId !== userId && plan.recipientId !== userId)) {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
-  const { error } = await admin.from("date_ratings").upsert(
-    { plan_id: planId, rater_id: user.id, score, note: note ?? null },
-    { onConflict: "plan_id,rater_id" },
-  );
-
-  if (error) {
-    return NextResponse.json({ message: "Could not save rating." }, { status: 500 });
-  }
+  await db
+    .insert(dateRatings)
+    .values({
+      id: crypto.randomUUID(),
+      planId,
+      raterId: userId,
+      score,
+      note: note ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [dateRatings.planId, dateRatings.raterId],
+      set: { score, note: note ?? null },
+    });
 
   return NextResponse.json({ ok: true });
 }

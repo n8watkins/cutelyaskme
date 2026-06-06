@@ -23,6 +23,7 @@ type SummaryStepProps = {
   selectedActivities: string[];
   dressVibe: DressVibe | null;
   inviteToken?: string;
+  onConfirmed: (planId: string) => void;
   onEditDate: () => void;
   onEditTime: () => void;
   onEditEntree: () => void;
@@ -40,6 +41,7 @@ export function SummaryStep({
   selectedActivities,
   dressVibe,
   inviteToken,
+  onConfirmed,
   onEditDate,
   onEditTime,
   onEditEntree,
@@ -81,7 +83,7 @@ export function SummaryStep({
     }
 
     const { planId } = await res.json();
-    window.location.href = `/plan/${planId}`;
+    onConfirmed(planId);
   }
 
   return (

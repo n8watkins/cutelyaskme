@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Rating = { rater_id: string; score: number; note: string | null };
+type Rating = { raterId: string; score: number; note: string | null };
 
 type RatingWidgetProps = {
   planId: string;

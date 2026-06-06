@@ -1,76 +1,84 @@
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { db } from "@/lib/db";
+import { datePlans, invites, dateRatings } from "@/lib/db/schema";
+import type { ItineraryJson } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { RatingWidget } from "@/components/RatingWidget";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
-import type { ItineraryJson } from "@/lib/supabase/types";
 
 type PlanPageProps = {
   params: Promise<{ id: string }>;
 };
 
+function safeParse<T>(json: string | null, fallback: T): T {
+  if (!json) return fallback;
+  try { return JSON.parse(json) as T; } catch { return fallback; }
+}
+
 export default async function PlanPage({ params }: PlanPageProps) {
   const { id } = await params;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { userId } = await auth();
 
-  const admin = createAdminClient();
-  const { data: plan } = await admin
-    .from("date_plans")
-    .select("*")
-    .eq("id", id)
-    .single();
+  const [plan] = await db
+    .select()
+    .from(datePlans)
+    .where(eq(datePlans.id, id))
+    .limit(1);
 
   if (!plan) notFound();
 
-  if (user && user.id !== plan.sender_id && user.id !== plan.recipient_id) {
+  const isSender = userId === plan.senderId;
+
+  // Block logged-in non-participants from viewing plans where the recipient is known
+  if (userId && !isSender && plan.recipientId !== null && plan.recipientId !== userId) {
     notFound();
   }
 
-  const isSender = user?.id === plan.sender_id;
-
-  // Sender sees planning view when plan isn't finalized
   if (isSender) {
-    const { data: invite } = await admin
-      .from("invites")
-      .select("recipient_name")
-      .eq("id", plan.invite_id ?? "")
-      .single();
+    const invite = plan.inviteId
+      ? (await db
+          .select({ recipientName: invites.recipientName })
+          .from(invites)
+          .where(eq(invites.id, plan.inviteId))
+          .limit(1))[0]
+      : undefined;
+
+    const activities = safeParse<string[]>(plan.selectedActivities, []);
 
     return (
       <SenderPlanningView
         plan={{
-          selectedDateLabel: plan.selected_date_label,
-          selectedTimeLabel: plan.selected_time_label,
-          selectedEntree: plan.selected_entree,
-          selectedActivities: plan.selected_activities as string[],
-          dressVibe: (plan as Record<string, unknown>).dress_vibe as string | null ?? null,
-          recipientName: invite?.recipient_name ?? "her",
+          selectedDateLabel: plan.selectedDateLabel,
+          selectedTimeLabel: plan.selectedTimeLabel,
+          selectedEntree: plan.selectedEntree,
+          selectedActivities: activities,
+          dressVibe: plan.dressVibe,
+          recipientName: invite?.recipientName ?? "her",
         }}
       />
     );
   }
 
-  // Recipient / shared plan view
-  const participantIds = [plan.sender_id, plan.recipient_id].filter(Boolean) as string[];
-  const { data: profiles } = await admin
-    .from("profiles")
-    .select("id, display_name")
-    .in("id", participantIds);
+  // Recipient / shared view
+  let senderName = "someone special";
+  try {
+    const clerk = await clerkClient();
+    const sender = await clerk.users.getUser(plan.senderId);
+    senderName =
+      sender.firstName ??
+      sender.emailAddresses[0]?.emailAddress?.split("@")[0] ??
+      "someone special";
+  } catch {}
 
-  const nameMap = Object.fromEntries(
-    (profiles ?? []).map((p) => [p.id, p.display_name]),
-  );
+  const ratings = await db
+    .select()
+    .from(dateRatings)
+    .where(eq(dateRatings.planId, id));
 
-  const { data: ratings } = await admin
-    .from("date_ratings")
-    .select("rater_id, score, note")
-    .eq("plan_id", id);
-
-  const userRating = ratings?.find((r) => r.rater_id === user?.id);
-  const itinerary = plan.itinerary as ItineraryJson | null;
+  const userRating = ratings.find((r) => r.raterId === userId) ?? null;
+  const itinerary = safeParse<ItineraryJson | null>(plan.itinerary, null);
+  const activities = safeParse<string[]>(plan.selectedActivities, []);
 
   return (
     <main className="mx-auto max-w-lg px-4 py-10">
@@ -86,29 +94,25 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
       <div className="mb-6 rounded-[24px] border-2 border-[#ffd6e8] bg-white/90 p-5 shadow-sm">
         <dl className="grid gap-3">
-          <PlanRow icon="📅" label="Date" value={plan.selected_date_label ?? "—"} />
-          <PlanRow icon="🕰️" label="Time" value={plan.selected_time_label ?? "—"} />
+          <PlanRow icon="📅" label="Date" value={plan.selectedDateLabel ?? "—"} />
+          <PlanRow icon="🕰️" label="Time" value={plan.selectedTimeLabel ?? "—"} />
           <PlanRow
             icon="💌"
             label="Activities"
-            value={(plan.selected_activities as string[]).join(" + ") || "—"}
+            value={activities.join(" + ") || "—"}
           />
-          <PlanRow icon="🍽️" label="Dinner" value={plan.selected_entree ?? "—"} />
+          <PlanRow icon="🍽️" label="Dinner" value={plan.selectedEntree ?? "—"} />
         </dl>
         <div className="mt-4 flex gap-2 text-xs text-[#c0a0b0]">
-          <span>Planned by {nameMap[plan.sender_id] ?? "someone special"}</span>
-          {plan.recipient_id && (
-            <>
-              <span>·</span>
-              <span>Picked by {nameMap[plan.recipient_id] ?? "them"}</span>
-            </>
-          )}
+          <span>Planned by {senderName}</span>
         </div>
       </div>
 
       {itinerary?.timeline && itinerary.timeline.length > 0 && (
         <div className="mb-6">
-          <h2 className="mb-3 text-lg font-black text-[#3a2530]">Tonight&apos;s lineup</h2>
+          <h2 className="mb-3 text-lg font-black text-[#3a2530]">
+            Tonight&apos;s lineup
+          </h2>
           <div className="grid gap-3">
             {itinerary.timeline.map((entry, i) => (
               <div
@@ -117,7 +121,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
               >
                 <div className="shrink-0 text-center">
                   <div className="text-2xl">{entry.emoji}</div>
-                  <div className="mt-1 text-xs font-black text-[#c0a0b0]">{entry.time}</div>
+                  <div className="mt-1 text-xs font-black text-[#c0a0b0]">
+                    {entry.time}
+                  </div>
                 </div>
                 <div>
                   <p className="font-black text-[#3a2530]">{entry.activity}</p>
@@ -143,13 +149,15 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </div>
       )}
 
-      {user && (
+      {userId && (
         <div className="mt-8">
-          <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
+          <h2 className="mb-3 text-center font-black text-[#3a2530]">
+            How did it go?
+          </h2>
           <RatingWidget
             planId={id}
-            existingRating={userRating ?? null}
-            allRatings={ratings ?? []}
+            existingRating={userRating}
+            allRatings={ratings}
           />
         </div>
       )}
@@ -157,14 +165,24 @@ export default async function PlanPage({ params }: PlanPageProps) {
   );
 }
 
-function PlanRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+function PlanRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+}) {
   return (
     <div className="flex items-start gap-3">
       <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#fff7fb] text-xl">
         {icon}
       </span>
       <div>
-        <dt className="text-xs font-black uppercase tracking-[0.14em] text-[#c0a0b0]">{label}</dt>
+        <dt className="text-xs font-black uppercase tracking-[0.14em] text-[#c0a0b0]">
+          {label}
+        </dt>
         <dd className="font-black text-[#3a2530]">{value}</dd>
       </div>
     </div>

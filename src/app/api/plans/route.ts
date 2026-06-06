@@ -1,19 +1,12 @@
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { auth, clerkClient } from "@clerk/nextjs/server";
+import { db } from "@/lib/db";
+import { invites, datePlans } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { generateItinerary } from "@/lib/itinerary";
 import { sendPlanNotificationEmail } from "@/lib/email";
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
   const body = await request.json().catch(() => null);
   const {
     inviteToken,
@@ -23,22 +16,20 @@ export async function POST(request: NextRequest) {
     selectedTimeLabel,
     selectedEntree,
     selectedActivities,
+    dressVibe,
   } = body ?? {};
 
   if (!inviteToken) {
     return NextResponse.json({ message: "Missing invite token" }, { status: 400 });
   }
 
-  const admin = createAdminClient();
+  const [invite] = await db
+    .select()
+    .from(invites)
+    .where(eq(invites.token, inviteToken))
+    .limit(1);
 
-  // Look up invite by token
-  const { data: invite, error: inviteError } = await admin
-    .from("invites")
-    .select("id, sender_id, recipient_name, status")
-    .eq("token", inviteToken)
-    .single();
-
-  if (inviteError || !invite) {
+  if (!invite) {
     return NextResponse.json({ message: "Invite not found" }, { status: 404 });
   }
 
@@ -46,7 +37,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Invite already completed" }, { status: 409 });
   }
 
-  // Generate itinerary (single optimized Gemini call)
+  const { userId } = await auth();
+
   const itinerary = await generateItinerary({
     selectedDateLabel,
     selectedTimeLabel,
@@ -55,52 +47,45 @@ export async function POST(request: NextRequest) {
   }).catch(() => null);
 
   const now = new Date().toISOString();
+  const planId = crypto.randomUUID();
 
-  // Create plan
-  const { data: plan, error: planError } = await admin
-    .from("date_plans")
-    .insert({
-      invite_id: invite.id,
-      sender_id: invite.sender_id,
-      recipient_id: user.id,
-      selected_date: selectedDate,
-      selected_date_label: selectedDateLabel,
-      selected_time: selectedTime,
-      selected_time_label: selectedTimeLabel,
-      selected_entree: selectedEntree,
-      selected_activities: selectedActivities ?? [],
-      itinerary,
-      itinerary_generated_at: itinerary ? now : null,
-      completed_at: now,
-    })
-    .select("id")
-    .single();
+  await db.insert(datePlans).values({
+    id: planId,
+    inviteId: invite.id,
+    senderId: invite.senderId,
+    recipientId: userId ?? null,
+    selectedDate: selectedDate ?? null,
+    selectedDateLabel: selectedDateLabel ?? null,
+    selectedTime: selectedTime ?? null,
+    selectedTimeLabel: selectedTimeLabel ?? null,
+    selectedEntree: selectedEntree ?? null,
+    selectedActivities: JSON.stringify(selectedActivities ?? []),
+    itinerary: itinerary ? JSON.stringify(itinerary) : null,
+    itineraryGeneratedAt: itinerary ? now : null,
+    dressVibe: dressVibe ?? null,
+    completedAt: now,
+  });
 
-  if (planError || !plan) {
-    return NextResponse.json({ message: "Could not save plan." }, { status: 500 });
-  }
+  await db
+    .update(invites)
+    .set({ status: "completed" })
+    .where(eq(invites.id, invite.id));
 
-  // Mark invite completed
-  await admin
-    .from("invites")
-    .update({ status: "completed" })
-    .eq("id", invite.id);
-
-  // Notify sender — get their email from auth
   try {
-    const { data: senderAuth } = await admin.auth.admin.getUserById(invite.sender_id);
-    const senderEmail = senderAuth.user?.email;
+    const clerk = await clerkClient();
+    const senderUser = await clerk.users.getUser(invite.senderId);
+    const senderEmail = senderUser.emailAddresses[0]?.emailAddress;
     if (senderEmail) {
       await sendPlanNotificationEmail({
         senderEmail,
-        recipientName: invite.recipient_name,
+        recipientName: invite.recipientName,
         selectedDateLabel: selectedDateLabel ?? null,
-        planId: plan.id,
+        planId,
       });
     }
   } catch {
-    // Non-blocking — plan is saved, notification is best-effort
+    // Non-blocking
   }
 
-  return NextResponse.json({ planId: plan.id });
+  return NextResponse.json({ planId });
 }

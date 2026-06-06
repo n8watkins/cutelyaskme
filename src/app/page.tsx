@@ -1,14 +1,10 @@
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
 export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) redirect("/dashboard");
+  const { userId } = await auth();
+  if (userId) redirect("/dashboard");
 
   return (
     <main className="flex min-h-svh flex-col items-center justify-center px-4 py-12 text-center">
