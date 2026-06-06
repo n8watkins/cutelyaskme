@@ -8,6 +8,7 @@ export const invites = sqliteTable("invites", {
   recipientName: text("recipient_name").notNull(),
   recipientEmail: text("recipient_email").notNull(),
   location: text("location"),
+  senderAvatarSrc: text("sender_avatar_src"),
   status: text("status", { enum: ["pending", "completed", "cancelled"] })
     .notNull()
     .default("pending"),

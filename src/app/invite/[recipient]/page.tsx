@@ -16,7 +16,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
 
   if (UUID_RE.test(recipient)) {
     const [invite] = await db
-      .select({ recipientName: invites.recipientName, status: invites.status, token: invites.token, location: invites.location })
+      .select({ recipientName: invites.recipientName, status: invites.status, token: invites.token, location: invites.location, senderAvatarSrc: invites.senderAvatarSrc })
       .from(invites)
       .where(eq(invites.token, recipient))
       .limit(1);
@@ -64,6 +64,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
         recipientName={formatRecipientName(invite.recipientName)}
         inviteToken={invite.token}
         location={invite.location ?? null}
+        avatarSrc={invite.senderAvatarSrc ?? null}
       />
     );
   }

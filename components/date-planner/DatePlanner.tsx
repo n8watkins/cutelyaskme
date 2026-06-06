@@ -21,11 +21,12 @@ type DatePlannerProps = {
   recipientName: string;
   inviteToken?: string;
   location?: string | null;
+  avatarSrc?: string | null;
 };
 
 const initialStep: PlannerStep = "invite";
 
-export function DatePlanner({ recipientName, inviteToken, location }: DatePlannerProps) {
+export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = null }: DatePlannerProps) {
   const [state, setState] = useState<DatePlanState>({
     recipientName,
     step: initialStep,
@@ -45,7 +46,6 @@ export function DatePlanner({ recipientName, inviteToken, location }: DatePlanne
     selectedActivityVenues: {},
   });
   const [cursorMessage, setCursorMessage] = useState<string | null>(null);
-  const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
 
   useEffect(() => {
     if (!cursorMessage) {
@@ -128,7 +128,7 @@ export function DatePlanner({ recipientName, inviteToken, location }: DatePlanne
     <main className="relative isolate flex min-h-svh flex-1 items-center justify-center overflow-hidden px-4 py-5 sm:px-6">
       <FloatingDecor />
       <PersonCursor message={cursorMessage} avatarSrc={avatarSrc} />
-      <DateAvatar step={state.step} avatarSrc={avatarSrc} onAvatarChange={setAvatarSrc} />
+      <DateAvatar step={state.step} avatarSrc={avatarSrc} />
       <div className="relative z-10 w-full max-w-lg">
         <ProgressHearts currentStep={state.step} />
         <AnimatePresence mode="wait">

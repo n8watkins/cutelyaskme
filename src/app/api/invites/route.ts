@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null);
-  const { recipientName, recipientEmail, location } = body ?? {};
+  const { recipientName, recipientEmail, location, senderAvatarSrc } = body ?? {};
 
   if (
     typeof recipientName !== "string" ||
@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
       recipientName: recipientName.trim(),
       recipientEmail: recipientEmail.trim().toLowerCase(),
       location: locationValue,
+      senderAvatarSrc: typeof senderAvatarSrc === "string" && senderAvatarSrc.startsWith("data:image/") ? senderAvatarSrc : null,
     });
   } catch {
     return NextResponse.json({ message: "Failed to create invite" }, { status: 500 });

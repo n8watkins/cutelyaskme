@@ -1,23 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 type Stage = "form" | "sent";
+
+function resizeImageToDataUrl(file: File, size = 120): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("canvas")); return; }
+      const minDim = Math.min(img.width, img.height);
+      const sx = (img.width - minDim) / 2;
+      const sy = (img.height - minDim) / 2;
+      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
 
 export function SendInviteForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [location, setLocation] = useState("");
+  const [avatarSrc, setAvatarSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("form");
   const [token, setToken] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const siteUrl =
     typeof window !== "undefined"
       ? window.location.origin
       : process.env.NEXT_PUBLIC_SITE_URL ?? "";
   const inviteLink = token ? `${siteUrl}/invite/${token}` : "";
+
+  async function handleAvatarFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    try {
+      const src = await resizeImageToDataUrl(file);
+      setAvatarSrc(src);
+    } catch {
+      // ignore resize errors silently
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,7 +63,12 @@ export function SendInviteForm() {
     const res = await fetch("/api/invites", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recipientName: name, recipientEmail: email, location: location.trim() || null }),
+      body: JSON.stringify({
+        recipientName: name,
+        recipientEmail: email,
+        location: location.trim() || null,
+        senderAvatarSrc: avatarSrc,
+      }),
     });
 
     setLoading(false);
@@ -82,6 +123,35 @@ export function SendInviteForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Avatar picker */}
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="group relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-[#ffd6e8] bg-[#fff3d6] text-3xl shadow-sm outline-none transition focus-visible:ring-4 focus-visible:ring-[#ffd6e8] hover:border-[#ff7aaa]"
+          aria-label="Upload your photo"
+        >
+          {avatarSrc
+            ? <img src={avatarSrc} alt="Your avatar" className="h-full w-full object-cover" />
+            : <span>🙂</span>
+          }
+          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/25 text-[10px] font-black text-white opacity-0 transition-opacity group-hover:opacity-100">
+            {avatarSrc ? "change" : "upload"}
+          </span>
+        </button>
+        <div>
+          <p className="text-sm font-black text-[#8a6a78]">Your photo</p>
+          <p className="text-xs text-[#c0a0b0]">Shows as the emoji cursor in their invite experience</p>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleAvatarFile}
+        />
+      </div>
+
       <div className="space-y-2">
         <label className="block text-sm font-black text-[#8a6a78]">
           Their name
