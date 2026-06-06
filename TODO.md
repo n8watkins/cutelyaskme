@@ -1,6 +1,8 @@
 # Open Work & Roadmap
 
 A living status doc: what's shipped, what's broken, and what's next.
+For the end-to-end product flow + decisions (auth, notifications, review states),
+see [`docs/PRODUCT_FLOW.md`](docs/PRODUCT_FLOW.md).
 
 ---
 
