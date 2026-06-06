@@ -52,13 +52,10 @@ back to later.
 - A persistent page per date (e.g. `/plan/[id]/memory` or a section on the plan
   page) showing the poem, photos, highlights, and the original lineup.
 
-### Public vs. private notes  ← important nuance
+### Public vs. private
 - **Shared reflections** both people can see (the poem, highlights, photos).
-- **Private verdict** visible only to its author — e.g. "honestly never want to go
-  back to this place." Key private notes by `raterId`; never expose another
-  user's private notes.
-- Could feed a personal **preference profile** we build internally over time
-  (places/cuisines you liked vs. didn't) to bias future venue suggestions.
+- **Private verdict** — a simple **pass/fail swipe** per place (see the next
+  feature), visible only to its author. Never expose another user's verdict.
 
 ### Open sub-tasks
 - [ ] Schema: add memory fields to `date_ratings` (or a new `date_memories`
@@ -74,12 +71,48 @@ back to later.
         ~3,000–5,000 photos @ 1–1.5 MB.
       - **Cloudflare R2** — 10 GB, **zero egress fees ever**, 1M writes / 10M
         reads free. Best raw-storage + free-serving option (needs S3 plumbing).
-      - Decision: lean **Cloudinary** (optimization + most storage) unless we
-        want to stay 100% on Vercel (then Blob).
+      - **DECIDED: Cloudinary** (optimization + most storage). Add
+        `CLOUDINARY_*` env vars; upload via signed/unsigned preset; store the
+        returned secure URL + public_id in `photo_refs`.
 - [ ] Poem prompt design + JSON/plain-text handling + graceful fallback when
       `GEMINI_API_KEY` is unset.
 - [ ] Privacy model: enforce per-user private notes server-side.
 - [ ] Memory page route + UI.
+
+---
+
+## 🔁 Big feature — Swipe verdicts → recommendations & "Reminisce" mode
+
+**Vision:** after a date, rate each place we went with a dead-simple **pass/fail
+swipe** ("would we go back?" — Tinder-style). The places we liked build up into a
+pile we own, and that pile powers two things: smarter recommendations next time,
+and a "reminisce" option to deliberately revisit a favorite.
+
+### 1. The swipe
+- Per visited venue, a binary **👍 would go back / 👎 wouldn't**. One tap, no
+  required typing. Per-user (each person swipes their own verdict).
+- Captured on the post-date memory page, alongside the poem/photos.
+
+### 2. Recommend what we loved
+- When the sender is picking a venue for an activity (e.g. Coffee), surface
+  **"Places you loved"** for that activity type at the top of the picker —
+  pulled from past 👍 swipes — above the fresh Yelp/Overpass results.
+
+### 3. "Reminisce" mode
+- An explicit option when planning: *"Take me somewhere we've been before."*
+- Lists all previously-liked venues (optionally filtered by activity) so we can
+  re-pick a favorite instead of searching from scratch — a whole date built from
+  greatest hits.
+
+### Open sub-tasks
+- [ ] Schema: `venue_verdicts` — `user_id`, `plan_id`, `activity`, `venue` (JSON:
+      name/address/lat/lng/id), `liked` (bool), `created_at`. (Venue data is
+      snapshotted so it survives even if the source listing changes.)
+- [ ] Swipe UI on the memory page; `POST` endpoint to record a verdict.
+- [ ] Liked-places query by `user_id` + `activity`; wire as a result source in
+      `SenderPlanningView`'s venue picker ("Places you loved").
+- [ ] "Reminisce" toggle/entry point in the planner that lists liked venues.
+- [ ] De-dupe: same place liked across multiple dates → one entry, most recent.
 
 ---
 
@@ -98,10 +131,9 @@ flow and **no endpoint** that exposes an individual's saved/favorited
 businesses, personal preferences, or their own reviews.
 
 - [x] Verified against developer.yelp.com — consumer account access is not offered.
-- [ ] **Plan B — build our own preference signal:** let users favorite spots
-      in-app and learn from their picks + post-date ratings (the "never going
-      back here" verdict above), forming a preference profile we own. This is the
-      realistic path and ties directly into the memory feature.
+- [x] **Plan B chosen — own our preference signal** via the swipe-verdict
+      feature above (👍/👎 per place → "Places you loved" + Reminisce mode).
+      No dependency on Yelp account data.
 
 ---
 
