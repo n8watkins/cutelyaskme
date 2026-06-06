@@ -57,11 +57,18 @@ back to later.
 - **Private verdict** — a simple **pass/fail swipe** per place (see the next
   feature), visible only to its author. Never expose another user's verdict.
 
-### Open sub-tasks
-- [ ] Schema: add memory fields to `date_ratings` (or a new `date_memories`
-      table) — `poem TEXT`, `highlights TEXT (JSON)`, `private_note TEXT`,
-      `photo_refs TEXT (JSON)`, `generated_at`.
-- [ ] **Photo storage** — Turso has no blob store; not using Supabase.
+### Sub-tasks
+- [x] Schema: `date_memories` (`plan_id`, `author_id`, `notes`, `poem`,
+      `photo_refs`, timestamps; unique per author) — pushed to Turso.
+- [x] Poem generation — `lib/memory-poem.ts` (Gemini 2.5 Flash, thinking off);
+      `POST /api/memories` saves notes + (re)generates the poem. Verified live.
+- [x] Privacy — participant-only check server-side; one memory per author.
+- [x] Capture + display UI — `MemoryKeepsake` on the plan page (notes textarea,
+      generate/rewrite, poem card). _(Move to a dedicated memory page later.)_
+- [ ] **NEXT (Slice B) — Photo upload to Cloudinary** — creds verified (cloud
+      `dmwqypbnu`). Add upload (signed) → store `{url, publicId}` in `photo_refs`
+      → render a little gallery on the keepsake.
+- [ ] Photo storage notes — Turso has no blob store; not using Supabase.
       Free-tier options (researched June 2026):
       - **Cloudinary** — ~25 GB (25 credits/mo; 1 credit = 1 GB storage / 1 GB
         bandwidth / 1k transforms, shared). Built-in resize/optimize/CDN. Best

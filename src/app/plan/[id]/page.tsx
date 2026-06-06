@@ -1,12 +1,13 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { datePlans, invites, dateRatings, venueVerdicts } from "@/lib/db/schema";
+import { datePlans, invites, dateRatings, venueVerdicts, dateMemories } from "@/lib/db/schema";
 import type { ItineraryJson } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { Venue } from "@/lib/venues";
 import { RatingWidget } from "@/components/RatingWidget";
 import { VenueVerdicts, type VerdictStop } from "@/components/VenueVerdicts";
+import { MemoryKeepsake } from "@/components/MemoryKeepsake";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
 
 type PlanPageProps = {
@@ -60,6 +61,17 @@ export default async function PlanPage({ params }: PlanPageProps) {
     userVerdicts = Object.fromEntries(rows.map((r) => [r.venueId, r.liked]));
   }
 
+  // This user's keepsake (notes + poem) for the date.
+  let userMemory: { notes: string; poem: string | null } | null = null;
+  if (userId) {
+    const [mem] = await db
+      .select()
+      .from(dateMemories)
+      .where(and(eq(dateMemories.planId, id), eq(dateMemories.authorId, userId)))
+      .limit(1);
+    if (mem) userMemory = { notes: mem.notes ?? "", poem: mem.poem };
+  }
+
   if (isSender) {
     const invite = plan.inviteId
       ? (await db
@@ -98,6 +110,13 @@ export default async function PlanPage({ params }: PlanPageProps) {
               <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
             </div>
           )}
+          <div className="mt-8">
+            <MemoryKeepsake
+              planId={id}
+              initialNotes={userMemory?.notes ?? ""}
+              initialPoem={userMemory?.poem ?? null}
+            />
+          </div>
         </div>
       </>
     );
@@ -150,6 +169,16 @@ export default async function PlanPage({ params }: PlanPageProps) {
       {userId && verdictStops.length > 0 && (
         <div className="mt-8">
           <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
+        </div>
+      )}
+
+      {userId && (
+        <div className="mt-8">
+          <MemoryKeepsake
+            planId={id}
+            initialNotes={userMemory?.notes ?? ""}
+            initialPoem={userMemory?.poem ?? null}
+          />
         </div>
       )}
     </main>

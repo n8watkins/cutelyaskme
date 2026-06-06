@@ -77,6 +77,27 @@ export const venueVerdicts = sqliteTable(
   (table) => [unique("verdict_user_venue_unique").on(table.userId, table.venueId)],
 );
 
+// A post-date keepsake one participant writes: their notes + an AI poem (+ photos).
+// One per (plan, author) so each person keeps their own memory.
+export const dateMemories = sqliteTable(
+  "date_memories",
+  {
+    id: text("id").primaryKey(),
+    planId: text("plan_id").notNull(),
+    authorId: text("author_id").notNull(),
+    notes: text("notes"), // freeform highlights / funny moments
+    poem: text("poem"), // Gemini-generated keepsake
+    photoRefs: text("photo_refs").notNull().default("[]"), // JSON [{ url, publicId }]
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [unique("memory_plan_author_unique").on(table.planId, table.authorId)],
+);
+
 export const placeCache = sqliteTable("place_cache", {
   id: text("id").primaryKey(),
   cacheKey: text("cache_key").notNull().unique(),
