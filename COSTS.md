@@ -1,82 +1,47 @@
 # Cost Breakdown
 
-All pricing as of June 2025. This is a personal-scale app — the estimates below assume low traffic (a few dozen uses/month).
+All pricing as of June 2025. This is a personal-scale app — estimates assume a few dozen uses/month.
 
 ---
 
-## Services
+## Always Free
 
 ### Vercel — Hosting
-**Free (Hobby plan)**
+- Serverless functions, static assets, CDN, automatic SSL
+- 100 GB bandwidth/month on Hobby plan — more than enough
 
-- Serverless functions, static assets, CDN
-- 100 GB bandwidth/month
-- Automatic SSL, preview deployments
-- No cost for personal projects under Hobby limits
-
-### Turso — Database (libSQL / SQLite)
-**Free (Starter plan)**
-
-- 500 databases, 9 GB storage
-- 1 billion row reads/month, 25 million row writes/month
-- More than sufficient for a personal app
+### Turso — Database
+- 500 databases, 9 GB storage, 1 billion row reads/month
+- Free tier covers personal use indefinitely
 
 ### Clerk — Authentication
-**Free tier**
-
-- 10,000 monthly active users (MAU)
+- 10,000 monthly active users free
 - Unlimited sign-ins, social OAuth, email magic links
-- Pro tier ($25/mo) only needed if you exceed 10k MAUs
 
 ### Resend — Email
-**Free tier**
+- 3,000 emails/month, 100/day free
+- Sends invite + plan-confirmed emails
 
-- 3,000 emails/month, 100/day
-- Sends invite emails + plan-confirmed notifications
-- Pro ($20/mo) for higher volume
+### Yelp Fusion API — Venue search
+- 500 API calls/day free, no credit card required
+- Returns name, address, rating (1–5 stars), price level ($–$$$$), coordinates
+- With 24h DB caching, a given (food type + city) pair is fetched once per day max
+- At personal scale (~30 searches/month) this never comes close to 500/day
 
----
+### Gemini 2.5 Flash — AI itinerary
+- 1,500 free requests/day, 15/minute
+- Personal use never exceeds this
 
-## Pay-per-use APIs
-
-### Google Places (New) — Venue search
-**~$0.017 per request**
-
-- Text Search (New) endpoint: $17.00 per 1,000 requests
-- With 24h DB caching, each unique `(query, location)` pair is only fetched once per day
-- For ~50 invites/month, real cost approaches **$0** (cache absorbs almost all repeat lookups)
-- New Google Cloud accounts receive **$300 free credit**
-
-| Monthly invites | Uncached requests | Est. cost |
-|---|---|---|
-| 10 | ~30 (3 searches each: entree + 2 activities) | ~$0.51 |
-| 50 | ~150 (mostly cached) | ~$1.00 |
-| 200 | ~200 (heavy cache hits) | ~$3.40 |
-
-### Google Gemini 2.5 Flash — AI itinerary
-**~$0.001–$0.003 per itinerary**
-
-- Input: $0.15 / 1M tokens (~300 tokens per prompt = $0.000045)
-- Output: $0.60 / 1M tokens (~300 tokens per response = $0.00018)
-- Cost per generated itinerary: **< $0.001**
-- Free tier: 15 requests/min, 1,500/day — covers personal use without any charges
-
-| Monthly plans | Est. cost |
-|---|---|
-| 50 | ~$0.01 |
-| 500 | ~$0.12 |
+### Map display — Leaflet + OpenStreetMap
+- Leaflet: open-source JavaScript library, free forever
+- OpenStreetMap: volunteer-built map tiles, free for reasonable usage, no API key needed
+- Together they render the interactive pin-drop map on the plan view
 
 ---
 
-## Total Estimate
+## Total monthly cost: $0
 
-| Usage level | Monthly cost |
-|---|---|
-| Light (< 20 invites) | **$0** (all free tiers) |
-| Moderate (50 invites) | **~$1–2** (Places API) |
-| Active (200 invites) | **~$4–6** (Places + Gemini) |
-
-The only real spend at personal scale is Google Places. Everything else stays free.
+Every component in this app has a free tier that comfortably covers personal use.
 
 ---
 
@@ -84,8 +49,14 @@ The only real spend at personal scale is Google Places. Everything else stays fr
 
 | Key | Where to get | Cost |
 |---|---|---|
-| `GOOGLE_MAPS_API_KEY` | Google Cloud Console → APIs & Services | Pay per use (see above) |
-| `GEMINI_API_KEY` | Google AI Studio | Free tier covers personal use |
+| `YELP_API_KEY` | developer.yelp.com | Free |
+| `GEMINI_API_KEY` | Google AI Studio | Free |
 | `CLERK_*` keys | clerk.com | Free |
 | `RESEND_API_KEY` | resend.com | Free |
 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | turso.tech | Free |
+
+---
+
+## If you ever wanted Google instead
+
+Google Maps Platform has a **$200/month recurring credit** that covers both the Maps JavaScript API (interactive map display) and Places API (venue search). At personal scale you'd never exceed $200/month, so it would also be free in practice — but requires a Google Cloud billing account with a credit card on file.

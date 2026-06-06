@@ -4,30 +4,27 @@ import { placeCache } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import type { Venue } from "@/lib/venues";
 
-type GooglePlace = {
+type YelpBusiness = {
   id: string;
-  displayName?: { text: string };
-  formattedAddress?: string;
-  rating?: number;
-  priceLevel?: string;
-  location?: { latitude: number; longitude: number };
+  name: string;
+  location: { display_address: string[] };
+  rating: number;
+  price?: string;
+  coordinates: { latitude: number; longitude: number };
 };
 
-type GooglePlacesResponse = {
-  places?: GooglePlace[];
+type YelpSearchResponse = {
+  businesses?: YelpBusiness[];
 };
 
-function mapPriceLevel(level: string | undefined): 1 | 2 | 3 | 4 {
-  if (!level) return 2;
-  if (level === "PRICE_LEVEL_FREE" || level === "PRICE_LEVEL_INEXPENSIVE") return 1;
-  if (level === "PRICE_LEVEL_MODERATE") return 2;
-  if (level === "PRICE_LEVEL_EXPENSIVE") return 3;
-  if (level === "PRICE_LEVEL_VERY_EXPENSIVE") return 4;
-  return 2;
+function mapPrice(price: string | undefined): 1 | 2 | 3 | 4 {
+  if (!price) return 2;
+  const len = price.replace(/[^$]/g, "").length;
+  return (Math.min(Math.max(len, 1), 4) as 1 | 2 | 3 | 4);
 }
 
 export async function GET(request: NextRequest) {
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  const apiKey = process.env.YELP_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ venues: [] });
   }
@@ -40,7 +37,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ venues: [] });
   }
 
-  const cacheKey = `${q.toLowerCase()}:${location.toLowerCase()}`;
+  const cacheKey = `yelp:${q.toLowerCase()}:${location.toLowerCase()}`;
   const now = new Date().toISOString();
 
   try {
@@ -58,41 +55,36 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask":
-          "places.id,places.displayName,places.formattedAddress,places.rating,places.priceLevel,places.location",
-      },
-      body: JSON.stringify({
-        textQuery: `${q} near ${location}`,
-        maxResultCount: 5,
-      }),
+    const url = new URL("https://api.yelp.com/v3/businesses/search");
+    url.searchParams.set("term", q);
+    url.searchParams.set("location", location);
+    url.searchParams.set("limit", "5");
+    url.searchParams.set("sort_by", "rating");
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
 
     if (!response.ok) {
       return NextResponse.json({ venues: [] });
     }
 
-    const data = (await response.json()) as GooglePlacesResponse;
-    const venues: Venue[] = (data.places ?? []).map((p) => ({
-      id: p.id,
-      name: p.displayName?.text ?? "Unknown",
-      address: p.formattedAddress ?? "",
-      rating: p.rating ?? 4.0,
-      priceLevel: mapPriceLevel(p.priceLevel),
-      lat: p.location?.latitude ?? 0,
-      lng: p.location?.longitude ?? 0,
+    const data = (await response.json()) as YelpSearchResponse;
+    const venues: Venue[] = (data.businesses ?? []).map((b) => ({
+      id: b.id,
+      name: b.name,
+      address: b.location.display_address.join(", "),
+      rating: b.rating,
+      priceLevel: mapPrice(b.price),
+      lat: b.coordinates.latitude,
+      lng: b.coordinates.longitude,
     }));
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const id = crypto.randomUUID();
 
     await db
       .insert(placeCache)
-      .values({ id, cacheKey, results: JSON.stringify(venues), expiresAt })
+      .values({ id: crypto.randomUUID(), cacheKey, results: JSON.stringify(venues), expiresAt })
       .onConflictDoUpdate({
         target: placeCache.cacheKey,
         set: { results: JSON.stringify(venues), expiresAt },
