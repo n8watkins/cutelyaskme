@@ -1,7 +1,7 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { invites, datePlans } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { generateItinerary } from "@/lib/itinerary";
 import { sendPlanNotificationEmail } from "@/lib/email";
@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Invite not found" }, { status: 404 });
   }
 
+  // Fast-path exit to avoid a Gemini call on a definitely-completed invite.
+  // The transaction below is the authoritative race-safe check.
   if (invite.status === "completed") {
     return NextResponse.json({ message: "Invite already completed" }, { status: 409 });
   }
@@ -49,10 +51,25 @@ export async function POST(request: NextRequest) {
     selectedActivities: selectedActivities ?? [],
   }).catch(() => null);
 
-  const planId = crypto.randomUUID();
+  let planId!: string;
+  let alreadyCompleted = false;
 
   try {
     await db.transaction(async (tx) => {
+      const now = new Date().toISOString();
+
+      // Atomically claim the invite — only one concurrent request can win this.
+      const updated = await tx
+        .update(invites)
+        .set({ status: "completed" })
+        .where(and(eq(invites.id, invite.id), eq(invites.status, "pending")));
+
+      if (updated.rowsAffected === 0) {
+        alreadyCompleted = true;
+        throw new Error("already_completed");
+      }
+
+      planId = crypto.randomUUID();
       await tx.insert(datePlans).values({
         id: planId,
         inviteId: invite.id,
@@ -65,17 +82,15 @@ export async function POST(request: NextRequest) {
         selectedEntree: selectedEntree ?? null,
         selectedActivities: JSON.stringify(selectedActivities ?? []),
         itinerary: itinerary ? JSON.stringify(itinerary) : null,
-        itineraryGeneratedAt: itinerary ? new Date().toISOString() : null,
+        itineraryGeneratedAt: itinerary ? now : null,
         dressVibe: dressVibe ?? null,
-        completedAt: new Date().toISOString(),
+        completedAt: now,
       });
-
-      await tx
-        .update(invites)
-        .set({ status: "completed" })
-        .where(eq(invites.id, invite.id));
     });
   } catch {
+    if (alreadyCompleted) {
+      return NextResponse.json({ message: "Invite already completed" }, { status: 409 });
+    }
     return NextResponse.json({ message: "Failed to save plan" }, { status: 500 });
   }
 

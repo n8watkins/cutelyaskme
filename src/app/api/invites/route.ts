@@ -5,7 +5,7 @@ import { eq, desc } from "drizzle-orm";
 import { sendInviteEmail } from "@/lib/email";
 import { NextRequest, NextResponse } from "next/server";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 // Simple in-memory rate limit: max 10 invites per user per hour
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -53,13 +53,17 @@ export async function POST(request: NextRequest) {
   const id = crypto.randomUUID();
   const token = crypto.randomUUID();
 
-  await db.insert(invites).values({
-    id,
-    token,
-    senderId: userId,
-    recipientName: recipientName.trim(),
-    recipientEmail: recipientEmail.trim().toLowerCase(),
-  });
+  try {
+    await db.insert(invites).values({
+      id,
+      token,
+      senderId: userId,
+      recipientName: recipientName.trim(),
+      recipientEmail: recipientEmail.trim().toLowerCase(),
+    });
+  } catch {
+    return NextResponse.json({ message: "Failed to create invite" }, { status: 500 });
+  }
 
   try {
     await sendInviteEmail({
