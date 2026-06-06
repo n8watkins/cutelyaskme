@@ -1,6 +1,6 @@
 # Progress & Next Steps
 
-_Last updated: June 2026_
+_Last updated: June 2026 (post venue-architecture migration)_
 
 ---
 
@@ -15,6 +15,8 @@ _Last updated: June 2026_
 | Database | Turso (libSQL/SQLite) — Drizzle ORM, schema-pushed |
 | Email | Resend — invite emails + sender notification on plan submission |
 | AI | Gemini 2.5 Flash — activity suggestions + itinerary generation |
+| Venues | Yelp Fusion (businesses) + Overpass/OpenStreetMap (parks, viewpoints, stargazing) — 24h DB cache |
+| Geocoding | Nominatim (OpenStreetMap) — no API key |
 | Map | Leaflet / OpenStreetMap — no API key, free |
 | Deployment | Vercel — (pending redeploy with new env vars) |
 | Domain | cutelyask.me (purchased, not yet connected) |
@@ -45,8 +47,12 @@ _Last updated: June 2026_
 | Dashboard | `/dashboard` — all sent invites with status badges |
 | Pending invite | "Preview →" opens invite link + "Copy link" button |
 | Completed invite | "View plan →" links to full sender planning view |
-| Planning view | `/plan/[id]` as sender → her picks + venue picker + map + route builder |
-| Notification | Email from Resend when she locks in the plan |
+| Planning view | `/plan/[id]` as sender → her picks + per-stop venue picker + map + route builder |
+| Venue picker | Yelp/Overpass results per stop, price + radius filters, reorder stops, pick spot |
+| Durations | Per-stop time selector (30m–3h) drives a computed timeline |
+| Calendar export | Per-stop "Add to Google Calendar" links + whole-date `.ics` download |
+| Map pin | Drag-to-set search center with radius circle (Nominatim reverse-geocode) |
+| Notification | Email when she locks in the plan; sender can "Share plan" or "Surprise her" |
 
 ---
 
@@ -65,10 +71,19 @@ _Last updated: June 2026_
 ### Database Schema
 
 ```
-invites      — id, token (unique), sender_id, recipient_name, recipient_email, status, created_at
-date_plans   — id, invite_id, sender_id, recipient_id, date/time/entree/activities (JSON), itinerary (JSON), dress_vibe, completed_at
+invites      — id, token (unique), sender_id, recipient_name, recipient_email,
+               location, sender_avatar_src, status, created_at
+date_plans   — id, invite_id, sender_id, recipient_id,
+               date/time/entree/activities (JSON), dress_vibe,
+               selected_entree_venue (JSON), selected_activity_venues (JSON),  ← sender's picks
+               itinerary (JSON), itinerary_generated_at, completed_at, created_at
 date_ratings — id, plan_id, rater_id, score (CHECK 1–5), note, UNIQUE(plan_id, rater_id)
+place_cache  — id, cache_key (unique), results (JSON), expires_at   ← Yelp/Overpass 24h cache
 ```
+
+> **Venue architecture:** the recipient picks *categories* (food type, activity
+> labels). The **sender** picks the specific venues on `/plan/[id]`, stored in
+> `selected_entree_venue` / `selected_activity_venues` via `PATCH /api/plans/[id]`.
 
 ---
 
@@ -94,19 +109,22 @@ date_ratings — id, plan_id, rater_id, score (CHECK 1–5), note, UNIQUE(plan_i
 - [ ] **Vercel redeploy** — push to GitHub, add all env vars in Vercel dashboard, redeploy
 - [ ] **Connect cutelyask.me** — point domain DNS to Vercel, update `NEXT_PUBLIC_SITE_URL`
 
-### Short term — real venue data
+### Done since last update ✅
 
-- [ ] **Google Places API** — replace `lib/mock-venues.ts` with real API calls
-  - Add `GOOGLE_PLACES_API_KEY` env var
-  - Add `location` field to invite creation form (`/send`) + `invites` DB table
-  - Create `/api/places` route: Google Places Text Search → cache in Turso `place_cache` table (24h TTL)
-  - `getVenuesForFood()` and `getVenuesForActivity()` call the API instead of returning mock data
-  - Map pins use real coordinates from Places results
+- [x] **Real venue data** — Yelp Fusion (`/api/places`) for businesses +
+  Overpass/OSM (`/api/natural-places`) for parks/viewpoints/stargazing, both
+  cached 24h in `place_cache`. `lib/mock-venues.ts` retired.
+- [x] **Venues persisted** — sender's picks stored in `date_plans` via
+  `PATCH /api/plans/[id]`; `DateMap` shows real pins.
+- [x] **Per-stop durations + timeline** with Google Calendar links and `.ics` export.
+- [x] **Notify on lock-in** — `POST /api/plans/[id]/notify` sends share/surprise email.
 
-- [ ] **Finalize action persists** — "Surprise her" / "Send the deets" currently shows a success screen but doesn't write to DB or send email
-  - Add `finalized_at`, `sender_venues` (JSON), `surprise_mode`, `dress_code_message` columns to `date_plans`
-  - `/api/plans/[id]/finalize` PATCH endpoint
-  - Resend email for each mode
+### Short term
+
+- [ ] **Store hours on venue cards** — surface Yelp business hours / open-now badge.
+- [ ] **"Surprise ending" sender flow** — let the sender pick a secret final stop.
+- [ ] **Session-expiry UX** — `/api/places` 401 mid-wizard should prompt re-login
+  instead of showing "no venues found".
 
 ### Medium term — polish
 
@@ -114,7 +132,6 @@ date_ratings — id, plan_id, rater_id, score (CHECK 1–5), note, UNIQUE(plan_i
 - [ ] OG image for invite links (Satori / @vercel/og)
 - [ ] Mobile map layout — map as toggleable drawer on mobile
 - [ ] Invite resend / cancel buttons on dashboard
-- [ ] Google Calendar `.ics` export — "Add to my calendar"
 - [ ] Post-date memory — rating + short note + photos in Turso/Storage
 
 ### Long term — public product
@@ -142,7 +159,11 @@ date-planner-mini-site/
 │   │   └── api/
 │   │       ├── date-ideas/route.ts          Gemini activity suggestions (cached)
 │   │       ├── invites/route.ts             create invite + list sender's invites
+│   │       ├── places/route.ts              Yelp Fusion venue search (24h cache)
+│   │       ├── natural-places/route.ts      Overpass/OSM parks·viewpoints·stargazing
 │   │       ├── plans/route.ts               submit plan + generate itinerary
+│   │       ├── plans/[id]/route.ts          PATCH sender's venue picks + stop order
+│   │       ├── plans/[id]/notify/route.ts   email recipient (share / surprise)
 │   │       └── ratings/route.ts             upsert star rating (atomic)
 │   └── middleware.ts                        Clerk auth guard
 ├── components/
@@ -160,9 +181,9 @@ date-planner-mini-site/
 │   ├── db/
 │   │   ├── index.ts                         Turso + Drizzle client
 │   │   └── schema.ts                        Drizzle schema + types
-│   ├── email.ts                             Resend emails
+│   ├── email.ts                             Resend emails (invite, notify, spot-ready)
 │   ├── itinerary.ts                         Gemini itinerary generation
-│   ├── mock-venues.ts                       simulated venue data (replace with Places API)
+│   ├── venues.ts                            Venue type, activity→query maps, durations
 │   └── [date-options, food-options, etc]
 ├── drizzle.config.ts
 └── docs/
