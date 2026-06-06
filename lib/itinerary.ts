@@ -31,8 +31,11 @@ export async function generateItinerary(
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.8,
-            maxOutputTokens: 600,
+            maxOutputTokens: 800,
             responseMimeType: "application/json",
+            // 2.5 Flash is a thinking model; disable it so the whole token
+            // budget goes to output (otherwise reasoning can truncate the JSON).
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       },

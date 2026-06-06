@@ -82,6 +82,9 @@ export async function POST(request: NextRequest) {
             temperature: 0.9,
             maxOutputTokens: 160,
             responseMimeType: "application/json",
+            // 2.5 Flash thinking would consume the whole 160-token budget before
+            // producing any ideas; disable it for this simple structured task.
+            thinkingConfig: { thinkingBudget: 0 },
           },
         }),
       },
