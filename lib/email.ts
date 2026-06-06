@@ -21,7 +21,7 @@ export async function sendPlanNotificationEmail({
 }) {
   const link = `${SITE_URL}/plan/${planId}`;
 
-  await getResend().emails.send({
+  const { error: sendError } = await getResend().emails.send({
     from: FROM,
     to: senderEmail,
     subject: `${recipientName} locked in the plan! 🎉`,
@@ -41,6 +41,7 @@ export async function sendPlanNotificationEmail({
       </div>
     `,
   });
+  if (sendError) throw new Error(sendError.message);
 }
 
 export async function sendInviteEmail({
@@ -56,7 +57,7 @@ export async function sendInviteEmail({
 }) {
   const link = `${SITE_URL}/invite/${token}`;
 
-  await getResend().emails.send({
+  const { error: sendError } = await getResend().emails.send({
     from: FROM,
     to: recipientEmail,
     subject: `${senderName} wants to plan a date with you 💌`,
@@ -76,4 +77,5 @@ export async function sendInviteEmail({
       </div>
     `,
   });
+  if (sendError) throw new Error(sendError.message);
 }

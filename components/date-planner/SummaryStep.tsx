@@ -76,6 +76,12 @@ export function SummaryStep({
       }),
     });
 
+    if (res.status === 401) {
+      setSubmitting(false);
+      window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      return;
+    }
+
     if (!res.ok) {
       setSubmitting(false);
       setSubmitError("Couldn't save the plan. Try again.");
@@ -83,6 +89,7 @@ export function SummaryStep({
     }
 
     const { planId } = await res.json();
+    setSubmitting(false);
     onConfirmed(planId);
   }
 

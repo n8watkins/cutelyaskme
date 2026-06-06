@@ -5,6 +5,22 @@ import { eq, desc } from "drizzle-orm";
 import { sendInviteEmail } from "@/lib/email";
 import { NextRequest, NextResponse } from "next/server";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Simple in-memory rate limit: max 10 invites per user per hour
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(userId);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(userId, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    return true;
+  }
+  if (entry.count >= 10) return false;
+  entry.count++;
+  return true;
+}
+
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
@@ -18,9 +34,13 @@ export async function POST(request: NextRequest) {
     typeof recipientName !== "string" ||
     typeof recipientEmail !== "string" ||
     !recipientName.trim() ||
-    !recipientEmail.trim()
+    !EMAIL_RE.test(recipientEmail.trim())
   ) {
-    return NextResponse.json({ message: "Missing fields" }, { status: 400 });
+    return NextResponse.json({ message: "Missing or invalid fields" }, { status: 400 });
+  }
+
+  if (!checkRateLimit(userId)) {
+    return NextResponse.json({ message: "Too many invites. Try again later." }, { status: 429 });
   }
 
   const clerk = await clerkClient();

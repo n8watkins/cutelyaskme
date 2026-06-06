@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const { planId, score, note } = body ?? {};
 
-  if (!planId || typeof score !== "number" || score < 1 || score > 5) {
+  if (!planId || typeof score !== "number" || !Number.isInteger(score) || score < 1 || score > 5) {
     return NextResponse.json({ message: "Invalid rating" }, { status: 400 });
   }
 
@@ -27,19 +27,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
-  await db
-    .insert(dateRatings)
-    .values({
-      id: crypto.randomUUID(),
-      planId,
-      raterId: userId,
-      score,
-      note: note ?? null,
-    })
-    .onConflictDoUpdate({
-      target: [dateRatings.planId, dateRatings.raterId],
-      set: { score, note: note ?? null },
-    });
+  try {
+    await db
+      .insert(dateRatings)
+      .values({
+        id: crypto.randomUUID(),
+        planId,
+        raterId: userId,
+        score,
+        note: note ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [dateRatings.planId, dateRatings.raterId],
+        set: { score, note: note ?? null },
+      });
+  } catch {
+    return NextResponse.json({ message: "Failed to save rating" }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }
