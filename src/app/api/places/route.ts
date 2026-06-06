@@ -12,6 +12,7 @@ type YelpBusiness = {
   rating: number;
   price?: string;
   coordinates: { latitude: number; longitude: number };
+  image_url?: string;
 };
 
 type YelpSearchResponse = {
@@ -38,12 +39,15 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const q = searchParams.get("q")?.trim();
   const location = searchParams.get("location")?.trim();
+  const radius = Math.min(parseInt(searchParams.get("radius") ?? "8000", 10), 40000);
+  const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10));
+  const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") ?? "5", 10)), 10);
 
   if (!q || !location) {
     return NextResponse.json({ venues: [] });
   }
 
-  const cacheKey = `yelp:${q.toLowerCase()}:${location.toLowerCase()}`;
+  const cacheKey = `yelp:${q.toLowerCase()}:${location.toLowerCase()}:r${radius}:o${offset}:l${limit}`;
   const now = new Date().toISOString();
 
   try {
@@ -64,8 +68,10 @@ export async function GET(request: NextRequest) {
     const url = new URL("https://api.yelp.com/v3/businesses/search");
     url.searchParams.set("term", q);
     url.searchParams.set("location", location);
-    url.searchParams.set("limit", "5");
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
     url.searchParams.set("sort_by", "rating");
+    url.searchParams.set("radius", String(radius));
 
     const response = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${apiKey}` },
@@ -84,6 +90,7 @@ export async function GET(request: NextRequest) {
       priceLevel: mapPrice(b.price),
       lat: b.coordinates.latitude,
       lng: b.coordinates.longitude,
+      imageUrl: b.image_url || undefined,
     }));
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();

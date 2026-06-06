@@ -15,7 +15,7 @@ import { ProgressHearts } from "./ProgressHearts";
 import { PersonCursor } from "./PersonCursor";
 import { SummaryStep } from "./SummaryStep";
 import { TimeStep } from "./TimeStep";
-import type { DatePlanState, PlannerStep, Venue } from "./types";
+import type { DatePlanState, PlannerStep } from "./types";
 
 type DatePlannerProps = {
   recipientName: string;
@@ -42,8 +42,6 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
     hasAccepted: false,
     confirmedPlanId: null,
     location: location ?? null,
-    selectedEntreeVenue: null,
-    selectedActivityVenues: {},
   });
   const [cursorMessage, setCursorMessage] = useState<string | null>(null);
 
@@ -109,18 +107,6 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
           : [...current.selectedActivities, activity];
 
       return { ...current, selectedActivities };
-    });
-  }
-
-  function handleEntreeVenueSelect(venue: Venue | null) {
-    setState((c) => ({ ...c, selectedEntreeVenue: venue }));
-  }
-
-  function handleActivityVenueSelect(activity: string, venue: Venue | null) {
-    setState((c) => {
-      const next = { ...c.selectedActivityVenues };
-      if (venue) next[activity] = venue; else delete next[activity];
-      return { ...c, selectedActivityVenues: next };
     });
   }
 
@@ -197,9 +183,6 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
               onSetActivities={(selectedActivities) =>
                 setState((current) => ({ ...current, selectedActivities }))
               }
-              location={state.location}
-              selectedActivityVenues={state.selectedActivityVenues}
-              onActivityVenueSelect={handleActivityVenueSelect}
               onBack={() => setStep("time")}
               onNext={() => setStep("entree")}
             />
@@ -212,9 +195,6 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
               onSelectEntree={(selectedEntree) =>
                 setState((current) => ({ ...current, selectedEntree }))
               }
-              location={state.location}
-              selectedEntreeVenue={state.selectedEntreeVenue}
-              onVenueSelect={handleEntreeVenueSelect}
               onBack={() => setStep("lineup")}
               onNext={() => setStep("dress")}
             />
@@ -244,8 +224,6 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
               inviteToken={inviteToken}
               selectedDate={state.selectedDate ?? undefined}
               selectedTime={state.selectedTime ?? undefined}
-              selectedEntreeVenue={state.selectedEntreeVenue}
-              selectedActivityVenues={state.selectedActivityVenues}
               onConfirmed={(planId) =>
                 setState((current) => ({
                   ...current,

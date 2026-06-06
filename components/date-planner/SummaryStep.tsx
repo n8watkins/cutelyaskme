@@ -4,7 +4,7 @@ import { useState } from "react";
 import { entreeIcons } from "@/lib/food-options";
 import { StepCard } from "./StepCard";
 import { SharePlanButton } from "./SharePlanButton";
-import type { DressVibe, EntreeOption, Venue } from "./types";
+import type { DressVibe, EntreeOption } from "./types";
 
 const DRESS_LABELS: Record<DressVibe, string> = {
   casual: "🧢 Keep it casual",
@@ -23,8 +23,6 @@ type SummaryStepProps = {
   selectedActivities: string[];
   dressVibe: DressVibe | null;
   inviteToken?: string;
-  selectedEntreeVenue: Venue | null;
-  selectedActivityVenues: Record<string, Venue>;
   onConfirmed: (planId: string) => void;
   onEditDate: () => void;
   onEditTime: () => void;
@@ -43,8 +41,6 @@ export function SummaryStep({
   selectedActivities,
   dressVibe,
   inviteToken,
-  selectedEntreeVenue,
-  selectedActivityVenues,
   onConfirmed,
   onEditDate,
   onEditTime,
@@ -77,12 +73,6 @@ export function SummaryStep({
         selectedEntree,
         selectedActivities,
         dressVibe,
-        selectedEntreeVenue: selectedEntreeVenue
-          ? { name: selectedEntreeVenue.name, address: selectedEntreeVenue.address }
-          : null,
-        selectedActivityVenues: Object.fromEntries(
-          Object.entries(selectedActivityVenues).map(([k, v]) => [k, { name: v.name, address: v.address }]),
-        ),
       }),
     });
 

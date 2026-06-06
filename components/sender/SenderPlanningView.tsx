@@ -315,24 +315,22 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     JSON.stringify(activityVenues) !== JSON.stringify(plan.selectedActivityVenues) ||
     entreeVenue?.id !== plan.selectedEntreeVenue?.id;
 
-  // Compute timeline
-  const timeline: TimelineStop[] = (() => {
-    let current = parseTimeToMinutes(plan.selectedTime);
-    return stopOrder.map((key) => {
-      const isEntree = key === ENTREE_KEY;
-      const duration = stopDurations[key] ?? 60;
-      const start = current;
-      current += duration;
-      return {
-        key,
-        label: isEntree ? (plan.selectedEntree ?? "Food") : key,
-        icon: isEntree ? "🍽️" : (ACTIVITY_ICONS[key] ?? "✨"),
-        startMinutes: start,
-        endMinutes: current,
-        venue: isEntree ? entreeVenue : (activityVenues[key] ?? null),
-      };
+  // Compute timeline — running accumulator via reduce (no render-time reassignment)
+  const startOfDay = parseTimeToMinutes(plan.selectedTime);
+  const timeline: TimelineStop[] = stopOrder.reduce<TimelineStop[]>((acc, key) => {
+    const isEntree = key === ENTREE_KEY;
+    const duration = stopDurations[key] ?? 60;
+    const start = acc.length ? acc[acc.length - 1].endMinutes : startOfDay;
+    acc.push({
+      key,
+      label: isEntree ? (plan.selectedEntree ?? "Food") : key,
+      icon: isEntree ? "🍽️" : (ACTIVITY_ICONS[key] ?? "✨"),
+      startMinutes: start,
+      endMinutes: start + duration,
+      venue: isEntree ? entreeVenue : (activityVenues[key] ?? null),
     });
-  })();
+    return acc;
+  }, []);
 
   async function handlePinMove(lat: number, lng: number) {
     try {

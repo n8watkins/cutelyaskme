@@ -22,8 +22,6 @@ export async function POST(request: NextRequest) {
     selectedEntree,
     selectedActivities,
     dressVibe,
-    selectedEntreeVenue,
-    selectedActivityVenues,
   } = body ?? {};
 
   if (!inviteToken) {
@@ -74,8 +72,6 @@ export async function POST(request: NextRequest) {
         selectedTimeLabel: selectedTimeLabel ?? null,
         selectedEntree: selectedEntree ?? null,
         selectedActivities: JSON.stringify(selectedActivities ?? []),
-        selectedEntreeVenue: selectedEntreeVenue ? JSON.stringify(selectedEntreeVenue) : null,
-        selectedActivityVenues: JSON.stringify(selectedActivityVenues ?? {}),
         itinerary: null,
         itineraryGeneratedAt: null,
         dressVibe: dressVibe ?? null,
@@ -97,8 +93,8 @@ export async function POST(request: NextRequest) {
       selectedTimeLabel,
       selectedEntree,
       selectedActivities: selectedActivities ?? [],
-      selectedEntreeVenue: selectedEntreeVenue ?? null,
-      selectedActivityVenues: selectedActivityVenues ?? {},
+      selectedEntreeVenue: null,
+      selectedActivityVenues: {},
     }).catch(() => null),
     clerkClient()
       .then((clerk) => clerk.users.getUser(invite.senderId))
