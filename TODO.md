@@ -154,11 +154,9 @@ businesses, personal preferences, or their own reviews.
 
 ## 🛠️ Robustness / production-readiness
 
-- [ ] **Server-side geocoding** — move the client-side Nominatim calls in
-      `SenderPlanningView` into `lib/geocode.ts` + a `/api/geocode` route (OSM
-      policy requires an identifying User-Agent and ≤1 req/s; per-visitor browser
-      calls are policy-violating and flaky). Also dedupes the logic shared with
-      `api/natural-places`.
+- [x] **Server-side geocoding** — `/api/geocode` (forward + reverse) replaces the
+      browser Nominatim calls in `SenderPlanningView` (browsers drop the required
+      User-Agent header → the map wasn't responding to "Search near"). Fixed.
 - [ ] **Persistent rate limiting** — `date-ideas` uses an in-memory `Map` that
       resets on every serverless cold start. Move to Turso / KV.
 - [ ] **Escape venue HTML** in `DateMap` popups (raw interpolation into

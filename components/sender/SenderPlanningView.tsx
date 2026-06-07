@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import SunCalc from "suncalc";
 import type { Venue } from "@/lib/venues";
 import {
   ACTIVITY_ICONS,
@@ -93,19 +94,33 @@ function formatDuration(minutes: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+// Plain-text version of the whole lineup, for calendar event descriptions.
+function buildItineraryText(timeline: TimelineStop[], planLink: string): string {
+  const lines = timeline
+    .filter((s) => s.venue)
+    .map((s) => `${formatTime(s.startMinutes)} — ${s.icon} ${s.label} @ ${s.venue!.name}`);
+  return ["Your date plan 💕", ...lines, "", `Full plan: ${planLink}`].join("\n");
+}
+
+function icsEscape(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+}
+
 function buildGCalLink(
   title: string,
   startMinutes: number,
   endMinutes: number,
   location: string,
   selectedDate: string | null,
+  details: string,
 ): string {
   const base = "https://calendar.google.com/calendar/render?action=TEMPLATE";
   const text = encodeURIComponent(title);
   const loc = encodeURIComponent(location);
+  const det = encodeURIComponent(details);
 
   if (!selectedDate) {
-    return `${base}&text=${text}&location=${loc}`;
+    return `${base}&text=${text}&location=${loc}&details=${det}`;
   }
 
   const datePart = selectedDate.replace(/-/g, "");
@@ -116,19 +131,54 @@ function buildGCalLink(
   const start = `${datePart}T${startH.toString().padStart(2, "0")}${startM.toString().padStart(2, "0")}00`;
   const end = `${datePart}T${endH.toString().padStart(2, "0")}${endM.toString().padStart(2, "0")}00`;
 
-  return `${base}&text=${text}&dates=${start}/${end}&location=${loc}`;
+  return `${base}&text=${text}&dates=${start}/${end}&location=${loc}&details=${det}`;
 }
 
-function downloadICS(timeline: TimelineStop[], selectedDate: string | null, planId: string) {
+const SUN_SENSITIVE: Record<string, "atSunset" | "needsDark" | "daylight"> = {
+  "Sunset view": "atSunset",
+  Stargazing: "needsDark",
+  "Scenic drive": "daylight",
+  "Park picnic": "daylight",
+};
+
+// Flag a stop whose scheduled time fights the daylight (sunset is computed exactly).
+function sunWarning(
+  key: string,
+  startMin: number,
+  sun: { sunset: number; dusk: number } | null,
+): string | null {
+  if (!sun) return null;
+  const kind = SUN_SENSITIVE[key];
+  if (!kind) return null;
+  if (kind === "atSunset") {
+    if (startMin > sun.sunset + 30) return `🌃 sun sets ~${formatTime(sun.sunset)} — it'll be dark`;
+    if (startMin < sun.sunset - 90) return `still bright — sunset's ~${formatTime(sun.sunset)}`;
+    return null;
+  }
+  if (kind === "needsDark") {
+    if (startMin < sun.dusk) return `🌅 too early for stars — dark ~${formatTime(sun.dusk)}`;
+    return null;
+  }
+  if (startMin > sun.sunset) return `🌃 sun's down by then (~${formatTime(sun.sunset)})`;
+  return null;
+}
+
+function downloadICS(
+  timeline: TimelineStop[],
+  selectedDate: string | null,
+  planId: string,
+  planLink: string,
+) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//DateNightApp//EN",
+    "PRODID:-//CutelyAsk//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
   ];
 
   const datePart = selectedDate ? selectedDate.replace(/-/g, "") : new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const description = icsEscape(buildItineraryText(timeline, planLink));
 
   for (const stop of timeline) {
     if (!stop.venue) continue;
@@ -143,9 +193,10 @@ function downloadICS(timeline: TimelineStop[], selectedDate: string | null, plan
       "BEGIN:VEVENT",
       `DTSTART:${dtstart}`,
       `DTEND:${dtend}`,
-      `SUMMARY:${stop.icon} ${stop.label} — ${stop.venue.name}`,
-      `LOCATION:${stop.venue.address.replace(/,/g, "\\,")}`,
-      `UID:${stop.key}-${planId}@datenightapp`,
+      `SUMMARY:${icsEscape(`${stop.icon} ${stop.label} — ${stop.venue.name}`)}`,
+      `DESCRIPTION:${description}`,
+      `LOCATION:${icsEscape(stop.venue.address)}`,
+      `UID:${stop.key}-${planId}@cutelyask`,
       "END:VEVENT",
     );
   }
@@ -262,6 +313,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     if (hasFetched.current || !searchLocation) return;
     hasFetched.current = true;
     fetchAll(radius, searchLocation);
+    void geocodeForward(searchLocation);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -290,22 +342,21 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     fetchAll(val, searchLocation);
   }
 
+  async function geocodeForward(loc: string) {
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(loc)}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { lat: number | null; lng: number | null };
+      if (data.lat != null && data.lng != null) setMapCenter({ lat: data.lat, lng: data.lng });
+    } catch {}
+  }
+
   async function applyLocation() {
     const loc = locationDraft.trim();
     if (!loc) return;
     setSearchLocation(loc);
     fetchAll(radius, loc);
-
-    try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(loc)}&limit=1`,
-        { headers: { "User-Agent": "DateNightApp/1.0" } },
-      );
-      if (res.ok) {
-        const data = (await res.json()) as { lat: string; lon: string }[];
-        if (data[0]) setMapCenter({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
-      }
-    } catch {}
+    await geocodeForward(loc);
   }
 
   function moveStop(index: number, dir: -1 | 1) {
@@ -359,25 +410,15 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   }, []);
 
   async function handlePinMove(lat: number, lng: number) {
+    setMapCenter({ lat, lng });
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-        { headers: { "User-Agent": "DateNightApp/1.0" } },
-      );
-      if (res.ok) {
-        const data = (await res.json()) as {
-          address?: { city?: string; town?: string; village?: string; suburb?: string; county?: string };
-          display_name?: string;
-        };
-        const addr = data.address ?? {};
-        const loc =
-          addr.suburb ?? addr.city ?? addr.town ?? addr.village ?? addr.county ??
-          data.display_name?.split(",")[0];
-        if (loc) {
-          setLocationDraft(loc);
-          setSearchLocation(loc);
-          fetchAll(radius, loc);
-        }
+      const res = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
+      if (!res.ok) return;
+      const data = (await res.json()) as { label: string | null };
+      if (data.label) {
+        setLocationDraft(data.label);
+        setSearchLocation(data.label);
+        fetchAll(radius, data.label);
       }
     } catch {}
   }
@@ -441,6 +482,22 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
       : null;
 
   const hasAnyVenue = timeline.some((s) => s.venue !== null);
+
+  // Exact sunset/dusk for the date + map center (browser-local time).
+  const sun = (() => {
+    if (!mapCenter || !plan.selectedDate) return null;
+    const d = new Date(`${plan.selectedDate}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return null;
+    const t = SunCalc.getTimes(d, mapCenter.lat, mapCenter.lng);
+    if (!t.sunset || Number.isNaN(t.sunset.getTime())) return null;
+    const toMin = (x: Date) => x.getHours() * 60 + x.getMinutes();
+    const dusk = t.dusk && !Number.isNaN(t.dusk.getTime()) ? toMin(t.dusk) : toMin(t.sunset) + 35;
+    return { sunset: toMin(t.sunset), dusk };
+  })();
+
+  const planLink =
+    (typeof window !== "undefined" ? window.location.origin : "") + `/plan/${planId}`;
+  const itineraryText = buildItineraryText(timeline, planLink);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
@@ -666,14 +723,14 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
           {/* Timeline section */}
           {timeline.length > 0 && (
             <section className="rounded-[24px] border-2 border-[#e7d9ff] bg-white p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="mb-1 flex items-center justify-between gap-3">
                 <h2 className="text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
                   Timeline
                 </h2>
                 {hasAnyVenue && (
                   <button
                     type="button"
-                    onClick={() => downloadICS(timeline, plan.selectedDate, planId)}
+                    onClick={() => downloadICS(timeline, plan.selectedDate, planId, planLink)}
                     className="rounded-full border-2 border-[#c7a6ff] px-3 py-1 text-xs font-black text-[#7c5aa0] transition hover:bg-[#f5f0ff]"
                   >
                     📅 Download .ics
@@ -681,12 +738,20 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 )}
               </div>
 
+              {sun && (
+                <p className="mb-4 text-xs font-black text-[#c0a0b0]">
+                  🌅 Sunset ~{formatTime(sun.sunset)} · 🌌 Dark ~{formatTime(sun.dusk)}
+                </p>
+              )}
+
               <div className="grid gap-3">
                 {timeline.map((stop) => (
                   <TimelineRow
                     key={stop.key}
                     stop={stop}
                     selectedDate={plan.selectedDate}
+                    details={itineraryText}
+                    warning={sunWarning(stop.key, stop.startMinutes, sun)}
                   />
                 ))}
               </div>
@@ -781,9 +846,13 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
 function TimelineRow({
   stop,
   selectedDate,
+  details,
+  warning,
 }: {
   stop: TimelineStop;
   selectedDate: string | null;
+  details: string;
+  warning: string | null;
 }) {
   const venueLocation = stop.venue?.address ?? "";
   const gcalLink = stop.venue
@@ -793,6 +862,7 @@ function TimelineRow({
         stop.endMinutes,
         venueLocation,
         selectedDate,
+        details,
       )
     : null;
 
@@ -810,6 +880,9 @@ function TimelineRow({
 
       <div className="min-w-0 flex-1 pb-2">
         <p className="text-sm font-black text-[#3a2530]">{stop.label}</p>
+        {warning && (
+          <p className="text-[11px] font-black text-[#d98a3a]">{warning}</p>
+        )}
         {stop.venue ? (
           <>
             <p className="truncate text-xs text-[#8a6a78]">{stop.venue.name}</p>
