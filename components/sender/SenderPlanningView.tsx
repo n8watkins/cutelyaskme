@@ -4,6 +4,9 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SunCalc from "suncalc";
+import type { SavedAddress } from "@/components/SavedAddresses";
+
+type Waypoint = { label: string; lat: number; lng: number };
 import type { Venue } from "@/lib/venues";
 import {
   ACTIVITY_ICONS,
@@ -244,6 +247,11 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   // The stop whose recommendations are shown as red pins on the map.
   const [activeStopKey, setActiveStopKey] = useState<string | null>(() => buildStops(plan)[0] ?? null);
 
+  // Saved addresses + start/pickup waypoints (your place → pick up your date → …).
+  const [savedAddrs, setSavedAddrs] = useState<SavedAddress[]>([]);
+  const [startPoint, setStartPoint] = useState<Waypoint | null>(null);
+  const [pickupPoint, setPickupPoint] = useState<Waypoint | null>(null);
+
   const hasFetched = useRef(false);
 
   function isNatural(key: string): boolean {
@@ -311,6 +319,20 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     fetchAll(radius, searchLocation);
     void geocodeForward(searchLocation);
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load the sender's saved addresses for the Start/Pickup quick-pick.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/addresses")
+      .then((r) => (r.ok ? r.json() : { addresses: [] }))
+      .then((data: { addresses?: SavedAddress[] }) => {
+        if (active) setSavedAddrs(data.addresses ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Load the sender's liked spots once, so the picker can recommend favorites.
@@ -477,10 +499,28 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   );
   const activeSelectedId = activeStopKey ? (getSelectedVenue(activeStopKey)?.id ?? null) : null;
 
+  // Map pins for start/pickup (only when geocoded).
+  const waypoints = useMemo(
+    () => [
+      ...(startPoint && startPoint.lat
+        ? [{ id: "start", label: startPoint.label, lat: startPoint.lat, lng: startPoint.lng, kind: "start" as const }]
+        : []),
+      ...(pickupPoint && pickupPoint.lat
+        ? [{ id: "pickup", label: pickupPoint.label, lat: pickupPoint.lat, lng: pickupPoint.lng, kind: "pickup" as const }]
+        : []),
+    ],
+    [startPoint, pickupPoint],
+  );
+
   const routeVenues = mapStops.filter(Boolean) as Venue[];
+  // Route goes: your place → pick up your date → each chosen venue.
+  const routeCoords = [
+    ...waypoints.map((w) => `${w.lat},${w.lng}`),
+    ...routeVenues.map((v) => `${v.lat},${v.lng}`),
+  ];
   const routeUrl =
-    routeVenues.length >= 2
-      ? `https://www.google.com/maps/dir/${routeVenues.map((v) => `${v.lat},${v.lng}`).join("/")}`
+    routeCoords.length >= 2
+      ? `https://www.google.com/maps/dir/${routeCoords.join("/")}`
       : null;
 
   const hasAnyVenue = timeline.some((s) => s.venue !== null);
@@ -525,6 +565,17 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
             </dl>
 
             <hr className="mb-4 border-[#ffd6e8]" />
+
+            {/* Getting there — start + pickup */}
+            <div className="mb-4">
+              <p className="mb-1.5 text-xs font-black uppercase tracking-widest text-[#c0a0b0]">
+                Getting there
+              </p>
+              <div className="grid gap-2">
+                <WaypointPicker kind="start" value={startPoint} saved={savedAddrs} onChange={setStartPoint} />
+                <WaypointPicker kind="pickup" value={pickupPoint} saved={savedAddrs} onChange={setPickupPoint} />
+              </div>
+            </div>
 
             {/* Search location */}
             <div className="mb-4">
@@ -789,6 +840,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 onCandidateSelect={(v) => {
                   if (activeStopKey) selectVenue(activeStopKey, v);
                 }}
+                waypoints={waypoints}
               />
             </div>
 
@@ -1168,6 +1220,103 @@ function VenueCard({
       >
         Directions
       </a>
+    </div>
+  );
+}
+
+function WaypointPicker({
+  kind,
+  value,
+  saved,
+  onChange,
+}: {
+  kind: "start" | "pickup";
+  value: Waypoint | null;
+  saved: SavedAddress[];
+  onChange: (w: Waypoint | null) => void;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const icon = kind === "start" ? "🏠" : "💕";
+  const labelText = kind === "start" ? "Your place" : "Pickup";
+
+  async function geocodeAndSet(label: string, query: string) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
+      const d = (await res.json()) as { lat: number | null; lng: number | null };
+      if (d.lat != null && d.lng != null) onChange({ label, lat: d.lat, lng: d.lng });
+    } catch {}
+    setBusy(false);
+  }
+
+  async function pickSaved(a: SavedAddress) {
+    if (a.lat != null && a.lng != null) onChange({ label: a.label, lat: a.lat, lng: a.lng });
+    else await geocodeAndSet(a.label, a.address);
+  }
+
+  if (value) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border-2 border-[#e7d9ff] bg-[#faf7ff] p-2.5">
+        <span className="text-base">{icon}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-black uppercase tracking-wide text-[#c0a0b0]">{labelText}</p>
+          <p className="truncate text-sm font-black text-[#3a2530]">{value.label}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(null)}
+          aria-label={`Clear ${labelText}`}
+          className="shrink-0 px-1.5 text-xs font-black text-[#c0a0b0] transition hover:text-[#d32323]"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border-2 border-[#ffd6e8] p-2">
+      <div className="flex gap-2">
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (text.trim()) void geocodeAndSet(text.trim(), text.trim());
+              setText("");
+            }
+          }}
+          placeholder={`${icon} ${labelText} address`}
+          className="min-w-0 flex-1 rounded-lg border-2 border-[#ffd6e8] bg-white px-2.5 py-1.5 text-sm text-[#3a2530] placeholder:text-[#c0a0b0] outline-none focus:border-[#ff7aaa]"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            if (text.trim()) void geocodeAndSet(text.trim(), text.trim());
+            setText("");
+          }}
+          disabled={busy || !text.trim()}
+          className="shrink-0 rounded-lg bg-[#c7a6ff] px-3 text-xs font-black text-white transition disabled:opacity-50"
+        >
+          {busy ? "…" : "Set"}
+        </button>
+      </div>
+      {saved.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {saved.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => void pickSaved(a)}
+              className="rounded-full border border-[#c7a6ff] px-2 py-0.5 text-[10px] font-black text-[#7c5aa0] transition hover:bg-[#f5f0ff]"
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

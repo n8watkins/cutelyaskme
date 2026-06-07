@@ -15,6 +15,8 @@ type DateMapProps = {
   candidates?: Venue[];
   selectedId?: string | null;
   onCandidateSelect?: (venue: Venue) => void;
+  /** Start / pickup waypoints (your place, date's place) */
+  waypoints?: { id: string; label: string; lat: number; lng: number; kind: "start" | "pickup" }[];
 };
 
 const STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
@@ -28,12 +30,14 @@ export function DateMap({
   candidates,
   selectedId,
   onCandidateSelect,
+  waypoints,
 }: DateMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const stopsLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const pinLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const candidatesLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const waypointsLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const onCandidateSelectRef = useRef(onCandidateSelect);
   useEffect(() => {
     onCandidateSelectRef.current = onCandidateSelect;
@@ -125,6 +129,38 @@ export function DateMap({
     [],
   );
 
+  const renderWaypoints = useCallback(
+    (L: typeof import("leaflet"), wps: NonNullable<DateMapProps["waypoints"]>) => {
+      const layer = waypointsLayerRef.current;
+      if (!layer) return;
+      layer.clearLayers();
+
+      wps.forEach((w) => {
+        const emoji = w.kind === "start" ? "🏠" : "💕";
+        const bg = w.kind === "start" ? "#3a2530" : "#ff7aaa";
+        const icon = L.divIcon({
+          className: "",
+          html: `<div style="
+            width:32px;height:32px;border-radius:50%;
+            background:${bg};display:grid;place-items:center;font-size:15px;
+            box-shadow:0 4px 12px rgba(0,0,0,0.25);border:2.5px solid white;
+          ">${emoji}</div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
+        });
+        L.marker([w.lat, w.lng], { icon })
+          .addTo(layer)
+          .bindPopup(
+            `<div style="font-family:Arial,sans-serif"><strong style="color:#3a2530">${
+              w.kind === "start" ? "Start" : "Pickup"
+            } · ${w.label}</strong></div>`,
+            { maxWidth: 200 },
+          );
+      });
+    },
+    [],
+  );
+
   const renderPin = useCallback((L: typeof import("leaflet")) => {
     const layer = pinLayerRef.current;
     const map = mapRef.current;
@@ -198,6 +234,7 @@ export function DateMap({
       mapRef.current = map;
       candidatesLayerRef.current = L.layerGroup().addTo(map); // below the numbered stop pins
       stopsLayerRef.current = L.layerGroup().addTo(map);
+      waypointsLayerRef.current = L.layerGroup().addTo(map);
       pinLayerRef.current = L.layerGroup().addTo(map);
 
       renderStops(L, stops);
@@ -223,6 +260,12 @@ export function DateMap({
     if (!mapRef.current) return;
     void import("leaflet").then((mod) => renderCandidates(mod.default, candidates ?? [], selectedId));
   }, [candidates, selectedId, renderCandidates]);
+
+  // Re-render start/pickup waypoints when they change
+  useEffect(() => {
+    if (!mapRef.current) return;
+    void import("leaflet").then((mod) => renderWaypoints(mod.default, waypoints ?? []));
+  }, [waypoints, renderWaypoints]);
 
   // Fly to location when zip/city changes
   useEffect(() => {
