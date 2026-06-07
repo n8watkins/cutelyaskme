@@ -443,14 +443,14 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   const hasAnyVenue = timeline.some((s) => s.venue !== null);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="mb-1 text-3xl font-black text-[#3a2530]">Your date plan ✨</h1>
-      <p className="mb-8 text-[#8a6a78]">Here&apos;s what {plan.recipientName} chose.</p>
+    <div className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
+      <h1 className="mb-1 text-2xl font-black text-[#3a2530] sm:text-3xl">Your date plan ✨</h1>
+      <p className="mb-6 text-[#8a6a78] sm:mb-8">Here&apos;s what {plan.recipientName} chose.</p>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_420px]">
+      <div className="grid gap-6 lg:gap-8 lg:grid-cols-[1fr_420px]">
         {/* Left column */}
         <div className="space-y-6">
-          <section className="rounded-[24px] border-2 border-[#ffd6e8] bg-white p-5">
+          <section className="rounded-[24px] border-2 border-[#ffd6e8] bg-white p-4 sm:p-5">
             <h2 className="mb-4 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
               The date
             </h2>
@@ -702,8 +702,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
 
         {/* Right column — map */}
         <div>
-          <div className="sticky top-4 space-y-3">
-            <div className="h-[440px] overflow-hidden rounded-[20px] border-2 border-[#ffd6e8] shadow-sm">
+          <div className="space-y-3 lg:sticky lg:top-4">
+            <div className="h-[320px] overflow-hidden rounded-[20px] border-2 border-[#ffd6e8] shadow-sm sm:h-[440px]">
               <DateMap
                 stops={mapStops}
                 pinMode={pinMode}
@@ -915,9 +915,9 @@ function StopCard({
       </div>
 
       {/* Duration selector */}
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <span className="text-xs font-black text-[#c0a0b0]">⏱ Time</span>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {DURATION_OPTIONS.map((opt) => (
             <button
               key={opt.value}

@@ -114,4 +114,5 @@ if Web Push proves insufficient.
       "Places you loved" / Reminisce.
 - [x] **Reminisce mode** — in-planner panel of liked spots; "Use for [activity]"
       assigns a favorite to a matching stop.
-- [ ] Mobile-first passes on the existing screens (sender planner is desktop-ish).
+- [x] Mobile pass on the sender planner — columns stack, map shorter + non-sticky
+      on mobile, duration/filter pills wrap, responsive padding/headings.
