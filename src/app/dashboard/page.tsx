@@ -1,10 +1,17 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { invites, datePlans } from "@/lib/db/schema";
+import { invites, datePlans, venueVerdicts } from "@/lib/db/schema";
 import { and, eq, ne, or, inArray, desc, sql } from "drizzle-orm";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { EnableNotifications } from "@/components/EnableNotifications";
+import { HistoryMap, type HistoryPoint } from "@/components/HistoryMap";
+import { ACTIVITY_ICONS, type Venue } from "@/lib/venues";
+
+function parseJson<T>(json: string | null, fallback: T): T {
+  if (!json) return fallback;
+  try { return JSON.parse(json) as T; } catch { return fallback; }
+}
 
 export default async function DashboardPage() {
   const { userId } = await auth();
@@ -65,6 +72,47 @@ export default async function DashboardPage() {
     invitedPlans.filter((p) => p.inviteId).map((p) => [p.inviteId!, p.id]),
   );
 
+  // Your verdicts → "Your places" + status overlay on the map.
+  const myVerdicts = await db
+    .select()
+    .from(venueVerdicts)
+    .where(eq(venueVerdicts.userId, userId))
+    .orderBy(desc(venueVerdicts.createdAt));
+  const statusByVenueId = new Map(myVerdicts.map((v) => [v.venueId, v.status]));
+
+  type PlaceItem = { venue: Venue; activity: string | null };
+  const likedPlaces: PlaceItem[] = myVerdicts
+    .filter((v) => v.status === "liked")
+    .map((v) => ({ venue: parseJson<Venue>(v.venue, {} as Venue), activity: v.activity }));
+  const dislikedPlaces: PlaceItem[] = myVerdicts
+    .filter((v) => v.status === "disliked")
+    .map((v) => ({ venue: parseJson<Venue>(v.venue, {} as Venue), activity: v.activity }));
+
+  // "Our map" — every venue from your plans that has coordinates.
+  const mapPoints: HistoryPoint[] = [];
+  for (const plan of myPlans) {
+    const activityVenues = parseJson<Record<string, Venue>>(plan.selectedActivityVenues, {});
+    const entreeVenue = parseJson<Venue | null>(plan.selectedEntreeVenue ?? null, null);
+    const entries: { activity: string; venue: Venue }[] = [
+      ...Object.entries(activityVenues).map(([activity, venue]) => ({ activity, venue })),
+      ...(entreeVenue ? [{ activity: plan.selectedEntree ?? "Dinner", venue: entreeVenue }] : []),
+    ];
+    for (const { activity, venue } of entries) {
+      if (venue && typeof venue.lat === "number" && typeof venue.lng === "number") {
+        mapPoints.push({
+          id: `${plan.id}-${venue.id}`,
+          name: venue.name,
+          address: venue.address,
+          lat: venue.lat,
+          lng: venue.lng,
+          dateLabel: plan.selectedDateLabel,
+          activity,
+          status: statusByVenueId.get(venue.id) ?? "neutral",
+        });
+      }
+    }
+  }
+
   return (
     <main className="mx-auto max-w-lg px-4 py-10">
       <div className="mb-8 flex items-center justify-between">
@@ -80,6 +128,25 @@ export default async function DashboardPage() {
       <div className="mb-8">
         <EnableNotifications />
       </div>
+
+      {mapPoints.length > 0 && (
+        <section className="mb-8">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
+              💞 Your map
+            </h2>
+            <span className="text-xs font-black text-[#c0a0b0]">{mapPoints.length} spots</span>
+          </div>
+          <div className="h-[300px] overflow-hidden rounded-[24px] border-2 border-[#ffd6e8] shadow-sm">
+            <HistoryMap points={mapPoints} />
+          </div>
+          <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-black text-[#c0a0b0]">
+            <span>🟢 loved</span>
+            <span>🔴 nope</span>
+            <span>🩷 been there</span>
+          </p>
+        </section>
+      )}
 
       {invitedToMe.length > 0 && (
         <section className="mb-8">
@@ -222,7 +289,58 @@ export default async function DashboardPage() {
           </div>
         )}
       </section>
+
+      {myVerdicts.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
+            ⭐ Your places
+          </h2>
+          <div className="grid gap-4">
+            {likedPlaces.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-black text-[#5fa86b]">❤️ Loved ({likedPlaces.length})</p>
+                <div className="grid gap-2">
+                  {likedPlaces.map(({ venue, activity }) => (
+                    <PlaceRow key={`l-${venue.id}`} venue={venue} activity={activity} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {dislikedPlaces.length > 0 && (
+              <div>
+                <p className="mb-2 text-xs font-black text-[#c0708a]">👎 Not for us ({dislikedPlaces.length})</p>
+                <div className="grid gap-2">
+                  {dislikedPlaces.map(({ venue, activity }) => (
+                    <PlaceRow key={`d-${venue.id}`} venue={venue} activity={activity} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </main>
+  );
+}
+
+function PlaceRow({ venue, activity }: { venue: Venue; activity: string | null }) {
+  const icon = activity === "__entree__" ? "🍽️" : (ACTIVITY_ICONS[activity ?? ""] ?? "📍");
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border-2 border-[#ffd6e8] bg-white p-3">
+      <span className="text-lg">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-black text-[#3a2530]">{venue.name}</p>
+        <p className="truncate text-xs text-[#8a6a78]">{venue.address}</p>
+      </div>
+      <a
+        href={`https://maps.google.com/?q=${venue.lat},${venue.lng}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="shrink-0 rounded-full bg-[#f5f0ff] px-2.5 py-1.5 text-xs font-black text-[#7c5aa0] transition hover:bg-[#e7d9ff]"
+      >
+        Map
+      </a>
+    </div>
   );
 }
 
