@@ -26,12 +26,6 @@ const DRESS_VIBE_LABELS: Record<string, string> = {
   "match-you": "✨ Match whatever",
 };
 
-const RADIUS_OPTIONS = [
-  { label: "Nearby", value: "1600", desc: "~1 mi" },
-  { label: "Local", value: "8000", desc: "~5 mi" },
-  { label: "City-wide", value: "24000", desc: "~15 mi" },
-];
-
 const DURATION_OPTIONS = [
   { label: "30m", value: 30 },
   { label: "45m", value: 45 },
@@ -247,6 +241,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
   const [lovedByActivity, setLovedByActivity] = useState<Record<string, Venue[]>>({});
   const [showReminisce, setShowReminisce] = useState(false);
+  // The stop whose recommendations are shown as red pins on the map.
+  const [activeStopKey, setActiveStopKey] = useState<string | null>(() => buildStops(plan)[0] ?? null);
 
   const hasFetched = useRef(false);
 
@@ -337,10 +333,6 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     };
   }, []);
 
-  function handleRadiusChange(val: string) {
-    setRadius(val);
-    fetchAll(val, searchLocation);
-  }
 
   async function geocodeForward(loc: string) {
     try {
@@ -478,6 +470,13 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     [stopOrder, activityVenues, entreeVenue],
   );
 
+  // Recommendation pins for the focused stop.
+  const activeCandidates = useMemo(
+    () => (activeStopKey ? (venueResults[activeStopKey] ?? []) : []),
+    [activeStopKey, venueResults],
+  );
+  const activeSelectedId = activeStopKey ? (getSelectedVenue(activeStopKey)?.id ?? null) : null;
+
   const routeVenues = mapStops.filter(Boolean) as Venue[];
   const routeUrl =
     routeVenues.length >= 2
@@ -501,6 +500,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   const planLink =
     (typeof window !== "undefined" ? window.location.origin : "") + `/plan/${planId}`;
   const itineraryText = buildItineraryText(timeline, planLink);
+
+  const radiusMi = Math.max(1, Math.round(parseInt(radius, 10) / 1609));
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
@@ -549,27 +550,30 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
               </div>
             </div>
 
-            {/* Range + price */}
-            <div className="mb-4 flex flex-wrap gap-2">
-              <div className="flex items-center gap-1 rounded-full border-2 border-[#ffd6e8] px-3 py-1.5">
-                <span className="mr-1 text-xs font-black text-[#c0a0b0]">📍 Range</span>
-                {RADIUS_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    title={opt.desc}
-                    onClick={() => handleRadiusChange(opt.value)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-black transition ${
-                      radius === opt.value
-                        ? "bg-[#ff7aaa] text-white"
-                        : "text-[#8a6a78] hover:bg-[#fff7fb]"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+            {/* Search range slider */}
+            <div className="mb-4">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-black text-[#c0a0b0]">📍 Search range</span>
+                <span className="text-xs font-black text-[#8a6a78]">{radiusMi} mi</span>
               </div>
+              <input
+                type="range"
+                min={1}
+                max={60}
+                value={radiusMi}
+                aria-label="Search range in miles"
+                onChange={(e) => setRadius(String(Math.round(Number(e.target.value) * 1609)))}
+                onPointerUp={() => fetchAll(radius, searchLocation)}
+                onKeyUp={() => fetchAll(radius, searchLocation)}
+                className="w-full accent-[#ff7aaa]"
+              />
+              <p className="mt-0.5 text-[10px] text-[#c0a0b0]">
+                Restaurants cap at ~25 mi (Yelp); parks &amp; viewpoints can go the full range.
+              </p>
+            </div>
 
+            {/* Price */}
+            <div className="mb-4 flex flex-wrap gap-2">
               <div className="flex items-center gap-1 rounded-full border-2 border-[#ffd6e8] px-3 py-1.5">
                 <span className="mr-1 text-xs font-black text-[#c0a0b0]">💰 Price</span>
                 {([null, 1, 2, 3, 4] as const).map((p) => (
@@ -685,6 +689,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                     isFirst={i === 0}
                     isLast={i === stopOrder.length - 1}
                     duration={duration}
+                    isActive={key === activeStopKey}
+                    onActivate={() => setActiveStopKey(key)}
                     onDurationChange={(m) => setDuration(key, m)}
                     onMoveUp={() => moveStop(i, -1)}
                     onMoveDown={() => moveStop(i, 1)}
@@ -778,6 +784,11 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 searchRadius={parseInt(radius, 10)}
                 onCenterChange={(lat, lng) => void handlePinMove(lat, lng)}
                 viewCenter={mapCenter}
+                candidates={activeCandidates}
+                selectedId={activeSelectedId}
+                onCandidateSelect={(v) => {
+                  if (activeStopKey) selectVenue(activeStopKey, v);
+                }}
               />
             </div>
 
@@ -921,6 +932,8 @@ function StopCard({
   isFirst,
   isLast,
   duration,
+  isActive,
+  onActivate,
   onDurationChange,
   onMoveUp,
   onMoveDown,
@@ -940,6 +953,8 @@ function StopCard({
   isFirst: boolean;
   isLast: boolean;
   duration: number;
+  isActive: boolean;
+  onActivate: () => void;
   onDurationChange: (m: number) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -948,7 +963,11 @@ function StopCard({
   onLoadMore?: () => void;
 }) {
   return (
-    <div className="rounded-[20px] border-2 border-[#ffd6e8] bg-[#fff7fb] p-4">
+    <div
+      className={`rounded-[20px] border-2 p-4 transition ${
+        isActive ? "border-[#d32323]/50 bg-white" : "border-[#ffd6e8] bg-[#fff7fb]"
+      }`}
+    >
       {/* Header row */}
       <div className="flex items-center gap-3">
         <div className="flex flex-col items-center gap-0.5">
@@ -977,6 +996,22 @@ function StopCard({
 
         <span className="text-xl">{icon}</span>
         <p className="flex-1 font-black text-[#3a2530]">{label}</p>
+
+        {hasQuery && (
+          <button
+            type="button"
+            onClick={onActivate}
+            aria-pressed={isActive}
+            title="Show these options on the map"
+            className={`shrink-0 rounded-full border-2 px-2.5 py-1 text-xs font-black transition ${
+              isActive
+                ? "border-[#d32323] bg-[#d32323] text-white"
+                : "border-[#ffd6e8] text-[#8a6a78] hover:bg-[#ffd6e8]"
+            }`}
+          >
+            🗺️ Map
+          </button>
+        )}
 
         {onRefresh && (
           <button

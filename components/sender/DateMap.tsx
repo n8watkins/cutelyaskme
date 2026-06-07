@@ -11,15 +11,33 @@ type DateMapProps = {
   onCenterChange?: (lat: number, lng: number) => void;
   /** Fly map to this position when it changes (e.g. after zip code entry) */
   viewCenter?: { lat: number; lng: number } | null;
+  /** Recommendation pins for the focused stop (red Yelp-style markers) */
+  candidates?: Venue[];
+  selectedId?: string | null;
+  onCandidateSelect?: (venue: Venue) => void;
 };
 
 const STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
 
-export function DateMap({ stops, pinMode, searchRadius, onCenterChange, viewCenter }: DateMapProps) {
+export function DateMap({
+  stops,
+  pinMode,
+  searchRadius,
+  onCenterChange,
+  viewCenter,
+  candidates,
+  selectedId,
+  onCandidateSelect,
+}: DateMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
   const stopsLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
   const pinLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const candidatesLayerRef = useRef<import("leaflet").LayerGroup | null>(null);
+  const onCandidateSelectRef = useRef(onCandidateSelect);
+  useEffect(() => {
+    onCandidateSelectRef.current = onCandidateSelect;
+  }, [onCandidateSelect]);
 
   const renderStops = useCallback((L: typeof import("leaflet"), currentStops: (Venue | null)[]) => {
     const layer = stopsLayerRef.current;
@@ -70,6 +88,42 @@ export function DateMap({ stops, pinMode, searchRadius, onCenterChange, viewCent
     const group = L.featureGroup(filled.map((v) => L.marker([v.lat, v.lng])));
     map.fitBounds(group.getBounds().pad(0.35));
   }, []);
+
+  const renderCandidates = useCallback(
+    (L: typeof import("leaflet"), cands: Venue[], selId: string | null | undefined) => {
+      const layer = candidatesLayerRef.current;
+      if (!layer) return;
+      layer.clearLayers();
+
+      cands.forEach((v) => {
+        const isSel = v.id === selId;
+        const size = isSel ? 20 : 14;
+        const icon = L.divIcon({
+          className: "",
+          html: `<div style="
+            width:${size}px;height:${size}px;border-radius:50%;
+            background:#d32323;border:2.5px solid white;
+            box-shadow:0 2px 7px rgba(0,0,0,0.35);
+            ${isSel ? "outline:2px solid #d32323;outline-offset:2px;" : ""}
+          "></div>`,
+          iconSize: [size, size],
+          iconAnchor: [size / 2, size / 2],
+        });
+        L.marker([v.lat, v.lng], { icon, zIndexOffset: -200 })
+          .addTo(layer)
+          .bindPopup(
+            `<div style="font-family:Arial,sans-serif">
+              <strong style="color:#3a2530">${v.name}</strong><br>
+              <span style="color:#8a6a78;font-size:12px">${v.address}</span><br>
+              <span style="color:#d32323;font-size:11px;font-weight:900">tap pin to pick</span>
+            </div>`,
+            { maxWidth: 200 },
+          )
+          .on("click", () => onCandidateSelectRef.current?.(v));
+      });
+    },
+    [],
+  );
 
   const renderPin = useCallback((L: typeof import("leaflet")) => {
     const layer = pinLayerRef.current;
@@ -142,6 +196,7 @@ export function DateMap({ stops, pinMode, searchRadius, onCenterChange, viewCent
       }).addTo(map);
 
       mapRef.current = map;
+      candidatesLayerRef.current = L.layerGroup().addTo(map); // below the numbered stop pins
       stopsLayerRef.current = L.layerGroup().addTo(map);
       pinLayerRef.current = L.layerGroup().addTo(map);
 
@@ -162,6 +217,12 @@ export function DateMap({ stops, pinMode, searchRadius, onCenterChange, viewCent
     if (!mapRef.current) return;
     void import("leaflet").then((mod) => renderStops(mod.default, stops));
   }, [stops, renderStops]);
+
+  // Re-render recommendation pins when the focused stop's candidates change
+  useEffect(() => {
+    if (!mapRef.current) return;
+    void import("leaflet").then((mod) => renderCandidates(mod.default, candidates ?? [], selectedId));
+  }, [candidates, selectedId, renderCandidates]);
 
   // Fly to location when zip/city changes
   useEffect(() => {

@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const activity = searchParams.get("activity")?.trim(); // "park" | "viewpoint" | "stargazing"
   const location = searchParams.get("location")?.trim();
-  const radius = Math.min(parseInt(searchParams.get("radius") ?? "8000", 10), 40000);
+  const radius = Math.min(parseInt(searchParams.get("radius") ?? "8000", 10), 100000);
 
   if (!activity || !location) {
     return NextResponse.json({ venues: [] });
