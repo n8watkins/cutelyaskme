@@ -131,6 +131,13 @@ export const pushSubscriptions = sqliteTable("push_subscriptions", {
     .default(sql`(datetime('now'))`),
 });
 
+// Persistent rate limiting (survives serverless cold starts).
+export const rateLimits = sqliteTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  resetAt: integer("reset_at").notNull(), // ms epoch
+});
+
 export const placeCache = sqliteTable("place_cache", {
   id: text("id").primaryKey(),
   cacheKey: text("cache_key").notNull().unique(),

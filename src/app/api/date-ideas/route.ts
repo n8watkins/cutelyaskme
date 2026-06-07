@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 type DateIdeasRequest = {
   period?: string;
@@ -17,7 +18,6 @@ type GeminiResponse = {
   }>;
 };
 
-const rateLimit = new Map<string, { count: number; resetAt: number }>();
 const LIMIT = 6;
 const WINDOW_MS = 60 * 60 * 1000;
 
@@ -41,9 +41,9 @@ export async function POST(request: NextRequest) {
   }
 
   const identifier = getClientIdentifier(request);
-  const limited = checkRateLimit(identifier);
+  const allowed = await checkRateLimit(`ideas:${identifier}`, LIMIT, WINDOW_MS);
 
-  if (limited) {
+  if (!allowed) {
     return NextResponse.json(
       { message: "Gemini idea limit reached. Try the local spinner for now." },
       { status: 429 },
@@ -180,19 +180,3 @@ function getClientIdentifier(request: NextRequest) {
   );
 }
 
-function checkRateLimit(identifier: string) {
-  const now = Date.now();
-  const current = rateLimit.get(identifier);
-
-  if (!current || current.resetAt < now) {
-    rateLimit.set(identifier, { count: 1, resetAt: now + WINDOW_MS });
-    return false;
-  }
-
-  if (current.count >= LIMIT) {
-    return true;
-  }
-
-  current.count += 1;
-  return false;
-}
