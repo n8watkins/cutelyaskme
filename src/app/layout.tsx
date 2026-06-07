@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Nunito } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
@@ -10,8 +10,21 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "Date Planner",
-  description: "A tiny personalized date invitation mini-site.",
+  title: "Cutely Ask — Date Night",
+  description: "Plan the perfect date and keep the memory.",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Cutely Ask",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#ff7aaa",
 };
 
 export default function RootLayout({
