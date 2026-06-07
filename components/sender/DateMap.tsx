@@ -21,6 +21,10 @@ type DateMapProps = {
 
 const STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
 
+// Escape user/venue text before it goes into popup innerHTML.
+const esc = (s: string) =>
+  String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
+
 export function DateMap({
   stops,
   pinMode,
@@ -75,8 +79,8 @@ export function DateMap({
         .addTo(layer)
         .bindPopup(
           `<div style="font-family:Arial,sans-serif">
-            <strong style="color:#3a2530">${venue.name}</strong><br>
-            <span style="color:#8a6a78;font-size:12px">${venue.address}</span>
+            <strong style="color:#3a2530">${esc(venue.name)}</strong><br>
+            <span style="color:#8a6a78;font-size:12px">${esc(venue.address)}</span>
           </div>`,
           { maxWidth: 220 },
         );
@@ -117,8 +121,8 @@ export function DateMap({
           .addTo(layer)
           .bindPopup(
             `<div style="font-family:Arial,sans-serif">
-              <strong style="color:#3a2530">${v.name}</strong><br>
-              <span style="color:#8a6a78;font-size:12px">${v.address}</span><br>
+              <strong style="color:#3a2530">${esc(v.name)}</strong><br>
+              <span style="color:#8a6a78;font-size:12px">${esc(v.address)}</span><br>
               <span style="color:#d32323;font-size:11px;font-weight:900">tap pin to pick</span>
             </div>`,
             { maxWidth: 200 },
@@ -153,7 +157,7 @@ export function DateMap({
           .bindPopup(
             `<div style="font-family:Arial,sans-serif"><strong style="color:#3a2530">${
               w.kind === "start" ? "Start" : "Pickup"
-            } · ${w.label}</strong></div>`,
+            } · ${esc(w.label)}</strong></div>`,
             { maxWidth: 200 },
           );
       });

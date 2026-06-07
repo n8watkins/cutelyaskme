@@ -19,6 +19,9 @@ const STATUS_COLOR: Record<string, string> = {
   neutral: "#ff7aaa",
 };
 
+const esc = (s: string) =>
+  String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
+
 export function HistoryMap({ points }: { points: HistoryPoint[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
@@ -53,8 +56,8 @@ export function HistoryMap({ points }: { points: HistoryPoint[] }) {
         });
         return L.marker([p.lat, p.lng], { icon }).bindPopup(
           `<div style="font-family:Arial,sans-serif">
-            <strong style="color:#3a2530">${p.activity} · ${p.name}</strong><br>
-            <span style="color:#8a6a78;font-size:12px">${p.dateLabel ?? ""}</span>
+            <strong style="color:#3a2530">${esc(p.activity)} · ${esc(p.name)}</strong><br>
+            <span style="color:#8a6a78;font-size:12px">${esc(p.dateLabel ?? "")}</span>
           </div>`,
           { maxWidth: 220 },
         );
