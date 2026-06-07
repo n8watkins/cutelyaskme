@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import SunCalc from "suncalc";
 import type { Venue } from "@/lib/venues";
 import {
@@ -471,8 +471,11 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     }
   }
 
-  const mapStops: (Venue | null)[] = stopOrder.map((key) =>
-    key === ENTREE_KEY ? entreeVenue : (activityVenues[key] ?? null),
+  // Memoized so the array reference is stable across renders — otherwise the map
+  // re-renders its stops on every keystroke and overrides the "search near" fly-to.
+  const mapStops: (Venue | null)[] = useMemo(
+    () => stopOrder.map((key) => (key === ENTREE_KEY ? entreeVenue : (activityVenues[key] ?? null))),
+    [stopOrder, activityVenues, entreeVenue],
   );
 
   const routeVenues = mapStops.filter(Boolean) as Venue[];
