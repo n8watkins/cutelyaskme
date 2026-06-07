@@ -183,8 +183,9 @@ businesses, personal preferences, or their own reviews.
 - [ ] Store hours / "open now" badge on venue cards.
 - [ ] "Surprise ending" sender flow — sender picks a secret final stop.
 - [ ] Mobile map layout — map as a toggleable drawer (currently a fixed sidebar).
-- [ ] **Tests** — none today. Start with pure logic: `timeline` reduce,
-      `buildGCalLink` / `downloadICS`, `mapPrice`, itinerary JSON parsing.
+- [x] **Tests** — Vitest suite (21 tests) over the extracted pure helpers:
+      `lib/datetime`, `lib/calendar` (gcal/ics/itinerary text), `lib/sun`,
+      `lib/html`, `lib/venues` (mapPrice). Run with `npm test`.
 
 ---
 

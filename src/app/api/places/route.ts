@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { placeCache } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import type { Venue } from "@/lib/venues";
+import { mapPrice, type Venue } from "@/lib/venues";
 
 type YelpBusiness = {
   id: string;
@@ -18,12 +18,6 @@ type YelpBusiness = {
 type YelpSearchResponse = {
   businesses?: YelpBusiness[];
 };
-
-function mapPrice(price: string | undefined): 1 | 2 | 3 | 4 {
-  if (!price) return 2;
-  const len = price.replace(/[^$]/g, "").length;
-  return (Math.min(Math.max(len, 1), 4) as 1 | 2 | 3 | 4);
-}
 
 export async function GET(request: NextRequest) {
   const { userId } = await auth();

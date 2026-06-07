@@ -11,6 +11,13 @@ export type Venue = {
 
 export const PRICE_LABELS: Record<number, string> = { 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
 
+// Map a Yelp "$" / "$$" price string to a 1–4 level.
+export function mapPrice(price: string | undefined): 1 | 2 | 3 | 4 {
+  if (!price) return 2;
+  const len = price.replace(/[^$]/g, "").length;
+  return Math.min(Math.max(len, 1), 4) as 1 | 2 | 3 | 4;
+}
+
 export const ACTIVITY_ICONS: Partial<Record<string, string>> = {
   Coffee: "☕", Movie: "🎞️", Arcade: "🕹️", Bookstore: "📚",
   Drinks: "🍹", "Photo booth": "📸", "Mini golf": "⛳",

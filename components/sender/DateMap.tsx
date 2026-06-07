@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { Venue } from "@/lib/venues";
+import { htmlEscape as esc } from "@/lib/html";
 
 type DateMapProps = {
   stops: (Venue | null)[];
@@ -20,10 +21,6 @@ type DateMapProps = {
 };
 
 const STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
-
-// Escape user/venue text before it goes into popup innerHTML.
-const esc = (s: string) =>
-  String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
 
 export function DateMap({
   stops,

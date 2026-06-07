@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { htmlEscape as esc } from "@/lib/html";
 
 export type HistoryPoint = {
   id: string;
@@ -18,9 +19,6 @@ const STATUS_COLOR: Record<string, string> = {
   disliked: "#d32323",
   neutral: "#ff7aaa",
 };
-
-const esc = (s: string) =>
-  String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
 
 export function HistoryMap({ points }: { points: HistoryPoint[] }) {
   const containerRef = useRef<HTMLDivElement>(null);

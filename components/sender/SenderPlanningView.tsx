@@ -4,6 +4,9 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SunCalc from "suncalc";
+import { parseTimeToMinutes, formatTime, formatDuration } from "@/lib/datetime";
+import { buildItineraryText, icsEscape, buildGCalLink } from "@/lib/calendar";
+import { sunWarning } from "@/lib/sun";
 import type { SavedAddress } from "@/components/SavedAddresses";
 
 type Waypoint = { label: string; lat: number; lng: number };
@@ -71,96 +74,6 @@ function buildStops(plan: PlanData): string[] {
   return [...plan.selectedActivities, ...(hasEntree ? [ENTREE_KEY] : [])];
 }
 
-function parseTimeToMinutes(t: string | null): number {
-  if (!t) return 19 * 60;
-  const parts = t.split(":");
-  return parseInt(parts[0] ?? "19", 10) * 60 + parseInt(parts[1] ?? "0", 10);
-}
-
-function formatTime(minutes: number): string {
-  const totalMins = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60);
-  const h = Math.floor(totalMins / 60);
-  const m = totalMins % 60;
-  const ampm = h >= 12 ? "PM" : "AM";
-  const displayH = h % 12 || 12;
-  return `${displayH}:${m.toString().padStart(2, "0")} ${ampm}`;
-}
-
-function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
-
-// Plain-text version of the whole lineup, for calendar event descriptions.
-function buildItineraryText(timeline: TimelineStop[], planLink: string): string {
-  const lines = timeline
-    .filter((s) => s.venue)
-    .map((s) => `${formatTime(s.startMinutes)} — ${s.icon} ${s.label} @ ${s.venue!.name}`);
-  return ["Your date plan 💕", ...lines, "", `Full plan: ${planLink}`].join("\n");
-}
-
-function icsEscape(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
-}
-
-function buildGCalLink(
-  title: string,
-  startMinutes: number,
-  endMinutes: number,
-  location: string,
-  selectedDate: string | null,
-  details: string,
-): string {
-  const base = "https://calendar.google.com/calendar/render?action=TEMPLATE";
-  const text = encodeURIComponent(title);
-  const loc = encodeURIComponent(location);
-  const det = encodeURIComponent(details);
-
-  if (!selectedDate) {
-    return `${base}&text=${text}&location=${loc}&details=${det}`;
-  }
-
-  const datePart = selectedDate.replace(/-/g, "");
-  const startH = Math.floor(startMinutes / 60) % 24;
-  const startM = startMinutes % 60;
-  const endH = Math.floor(endMinutes / 60) % 24;
-  const endM = endMinutes % 60;
-  const start = `${datePart}T${startH.toString().padStart(2, "0")}${startM.toString().padStart(2, "0")}00`;
-  const end = `${datePart}T${endH.toString().padStart(2, "0")}${endM.toString().padStart(2, "0")}00`;
-
-  return `${base}&text=${text}&dates=${start}/${end}&location=${loc}&details=${det}`;
-}
-
-const SUN_SENSITIVE: Record<string, "atSunset" | "needsDark" | "daylight"> = {
-  "Sunset view": "atSunset",
-  Stargazing: "needsDark",
-  "Scenic drive": "daylight",
-  "Park picnic": "daylight",
-};
-
-// Flag a stop whose scheduled time fights the daylight (sunset is computed exactly).
-function sunWarning(
-  key: string,
-  startMin: number,
-  sun: { sunset: number; dusk: number } | null,
-): string | null {
-  if (!sun) return null;
-  const kind = SUN_SENSITIVE[key];
-  if (!kind) return null;
-  if (kind === "atSunset") {
-    if (startMin > sun.sunset + 30) return `🌃 sun sets ~${formatTime(sun.sunset)} — it'll be dark`;
-    if (startMin < sun.sunset - 90) return `still bright — sunset's ~${formatTime(sun.sunset)}`;
-    return null;
-  }
-  if (kind === "needsDark") {
-    if (startMin < sun.dusk) return `🌅 too early for stars — dark ~${formatTime(sun.dusk)}`;
-    return null;
-  }
-  if (startMin > sun.sunset) return `🌃 sun's down by then (~${formatTime(sun.sunset)})`;
-  return null;
-}
 
 function downloadICS(
   timeline: TimelineStop[],
