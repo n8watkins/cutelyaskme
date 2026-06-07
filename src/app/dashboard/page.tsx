@@ -37,6 +37,10 @@ export default async function DashboardPage() {
   ]);
 
   const completedPlans = myPlans.filter((p) => p.completedAt !== null);
+  // Split by the date itself: upcoming (today or later) vs past.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const upcomingPlans = completedPlans.filter((p) => p.selectedDate && p.selectedDate >= todayStr);
+  const pastPlans = completedPlans.filter((p) => !p.selectedDate || p.selectedDate < todayStr);
 
   const planByInvite = Object.fromEntries(
     completedPlans
@@ -246,62 +250,52 @@ export default async function DashboardPage() {
         )}
       </section>
 
+      {upcomingPlans.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
+            Upcoming dates
+          </h2>
+          <div className="grid gap-3">
+            {upcomingPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isSender={plan.senderId === userId}
+                recipientName={plan.inviteId ? inviteRecipientName[plan.inviteId] ?? null : null}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       <section>
         <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
           Past dates
         </h2>
-        {!completedPlans.length ? (
-          <p className="text-sm text-[#c0a0b0]">No completed dates yet.</p>
+        {!pastPlans.length ? (
+          <p className="text-sm text-[#c0a0b0]">No past dates yet.</p>
         ) : (
           <div className="grid gap-3">
-            {completedPlans.map((plan) => {
-              let activities: string[] = [];
-              try { activities = JSON.parse(plan.selectedActivities) as string[]; } catch {}
-
-              const isSender = plan.senderId === userId;
-              const recipientName = plan.inviteId ? inviteRecipientName[plan.inviteId] : null;
-
-              const who = isSender
-                ? recipientName ? `Date with ${recipientName}` : "You planned this"
-                : "Planned for you";
-
-              const when = [plan.selectedDateLabel, plan.selectedTimeLabel]
-                .filter(Boolean)
-                .join(" at ");
-
-              return (
-                <Link
-                  key={plan.id}
-                  href={`/plan/${plan.id}`}
-                  className="block rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4 transition hover:bg-[#fff7fb]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-black text-[#3a2530]">{who}</p>
-                      {when && (
-                        <p className="mt-0.5 text-sm text-[#8a6a78]">{when}</p>
-                      )}
-                      {activities.length > 0 && (
-                        <p className="mt-0.5 text-xs text-[#c0a0b0]">
-                          {activities.join(" + ")}
-                          {plan.selectedEntree ? ` · ${plan.selectedEntree}` : ""}
-                        </p>
-                      )}
-                    </div>
-                    <span className="shrink-0 text-xs text-[#c0a0b0]">→</span>
-                  </div>
-                </Link>
-              );
-            })}
+            {pastPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isSender={plan.senderId === userId}
+                recipientName={plan.inviteId ? inviteRecipientName[plan.inviteId] ?? null : null}
+              />
+            ))}
           </div>
         )}
       </section>
 
       {myVerdicts.length > 0 && (
         <section className="mt-8">
-          <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
+          <h2 className="mb-1 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
             ⭐ Your places
           </h2>
+          <p className="mb-3 text-xs text-[#c0a0b0]">
+            Loved spots come back as 💞 Reminisce suggestions when you plan your next date.
+          </p>
           <div className="grid gap-4">
             {likedPlaces.length > 0 && (
               <div>
@@ -334,6 +328,51 @@ export default async function DashboardPage() {
         <SavedAddresses initial={myAddresses} />
       </section>
     </main>
+  );
+}
+
+function PlanCard({
+  plan,
+  isSender,
+  recipientName,
+}: {
+  plan: {
+    id: string;
+    selectedActivities: string;
+    selectedDateLabel: string | null;
+    selectedTimeLabel: string | null;
+    selectedEntree: string | null;
+  };
+  isSender: boolean;
+  recipientName: string | null;
+}) {
+  let activities: string[] = [];
+  try { activities = JSON.parse(plan.selectedActivities) as string[]; } catch {}
+
+  const who = isSender
+    ? recipientName ? `Date with ${recipientName}` : "You planned this"
+    : "Planned for you";
+  const when = [plan.selectedDateLabel, plan.selectedTimeLabel].filter(Boolean).join(" at ");
+
+  return (
+    <Link
+      href={`/plan/${plan.id}`}
+      className="block rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4 transition hover:bg-[#fff7fb]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-black text-[#3a2530]">{who}</p>
+          {when && <p className="mt-0.5 text-sm text-[#8a6a78]">{when}</p>}
+          {activities.length > 0 && (
+            <p className="mt-0.5 text-xs text-[#c0a0b0]">
+              {activities.join(" + ")}
+              {plan.selectedEntree ? ` · ${plan.selectedEntree}` : ""}
+            </p>
+          )}
+        </div>
+        <span className="shrink-0 text-xs text-[#c0a0b0]">→</span>
+      </div>
+    </Link>
   );
 }
 

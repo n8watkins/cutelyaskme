@@ -128,6 +128,8 @@ export default async function PlanPage({ params }: PlanPageProps) {
             location: invite?.location ?? null,
             selectedEntreeVenue: entreeVenue,
             selectedActivityVenues: activityVenues,
+            startPoint: safeParse<{ label: string; lat: number; lng: number } | null>(plan.startPoint, null),
+            pickupPoint: safeParse<{ label: string; lat: number; lng: number } | null>(plan.pickupPoint, null),
           }}
         />
         <div className="mx-auto max-w-lg px-4 pb-12">

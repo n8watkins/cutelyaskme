@@ -53,6 +53,8 @@ type PlanData = {
   location: string | null;
   selectedEntreeVenue: Venue | null;
   selectedActivityVenues: Record<string, Venue>;
+  startPoint: Waypoint | null;
+  pickupPoint: Waypoint | null;
 };
 
 type TimelineStop = {
@@ -249,8 +251,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
 
   // Saved addresses + start/pickup waypoints (your place → pick up your date → …).
   const [savedAddrs, setSavedAddrs] = useState<SavedAddress[]>([]);
-  const [startPoint, setStartPoint] = useState<Waypoint | null>(null);
-  const [pickupPoint, setPickupPoint] = useState<Waypoint | null>(null);
+  const [startPoint, setStartPoint] = useState<Waypoint | null>(plan.startPoint);
+  const [pickupPoint, setPickupPoint] = useState<Waypoint | null>(plan.pickupPoint);
 
   const hasFetched = useRef(false);
 
@@ -404,7 +406,9 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   const isDirty =
     JSON.stringify(stopOrder) !== JSON.stringify(initialStops) ||
     JSON.stringify(activityVenues) !== JSON.stringify(plan.selectedActivityVenues) ||
-    entreeVenue?.id !== plan.selectedEntreeVenue?.id;
+    entreeVenue?.id !== plan.selectedEntreeVenue?.id ||
+    JSON.stringify(startPoint) !== JSON.stringify(plan.startPoint) ||
+    JSON.stringify(pickupPoint) !== JSON.stringify(plan.pickupPoint);
 
   // Compute timeline — running accumulator via reduce (no render-time reassignment)
   const startOfDay = parseTimeToMinutes(plan.selectedTime);
@@ -466,6 +470,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
         body: JSON.stringify({
           selectedEntreeVenue: entreeVenue,
           selectedActivityVenues: activityVenues,
+          startPoint,
+          pickupPoint,
           activityOrder: stopOrder.filter((k) => k !== ENTREE_KEY),
         }),
       });

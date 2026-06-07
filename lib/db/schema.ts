@@ -46,6 +46,9 @@ export const datePlans = sqliteTable("date_plans", {
   itinerary: text("itinerary"),
   itineraryGeneratedAt: text("itinerary_generated_at"),
   dressVibe: text("dress_vibe"),
+  // Start / pickup waypoints chosen by the sender (JSON: { label, lat, lng }).
+  startPoint: text("start_point"),
+  pickupPoint: text("pickup_point"),
   // Set when the sender locks venues + hits Share/Surprise. Gates post-date reviews.
   confirmedAt: text("confirmed_at"),
   completedAt: text("completed_at"),

@@ -22,7 +22,8 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json().catch(() => null);
-  const { selectedEntreeVenue, selectedActivityVenues, activityOrder } = body ?? {};
+  const { selectedEntreeVenue, selectedActivityVenues, activityOrder, startPoint, pickupPoint } =
+    body ?? {};
 
   // Load the plan first — we need its date/time/entree to regenerate the itinerary,
   // and it also enforces ownership before we do any work.
@@ -45,6 +46,8 @@ export async function PATCH(
   const updateValues: Record<string, string | null> = {
     selectedEntreeVenue: entreeVenue ? JSON.stringify(entreeVenue) : null,
     selectedActivityVenues: JSON.stringify(activityVenues),
+    startPoint: startPoint ? JSON.stringify(startPoint) : null,
+    pickupPoint: pickupPoint ? JSON.stringify(pickupPoint) : null,
   };
 
   if (Array.isArray(activityOrder)) {
