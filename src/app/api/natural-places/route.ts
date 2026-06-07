@@ -26,6 +26,9 @@ function buildQuery(type: string, lat: number, lng: number, radius: number): str
       return `[out:json][timeout:15];(node["tourism"="viewpoint"]${around};node["natural"="peak"]${around};way["natural"="peak"]${around};);out center 10;`;
     case "stargazing":
       return `[out:json][timeout:15];(node["tourism"="viewpoint"]${around};node["amenity"="observatory"]${around};node["leisure"="nature_reserve"]${around};way["leisure"="nature_reserve"]${around};node["natural"="peak"]${around};);out center 10;`;
+    case "scenic_drive":
+      // Drive-to destinations: mountain passes, viewpoints, peaks.
+      return `[out:json][timeout:15];(node["mountain_pass"="yes"]${around};node["tourism"="viewpoint"]${around};node["natural"="peak"]${around};way["natural"="peak"]${around};);out center 10;`;
     default:
       return `[out:json][timeout:15];(node["leisure"="park"]${around};way["leisure"="park"]${around};);out center 10;`;
   }

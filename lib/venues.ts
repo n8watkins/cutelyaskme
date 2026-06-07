@@ -45,7 +45,7 @@ export const NATURAL_PLACE_ACTIVITIES: Record<string, string> = {
   "Park picnic": "park",
   "Sunset view": "viewpoint",
   "Stargazing": "stargazing",
-  "Scenic drive": "viewpoint",
+  "Scenic drive": "scenic_drive",
 };
 
 export const NO_VENUE_ACTIVITIES = new Set(["Surprise ending"]);
