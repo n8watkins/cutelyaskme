@@ -1,11 +1,12 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { invites, datePlans, venueVerdicts } from "@/lib/db/schema";
+import { invites, datePlans, venueVerdicts, savedAddresses } from "@/lib/db/schema";
 import { and, eq, ne, or, inArray, desc, sql } from "drizzle-orm";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { EnableNotifications } from "@/components/EnableNotifications";
 import { HistoryMap, type HistoryPoint } from "@/components/HistoryMap";
+import { SavedAddresses } from "@/components/SavedAddresses";
 import { ACTIVITY_ICONS, type Venue } from "@/lib/venues";
 
 function parseJson<T>(json: string | null, fallback: T): T {
@@ -73,6 +74,12 @@ export default async function DashboardPage() {
   );
 
   // Your verdicts → "Your places" + status overlay on the map.
+  const myAddresses = await db
+    .select()
+    .from(savedAddresses)
+    .where(eq(savedAddresses.userId, userId))
+    .orderBy(desc(savedAddresses.createdAt));
+
   const myVerdicts = await db
     .select()
     .from(venueVerdicts)
@@ -319,6 +326,13 @@ export default async function DashboardPage() {
           </div>
         </section>
       )}
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
+          🏠 Saved addresses
+        </h2>
+        <SavedAddresses initial={myAddresses} />
+      </section>
     </main>
   );
 }

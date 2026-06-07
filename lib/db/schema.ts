@@ -1,5 +1,18 @@
-import { text, integer, sqliteTable, unique, check } from "drizzle-orm/sqlite-core";
+import { text, integer, real, sqliteTable, unique, check } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
+
+// A user's saved places (Home, partner's place, etc.) for quick reuse.
+export const savedAddresses = sqliteTable("saved_addresses", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  label: text("label").notNull(),
+  address: text("address").notNull(),
+  lat: real("lat"),
+  lng: real("lng"),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
 
 export const invites = sqliteTable("invites", {
   id: text("id").primaryKey(),
