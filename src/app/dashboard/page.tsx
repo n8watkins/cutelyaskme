@@ -124,6 +124,32 @@ export default async function DashboardPage() {
     }
   }
 
+  // Profile stats.
+  function mode(arr: string[]): string | null {
+    const counts: Record<string, number> = {};
+    let best: string | null = null;
+    let bestN = 0;
+    for (const x of arr) {
+      counts[x] = (counts[x] ?? 0) + 1;
+      if (counts[x] > bestN) {
+        bestN = counts[x];
+        best = x;
+      }
+    }
+    return best;
+  }
+  const totalDates = completedPlans.length;
+  const favCuisine = mode(
+    completedPlans.map((p) => p.selectedEntree).filter((e): e is string => !!e && e !== "Surprise me"),
+  );
+  const allActivities: string[] = [];
+  for (const p of completedPlans) {
+    try {
+      allActivities.push(...(JSON.parse(p.selectedActivities) as string[]));
+    } catch {}
+  }
+  const favActivity = mode(allActivities);
+
   return (
     <main className="mx-auto max-w-lg px-4 py-10">
       <div className="mb-8 flex items-center justify-between">
@@ -139,6 +165,18 @@ export default async function DashboardPage() {
       <div className="mb-8">
         <EnableNotifications />
       </div>
+
+      {totalDates > 0 && (
+        <section className="mb-8">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+            <Stat icon="💞" value={totalDates} label={totalDates === 1 ? "date" : "dates"} />
+            <Stat icon="📍" value={mapPoints.length} label="places" />
+            <Stat icon="❤️" value={likedPlaces.length} label="loved" />
+            {favCuisine && <Stat icon="🍽️" value={favCuisine} label="go-to" />}
+            {favActivity && <Stat icon="🎯" value={favActivity} label="favorite" />}
+          </div>
+        </section>
+      )}
 
       {mapPoints.length > 0 && (
         <section className="mb-8">
@@ -328,6 +366,18 @@ export default async function DashboardPage() {
         <SavedAddresses initial={myAddresses} />
       </section>
     </main>
+  );
+}
+
+function Stat({ icon, value, label }: { icon: string; value: string | number; label: string }) {
+  return (
+    <div className="rounded-2xl border-2 border-[#ffd6e8] bg-white p-3 text-center">
+      <div className="text-lg">{icon}</div>
+      <div className="truncate text-sm font-black text-[#3a2530]" title={String(value)}>
+        {value}
+      </div>
+      <div className="text-[10px] font-black uppercase tracking-wide text-[#c0a0b0]">{label}</div>
+    </div>
   );
 }
 
