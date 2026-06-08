@@ -20,7 +20,7 @@ export async function generateItinerary(
   let response: Response;
   try {
     response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
       {
         method: "POST",
         headers: {
@@ -33,7 +33,7 @@ export async function generateItinerary(
             temperature: 0.8,
             maxOutputTokens: 800,
             responseMimeType: "application/json",
-            // 2.5 Flash is a thinking model; disable it so the whole token
+            // 3.1 Flash Lite is a thinking model; disable it so the whole token
             // budget goes to output (otherwise reasoning can truncate the JSON).
             thinkingConfig: { thinkingBudget: 0 },
           },

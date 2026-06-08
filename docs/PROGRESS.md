@@ -14,7 +14,7 @@ _Last updated: June 2026 (post venue-architecture migration)_
 | Auth | Clerk — email + Google OAuth, embedded `<SignIn />` |
 | Database | Turso (libSQL/SQLite) — Drizzle ORM, schema-pushed |
 | Email | Resend — invite emails + sender notification on plan submission |
-| AI | Gemini 2.5 Flash — activity suggestions + itinerary generation |
+| AI | Gemini 3.1 Flash Lite — activity suggestions + itinerary generation |
 | Venues | Yelp Fusion (businesses) + Overpass/OpenStreetMap (parks, viewpoints, stargazing) — 24h DB cache |
 | Geocoding | Nominatim (OpenStreetMap) — no API key |
 | Map | Leaflet / OpenStreetMap — no API key, free |

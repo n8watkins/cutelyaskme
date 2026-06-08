@@ -62,7 +62,7 @@ back to later.
 ### Sub-tasks
 - [x] Schema: `date_memories` (`plan_id`, `author_id`, `notes`, `poem`,
       `photo_refs`, timestamps; unique per author) — pushed to Turso.
-- [x] Poem generation — `lib/memory-poem.ts` (Gemini 2.5 Flash, thinking off);
+- [x] Poem generation — `lib/memory-poem.ts` (Gemini 3.1 Flash Lite, thinking off);
       `POST /api/memories` saves notes + (re)generates the poem. Verified live.
 - [x] Privacy — participant-only check server-side; one memory per author.
 - [x] Capture + display UI — `MemoryKeepsake` on the plan page (notes textarea,

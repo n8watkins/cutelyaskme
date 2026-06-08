@@ -17,7 +17,7 @@ export async function generateMemoryPoem(input: PoemInput): Promise<string | nul
   let response: Response;
   try {
     response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
       {
         method: "POST",
         headers: {
@@ -29,7 +29,7 @@ export async function generateMemoryPoem(input: PoemInput): Promise<string | nul
           generationConfig: {
             temperature: 0.9,
             maxOutputTokens: 400,
-            // 2.5 Flash is a thinking model; disable it so the budget is all poem.
+            // 3.1 Flash Lite is a thinking model; disable it so the budget is all poem.
             thinkingConfig: { thinkingBudget: 0 },
           },
         }),

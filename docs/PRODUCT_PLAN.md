@@ -14,7 +14,7 @@ The following is **live** at https://date-planner-mini-site.vercel.app:
 | Email OTP + Google OAuth sign-in | ✅ |
 | Send invite by email (Resend) | ✅ |
 | Recipient walks DatePlanner (evasive No, date/time/activities/food) | ✅ |
-| AI activity suggestions via Gemini 2.5 Flash (⭐ starred, cached 4h) | ✅ |
+| AI activity suggestions via Gemini 3.1 Flash Lite (⭐ starred, cached 4h) | ✅ |
 | "Lock it in" → saves plan, generates itinerary server-side | ✅ |
 | Itinerary cached in DB (never regenerated for same plan) | ✅ |
 | Sender notification email when recipient submits | ✅ |
@@ -23,7 +23,7 @@ The following is **live** at https://date-planner-mini-site.vercel.app:
 | Dashboard — sent invites, past dates, "View plan →" links | ✅ |
 | Multiple invites to multiple people | ✅ |
 
-**Stack:** Next.js 16 / React 19 / Tailwind v4 / TypeScript / Supabase (auth + DB) / Resend (email) / Gemini 2.5 Flash / Vercel
+**Stack:** Next.js 16 / React 19 / Tailwind v4 / TypeScript / Supabase (auth + DB) / Resend (email) / Gemini 3.1 Flash Lite / Vercel
 
 ---
 
@@ -46,7 +46,7 @@ V1 is "everything I need to actually use this for real dates." Not a product, no
 | Option | What it gives you | Free tier | Cost at personal scale | Verdict |
 |---|---|---|---|---|
 | **Google Places API (New)** | Real-time venues, ratings, hours, photos, addresses | $200/month credit | ~$0.017–0.032/search → **~$0.05/invite** → free | ✅ Recommended |
-| Gemini 2.5 Flash (text only) | Plausible-sounding place names, may hallucinate, no real hours | 1,500 req/day | $0 | ❌ Not reliable for real places |
+| Gemini 3.1 Flash Lite (text only) | Plausible-sounding place names, may hallucinate, no real hours | 1,500 req/day | $0 | ❌ Not reliable for real places |
 | Yelp Fusion | Great for restaurants, limited for activities | 500 req/day | Free | 🟡 Restaurant fallback if no Google Maps key |
 | Foursquare Places | Similar to Google | 1,000 req/day free | Free | 🟡 Good backup |
 

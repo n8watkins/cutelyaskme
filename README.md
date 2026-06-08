@@ -32,7 +32,7 @@ The sender sees what she chose, then:
 | Auth | Clerk (email magic link + Google OAuth) |
 | Database | Turso (libSQL/SQLite) + Drizzle ORM |
 | Email | Resend |
-| AI | Gemini 2.5 Flash — activity ideas + itinerary generation |
+| AI | Gemini 3.1 Flash Lite — activity ideas + itinerary generation |
 | Venues | Yelp Fusion (businesses) · Overpass/OpenStreetMap (natural places) |
 | Geocoding | Nominatim (OpenStreetMap) |
 | Map | Leaflet + CartoDB Positron tiles |

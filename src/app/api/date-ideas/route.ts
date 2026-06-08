@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   let response: Response;
   try {
     response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent",
       {
         method: "POST",
         headers: {
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
             temperature: 0.9,
             maxOutputTokens: 160,
             responseMimeType: "application/json",
-            // 2.5 Flash thinking would consume the whole 160-token budget before
+            // 3.1 Flash Lite thinking would consume the whole 160-token budget before
             // producing any ideas; disable it for this simple structured task.
             thinkingConfig: { thinkingBudget: 0 },
           },
