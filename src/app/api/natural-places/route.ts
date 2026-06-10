@@ -5,6 +5,7 @@ import { placeCache } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import type { Venue } from "@/lib/venues";
 import { haversineMiles } from "@/lib/geo";
+import { trackApiUsage } from "@/lib/api-usage";
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const USER_AGENT = "DateNightApp/1.0 (https://github.com/user/date-planner)";
@@ -138,6 +139,7 @@ export async function GET(request: NextRequest) {
 
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
+      void trackApiUsage("overpass");
       const res = await fetch(endpoint, {
         method: "POST",
         headers: {

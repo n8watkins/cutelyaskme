@@ -178,6 +178,10 @@ badge for the planned time window.
 Render in an expandable "Reviews" section on the selected-venue card. Same
 cache policy as C4 (piggyback both fetches in one details call from our API).
 **Accept:** A selected Yelp venue can expand to show 3 review excerpts.
+**Status (verified live, June 2026):** the Reviews endpoint returns 404 on our
+key — Yelp moved review excerpts to a **paid tier**. Code is wired and degrades
+gracefully (explains why + "Read reviews on Yelp →" link to the business page);
+excerpts will light up automatically if the Yelp plan is ever upgraded.
 
 ### C6. Sunset view (and other natural activities) seemingly not connected
 **Status:** `lib/venues.ts:53` does map `"Sunset view" → "viewpoint"` and

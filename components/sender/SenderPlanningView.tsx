@@ -8,6 +8,7 @@ import { parseTimeToMinutes, formatTime, formatDuration } from "@/lib/datetime";
 import { buildItineraryText, icsEscape, buildGCalLink } from "@/lib/calendar";
 import { sunWarning } from "@/lib/sun";
 import { haversineMiles, formatMiles, type LatLng } from "@/lib/geo";
+import { yelpDayFromDate, formatDayHours, openBadge, type VenueDetails } from "@/lib/hours";
 import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
 
 type Waypoint = { label: string; lat: number; lng: number };
@@ -184,6 +185,10 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   const [mapExpanded, setMapExpanded] = useState(false);
   // A5: which stop is waiting for a map click to become its custom-pin venue.
   const [pickStopKey, setPickStopKey] = useState<string | null>(null);
+  // C4/C5: per-venue hours + reviews, fetched on select (cached server-side).
+  const [venueDetails, setVenueDetails] = useState<Record<string, VenueDetails | "loading" | "error">>({});
+  // C7: today's outbound API call counts.
+  const [usage, setUsage] = useState<{ yelp: number; overpass: number } | null>(null);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
@@ -288,6 +293,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
       }
     } catch {}
     setVenueLoading((p) => ({ ...p, [key]: false }));
+    loadUsage();
   }
 
   // C1: results from a previous center/radius are stale — drop them so every
@@ -310,10 +316,11 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
 
   // C1: zero venue calls on load — only resolve the map center.
   useEffect(() => {
-    if (hasFetched.current || !searchLocation) return;
+    if (hasFetched.current) return;
     hasFetched.current = true;
     // Pickup point already carries coords — only geocode when we don't have them.
-    if (!plan.pickupPoint?.lat) void geocodeForward(searchLocation);
+    if (searchLocation && !plan.pickupPoint?.lat) void geocodeForward(searchLocation);
+    loadUsage();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -393,6 +400,33 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     setSaved(false);
   }
 
+  function isYelpVenue(v: Venue): boolean {
+    return !v.source && !v.id.startsWith("osm-");
+  }
+
+  function loadUsage() {
+    fetch("/api/usage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { usage?: { yelp: number; overpass: number } } | null) => {
+        if (d?.usage) setUsage(d.usage);
+      })
+      .catch(() => {});
+  }
+
+  async function loadDetails(venue: Venue) {
+    if (!isYelpVenue(venue) || venueDetails[venue.id]) return;
+    setVenueDetails((p) => ({ ...p, [venue.id]: "loading" }));
+    try {
+      const res = await fetch(`/api/places/${encodeURIComponent(venue.id)}`);
+      if (!res.ok) throw new Error();
+      const data = (await res.json()) as VenueDetails;
+      setVenueDetails((p) => ({ ...p, [venue.id]: data }));
+    } catch {
+      setVenueDetails((p) => ({ ...p, [venue.id]: "error" }));
+    }
+    loadUsage();
+  }
+
   function selectVenue(key: string, venue: Venue | null) {
     if (key === ENTREE_KEY) {
       setEntreeVenue(venue);
@@ -405,6 +439,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
       });
     }
     setSaved(false);
+    // C4: selecting a Yelp venue pulls its hours + reviews (server-cached 7-30d).
+    if (venue) void loadDetails(venue);
   }
 
   function setDuration(key: string, minutes: number) {
@@ -669,6 +705,11 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
               <p className="mt-0.5 text-[10px] text-[#c0a0b0]">
                 Searches up to 25 miles around your center.
               </p>
+              {usage && (
+                <p className="mt-1.5 text-[10px] font-black text-[#c0a0b0]">
+                  📊 API calls today — Yelp {usage.yelp} · OpenStreetMap {usage.overpass}
+                </p>
+              )}
             </div>
 
             {/* Reminisce — rebuild a date from past favorites */}
@@ -770,6 +811,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 const hasMore = venueHasMore[key] ?? false;
                 const duration = stopDurations[key] ?? 60;
                 const price = stopPrices[key] ?? null;
+                const tlEntry = timeline.find((t) => t.key === key);
+                const details = selected ? (venueDetails[selected.id] ?? null) : null;
 
                 return (
                   <StopCard
@@ -803,6 +846,13 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                     onMoveUp={() => moveStop(i, -1)}
                     onMoveDown={() => moveStop(i, 1)}
                     onSelect={(v) => selectVenue(key, v)}
+                    details={details}
+                    onLoadDetails={() => {
+                      if (selected) void loadDetails(selected);
+                    }}
+                    yelpDay={plan.selectedDate ? yelpDayFromDate(plan.selectedDate) : null}
+                    stopStart={tlEntry?.startMinutes ?? null}
+                    stopEnd={tlEntry?.endMinutes ?? null}
                     isPicking={pickStopKey === key}
                     onDropPin={() => {
                       setPinMode(false);
@@ -1108,6 +1158,11 @@ function StopCard({
   onMoveUp,
   onMoveDown,
   onSelect,
+  details,
+  onLoadDetails,
+  yelpDay,
+  stopStart,
+  stopEnd,
   isPicking,
   onDropPin,
   onRenameCustom,
@@ -1138,6 +1193,11 @@ function StopCard({
   onMoveUp: () => void;
   onMoveDown: () => void;
   onSelect: (v: Venue | null) => void;
+  details: VenueDetails | "loading" | "error" | null;
+  onLoadDetails: () => void;
+  yelpDay: number | null;
+  stopStart: number | null;
+  stopEnd: number | null;
   isPicking: boolean;
   onDropPin: () => void;
   onRenameCustom: (name: string) => void;
@@ -1147,6 +1207,14 @@ function StopCard({
 }) {
   const hasResults = results.length > 0;
   const customSelected = selected?.source === "custom" ? selected : null;
+  const yelpSelected =
+    selected && !customSelected && !selected.id.startsWith("osm-") ? selected : null;
+  const [showDetails, setShowDetails] = useState(false);
+  const loadedDetails = details && details !== "loading" && details !== "error" ? details : null;
+  const badge =
+    loadedDetails && yelpDay != null && stopStart != null && stopEnd != null
+      ? openBadge(loadedDetails.hours, yelpDay, stopStart, stopEnd)
+      : null;
 
   const dropPinButton = (
     <button
@@ -1268,6 +1336,101 @@ function StopCard({
           ))}
         </div>
       </div>
+
+      {/* C4/C5: the chosen Yelp venue — hours badge + expandable reviews */}
+      {yelpSelected && (
+        <div className="mt-3 rounded-2xl border-2 border-[#5fd97f]/60 bg-white p-3">
+          <div className="flex items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#5fd97f]/15 text-lg">
+              ✓
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-black text-[#3a2530]">{yelpSelected.name}</p>
+              <p className="truncate text-xs text-[#8a6a78]">{yelpSelected.address}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onSelect(null)}
+              aria-label="Clear selection"
+              className="shrink-0 px-2 text-xs font-black text-[#c0a0b0] transition hover:text-[#d32323]"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {badge && (
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-black ${
+                  badge.state === "open"
+                    ? "bg-[#5fd97f]/15 text-[#2e9e52]"
+                    : badge.state === "unknown"
+                      ? "bg-[#fff7fb] text-[#c0a0b0]"
+                      : "bg-[#fff1e0] text-[#d98a3a]"
+                }`}
+              >
+                {badge.state === "open" ? "✅" : badge.state === "unknown" ? "❔" : "⚠️"}{" "}
+                {badge.label}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setShowDetails((s) => !s);
+                if (!details) onLoadDetails();
+              }}
+              className="rounded-full border border-[#ffd6e8] px-2.5 py-0.5 text-[11px] font-black text-[#8a6a78] transition hover:bg-[#fff7fb]"
+            >
+              {showDetails ? "Hide hours & reviews ▲" : "Hours & reviews ▼"}
+            </button>
+          </div>
+
+          {showDetails && (
+            <div className="mt-2 grid gap-2">
+              {details === "loading" || !details ? (
+                <div className="h-10 animate-pulse rounded-xl bg-[#ffd6e8]/40" />
+              ) : details === "error" ? (
+                <p className="text-xs text-[#c0a0b0]">Couldn&apos;t load details.</p>
+              ) : (
+                <>
+                  {yelpDay != null && (
+                    <p className="text-xs text-[#8a6a78]">
+                      <span className="font-black">🕰 That day:</span>{" "}
+                      {formatDayHours(details.hours, yelpDay)}
+                    </p>
+                  )}
+                  {details.reviews.length > 0 ? (
+                    details.reviews.map((r, i) => (
+                      <div key={i} className="rounded-xl bg-[#fff7fb] p-2.5">
+                        <p className="text-[11px] font-black text-[#d98a3a]">
+                          {"★".repeat(Math.round(r.rating))}
+                          <span className="ml-1.5 text-[#8a6a78]">{r.author}</span>
+                        </p>
+                        <p className="mt-0.5 text-xs leading-snug text-[#8a6a78]">{r.text}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-[#c0a0b0]">
+                      Review excerpts aren&apos;t included in our Yelp plan yet — read them
+                      on Yelp below.
+                    </p>
+                  )}
+                  {details.url && (
+                    <a
+                      href={details.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-black text-[#7c5aa0] hover:underline"
+                    >
+                      {details.reviews.length > 0 ? "Read more on Yelp →" : "Read reviews on Yelp →"}
+                    </a>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* A5: hand-dropped pin as this stop's venue — rename inline */}
       {customSelected && (

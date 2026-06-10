@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { placeCache } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { mapPrice, type Venue } from "@/lib/venues";
+import { trackApiUsage } from "@/lib/api-usage";
 
 type YelpBusiness = {
   id: string;
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
     url.searchParams.set("radius", String(radius));
     if (price) url.searchParams.set("price", price);
 
+    void trackApiUsage("yelp"); // outbound call (cache hits return above)
     const response = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${apiKey}` },
     });

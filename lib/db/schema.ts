@@ -140,6 +140,14 @@ export const rateLimits = sqliteTable("rate_limits", {
   resetAt: integer("reset_at").notNull(), // ms epoch
 });
 
+// Daily outbound API call counts (C7) — key = "service:YYYY-MM-DD" (UTC).
+export const apiUsage = sqliteTable("api_usage", {
+  key: text("key").primaryKey(),
+  service: text("service").notNull(),
+  day: text("day").notNull(),
+  count: integer("count").notNull().default(0),
+});
+
 export const placeCache = sqliteTable("place_cache", {
   id: text("id").primaryKey(),
   cacheKey: text("cache_key").notNull().unique(),
