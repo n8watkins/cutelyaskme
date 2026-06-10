@@ -118,8 +118,10 @@ clamp accordingly.
 
 ### B4. Settings page
 **Spec:** New `/settings` (auth-gated) + `user_settings` table (1 row per user,
-JSON or columns): default radius, radius bounds, default map style (future),
-plus the **Yelp API usage meter** (see C7). Move the address book here too.
+JSON or columns): default radius, radius bounds, **map zoom mode** (A2,
+absorbs the `ca:mapZoomMode` localStorage key), **calendar export mode** (E3:
+one event vs. one event per stop), default map style (future), plus the
+**Yelp API usage meter** (see C7). Move the address book here too.
 Future hooks: theme/format restyle ("change the entire format/style eventually").
 **Files:** new `src/app/settings/page.tsx`, `src/app/api/settings/route.ts`,
 schema + migration.
@@ -264,15 +266,28 @@ section — implementer's judgment after one test generation.)
 **Accept:** Tips mention the actual venues/activities of the plan or the section
 doesn't render.
 
-### E3. One calendar button
-**Problem:** Multiple per-stop calendar links + ics export.
-**Spec:** Single **"Add to calendar"** button → small menu: **Google Calendar**
-(one event spanning the whole date, full itinerary + travel legs + plan link in
-description — `lib/calendar.ts` `buildGCalLink`/`buildItineraryText` already do
-most of this) and **Download .ics** (same content). Remove per-stop calendar
-links from the timeline.
-**Accept:** Exactly one calendar control on the plan page; both options produce
-one event containing the full itinerary text + link.
+### E3. One calendar button (clarified June 2026)
+**Problem:** Multiple per-stop calendar links + ics export scattered around.
+**Spec:** Single **"Add to calendar"** button. A **setting** (B4/WP-H; localStorage
+key until the Settings page exists) controls the export shape:
+- **One event** — a single event spanning the whole date window, full itinerary
+  + travel legs + plan link in the description (`buildGCalLink` /
+  `buildItineraryText` already do most of this).
+- **One event per stop** — every stop becomes its own event at its own
+  time/venue (each with the full itinerary + link in the description).
+
+Per-format reality:
+- **.ics** supports both modes in one click — one VEVENT or N VEVENTs in a
+  single downloaded file (the current `downloadICS` already writes N).
+- **Google Calendar web links** are one-event-per-click (no batch URL API).
+  In per-stop mode the button expands a small ordered list — "1️⃣ Dinner ·
+  2️⃣ Bookstore · 3️⃣ Sunset" — each link pre-filled, so it's tap-tap-tap.
+  In one-event mode it's a single link.
+
+Remove the scattered per-stop calendar links from the timeline rows.
+**Accept:** Exactly one calendar control; with "one event" set, both formats
+produce a single all-evening event; with "per stop" set, .ics downloads N
+events in one file and the GCal flow offers N pre-filled links.
 
 ---
 
