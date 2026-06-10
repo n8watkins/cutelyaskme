@@ -419,16 +419,19 @@ native share sheet.
 4. **G1 music:** **yes** — source royalty-free romantic loops (CC0/CC-BY),
    bundle locally. → spec in G1.
 
-## Suggested sub-agent batches (in build order)
+## Sub-agent batches (in build order) — STATUS as of June 10, 2026
 
-| Batch | Items | Why grouped |
-|---|---|---|
-| 1 | A1, A2, A3, A4, D1 | Pure planner layout/map pass — one agent, mostly `SenderPlanningView` + `DateMap` |
-| 2 | B1, B2, B3 (+ migration) | Addresses & defaults — schema + WaypointPicker + slider |
-| 3 | C1, C2, C3 | Search flow restructure (stepper) — biggest planner logic change |
-| 4 | A5, C6 | Map-pin custom venues + natural-places fix (both touch map click + venue shape) |
-| 5 | C4, C5, C7 (+ details API) | Yelp details/reviews/usage — one new API route + cache policy |
-| 6 | D2, D3, E1, E2, E3 | Time intelligence + itinerary integrity + calendar (timeline-centric) |
-| 7 | F1–F5 | Post-date lifecycle |
-| 8 | B4 + WP-H | Settings page (needs C7 + B1 done) |
-| 9 | G1 | Keepsake card |
+| Batch | Items | Status | Commit |
+|---|---|---|---|
+| 1 | A1, A2, A3, A4, D1 | ✅ **shipped + deployed** | `9cfacf8` |
+| 2 | B1, B2, B3 (+ `kind` migration) | ✅ **shipped + deployed** | `b121432` |
+| 3 | C1, C2, C3 (+ `lib/geo.ts`) | ✅ **shipped + deployed** | `634ca74` |
+| 4 | A5, C6 (Overpass UA/mirror/cache fix) | ✅ **shipped + deployed** | `d815e37` |
+| 5 | C4, C5, C7 (+ `/api/places/[id]`, `api_usage`) | ✅ **shipped + deployed** (C5 = paid-tier, degrades gracefully) | `b0a051e` |
+| 6 | D2, D3, E1, E2, E3 | ⬜ **NEXT** | — |
+| 7 | F1–F5 | ⬜ | — |
+| 8 | B4 + WP-H (Settings; absorbs `ca:mapZoomMode` + calendar mode + usage meter) | ⬜ | — |
+| 9 | G1 keepsake card | ⬜ | — |
+
+For project conventions, verification loop, deploy steps, and the orchestrator
+playbook, see [`HANDOFF.md`](HANDOFF.md).
