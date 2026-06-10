@@ -25,10 +25,11 @@ Overpass/OSM, Nominatim, Leaflet, Cloudinary, web-push, suncalc, Vitest.
 
 ## State of the roadmap
 
-Batches 1–5 of `PLANNER_V2.md` are shipped + deployed (status table at the
-bottom of that file, with commit hashes). **Batch 6 is next**: D2, D3, E1, E2,
-E3. Then Batch 7 (F1–F5 post-date lifecycle), Batch 8 (Settings), Batch 9
-(keepsake card).
+Batches 1–6 of `PLANNER_V2.md` are shipped + deployed (status table at the
+bottom of that file, with commit hashes). **Batch 7 is next**: F1–F5 post-date
+lifecycle. Then Batch 8 (Settings), Batch 9 (keepsake card). Batch 7's
+`dateEnd` notion can build on Batch 6's leg data (`lib/route-legs.ts`,
+`legByDestination`/`chosenLeg` in `SenderPlanningView`) plus stop durations.
 
 ## Orchestrator loop (per batch)
 
