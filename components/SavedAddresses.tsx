@@ -2,18 +2,28 @@
 
 import { useState } from "react";
 
+export type AddressKind = "home" | "pickup" | "custom";
+
 export type SavedAddress = {
   id: string;
   label: string;
+  kind: AddressKind;
   address: string;
   lat: number | null;
   lng: number | null;
+};
+
+export const KIND_ICONS: Record<AddressKind, string> = {
+  home: "🏠",
+  pickup: "💕",
+  custom: "📍",
 };
 
 export function SavedAddresses({ initial }: { initial: SavedAddress[] }) {
   const [addresses, setAddresses] = useState<SavedAddress[]>(initial);
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
+  const [kind, setKind] = useState<AddressKind>("custom");
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -60,15 +70,20 @@ export function SavedAddresses({ initial }: { initial: SavedAddress[] }) {
       const res = await fetch("/api/addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ label, address, lat: c?.lat ?? null, lng: c?.lng ?? null }),
+        body: JSON.stringify({ label, kind, address, lat: c?.lat ?? null, lng: c?.lng ?? null }),
       });
       if (!res.ok) {
         setError("Couldn't save. Try again.");
         return;
       }
       const data = (await res.json()) as { address: SavedAddress };
-      setAddresses((p) => [data.address, ...p]);
+      // Home/pickup are singletons server-side — drop any replaced row locally too.
+      setAddresses((p) => [
+        data.address,
+        ...p.filter((a) => !(kind !== "custom" && a.kind === kind)),
+      ]);
       setLabel("");
+      setKind("custom");
       setAddress("");
       setCoords(null);
       setOpen(false);
@@ -93,7 +108,7 @@ export function SavedAddresses({ initial }: { initial: SavedAddress[] }) {
               key={a.id}
               className="flex items-center gap-3 rounded-2xl border-2 border-[#ffd6e8] bg-white p-3"
             >
-              <span className="text-lg">🏠</span>
+              <span className="text-lg">{KIND_ICONS[a.kind] ?? "📍"}</span>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-black text-[#3a2530]">{a.label}</p>
                 <p className="truncate text-xs text-[#8a6a78]">{a.address}</p>
@@ -113,6 +128,28 @@ export function SavedAddresses({ initial }: { initial: SavedAddress[] }) {
 
       {open ? (
         <div className="rounded-2xl border-2 border-[#e7d9ff] bg-[#faf7ff] p-3">
+          {/* Kind — home/pickup get an icon + replace the previous one */}
+          <div className="mb-2 flex gap-1.5">
+            {(["home", "pickup", "custom"] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setKind(k);
+                  if (k === "home" && !label.trim()) setLabel("Home");
+                  if (k === "pickup" && !label.trim()) setLabel("Pickup spot");
+                }}
+                aria-pressed={kind === k}
+                className={`rounded-full px-2.5 py-1 text-xs font-black transition ${
+                  kind === k
+                    ? "bg-[#c7a6ff] text-white"
+                    : "border border-[#e7d9ff] text-[#8a6a78] hover:bg-white"
+                }`}
+              >
+                {KIND_ICONS[k]} {k === "home" ? "Home" : k === "pickup" ? "Pickup" : "Other"}
+              </button>
+            ))}
+          </div>
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}

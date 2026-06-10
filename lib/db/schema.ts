@@ -6,6 +6,8 @@ export const savedAddresses = sqliteTable("saved_addresses", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
   label: text("label").notNull(),
+  // "home" | "pickup" | "custom" — home/pickup are singletons per user (upserted on save)
+  kind: text("kind").notNull().default("custom"),
   address: text("address").notNull(),
   lat: real("lat"),
   lng: real("lng"),

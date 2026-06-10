@@ -7,7 +7,7 @@ import SunCalc from "suncalc";
 import { parseTimeToMinutes, formatTime, formatDuration } from "@/lib/datetime";
 import { buildItineraryText, icsEscape, buildGCalLink } from "@/lib/calendar";
 import { sunWarning } from "@/lib/sun";
-import type { SavedAddress } from "@/components/SavedAddresses";
+import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
 
 type Waypoint = { label: string; lat: number; lng: number };
 import type { Venue } from "@/lib/venues";
@@ -145,14 +145,19 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     return d;
   });
 
-  const [searchLocation, setSearchLocation] = useState(plan.location ?? "");
-  const [locationDraft, setLocationDraft] = useState(plan.location ?? "");
+  // B2: the search defaults to the pickup point (where the date starts), then
+  // falls back to the plan's location. Always overridable via the search box.
+  const initialSearchLabel = plan.pickupPoint?.label ?? plan.location ?? "";
+  const [searchLocation, setSearchLocation] = useState(initialSearchLabel);
+  const [locationDraft, setLocationDraft] = useState(initialSearchLabel);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(() =>
+    plan.pickupPoint?.lat ? { lat: plan.pickupPoint.lat, lng: plan.pickupPoint.lng } : null,
+  );
   const [pinMode, setPinMode] = useState(false);
   // Map wheel-zoom mode (A2). Persisted in localStorage; the Settings page will
   // read/write the same key once it exists. Read post-mount to avoid hydration mismatch.
@@ -249,7 +254,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     if (hasFetched.current || !searchLocation) return;
     hasFetched.current = true;
     fetchAll(radius, searchLocation);
-    void geocodeForward(searchLocation);
+    // Pickup point already carries coords — only geocode when we don't have them.
+    if (!plan.pickupPoint?.lat) void geocodeForward(searchLocation);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -259,12 +265,27 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     fetch("/api/addresses")
       .then((r) => (r.ok ? r.json() : { addresses: [] }))
       .then((data: { addresses?: SavedAddress[] }) => {
-        if (active) setSavedAddrs(data.addresses ?? []);
+        if (!active) return;
+        const addrs = data.addresses ?? [];
+        setSavedAddrs(addrs);
+        // B2 fallback: no pickup on the plan and no location → center the search
+        // on the saved pickup (or home). No venue fetch — that stays on demand.
+        if (!initialSearchLabel) {
+          const fallback =
+            addrs.find((a) => a.kind === "pickup" && a.lat != null) ??
+            addrs.find((a) => a.kind === "home" && a.lat != null);
+          if (fallback && fallback.lat != null && fallback.lng != null) {
+            setMapCenter({ lat: fallback.lat, lng: fallback.lng });
+            setLocationDraft(fallback.address);
+            setSearchLocation(fallback.address);
+          }
+        }
       })
       .catch(() => {});
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load the sender's liked spots once, so the picker can recommend favorites.
@@ -522,8 +543,24 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 Getting there
               </p>
               <div className="grid gap-2">
-                <WaypointPicker kind="start" value={startPoint} saved={savedAddrs} onChange={setStartPoint} />
-                <WaypointPicker kind="pickup" value={pickupPoint} saved={savedAddrs} onChange={setPickupPoint} />
+                <WaypointPicker
+                  kind="start"
+                  value={startPoint}
+                  saved={savedAddrs}
+                  onChange={setStartPoint}
+                  onSaved={(a) =>
+                    setSavedAddrs((p) => [a, ...p.filter((x) => x.kind !== a.kind)])
+                  }
+                />
+                <WaypointPicker
+                  kind="pickup"
+                  value={pickupPoint}
+                  saved={savedAddrs}
+                  onChange={setPickupPoint}
+                  onSaved={(a) =>
+                    setSavedAddrs((p) => [a, ...p.filter((x) => x.kind !== a.kind)])
+                  }
+                />
               </div>
             </div>
 
@@ -560,7 +597,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
               <input
                 type="range"
                 min={1}
-                max={60}
+                max={25}
                 value={radiusMi}
                 aria-label="Search range in miles"
                 onChange={(e) => setRadius(String(Math.round(Number(e.target.value) * 1609)))}
@@ -569,7 +606,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 className="w-full accent-[#ff7aaa]"
               />
               <p className="mt-0.5 text-[10px] text-[#c0a0b0]">
-                Restaurants cap at ~25 mi (Yelp); parks &amp; viewpoints can go the full range.
+                Searches up to 25 miles around your center.
               </p>
             </div>
 
@@ -1213,16 +1250,46 @@ function WaypointPicker({
   value,
   saved,
   onChange,
+  onSaved,
 }: {
   kind: "start" | "pickup";
   value: Waypoint | null;
   saved: SavedAddress[];
   onChange: (w: Waypoint | null) => void;
+  /** Called after "save as Home/Pickup" persists the address (B1) */
+  onSaved?: (a: SavedAddress) => void;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
   const icon = kind === "start" ? "🏠" : "💕";
   const labelText = kind === "start" ? "Your place" : "Pickup";
+  // The address book kind this waypoint maps to.
+  const addrKind = kind === "start" ? "home" : "pickup";
+  const alreadySaved = !!value && saved.some((a) => a.kind === addrKind && a.address === value.label);
+
+  async function saveToBook() {
+    if (!value) return;
+    setSaveBusy(true);
+    try {
+      const res = await fetch("/api/addresses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: kind === "start" ? "Home" : "Pickup spot",
+          kind: addrKind,
+          address: value.label,
+          lat: value.lat,
+          lng: value.lng,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { address: SavedAddress };
+        onSaved?.(data.address);
+      }
+    } catch {}
+    setSaveBusy(false);
+  }
 
   async function geocodeAndSet(label: string, query: string) {
     setBusy(true);
@@ -1247,6 +1314,18 @@ function WaypointPicker({
           <p className="text-[10px] font-black uppercase tracking-wide text-[#c0a0b0]">{labelText}</p>
           <p className="truncate text-sm font-black text-[#3a2530]">{value.label}</p>
         </div>
+        {/* B1: save this address straight into the address book */}
+        {!alreadySaved && (
+          <button
+            type="button"
+            onClick={() => void saveToBook()}
+            disabled={saveBusy}
+            title={`Save as ${kind === "start" ? "Home" : "Pickup spot"}`}
+            className="shrink-0 rounded-full border border-[#c7a6ff] px-2 py-0.5 text-[10px] font-black text-[#7c5aa0] transition hover:bg-[#f5f0ff] disabled:opacity-50"
+          >
+            {saveBusy ? "…" : `💾 Save as ${kind === "start" ? "Home" : "Pickup"}`}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onChange(null)}
@@ -1296,7 +1375,7 @@ function WaypointPicker({
               onClick={() => void pickSaved(a)}
               className="rounded-full border border-[#c7a6ff] px-2 py-0.5 text-[10px] font-black text-[#7c5aa0] transition hover:bg-[#f5f0ff]"
             >
-              {a.label}
+              {KIND_ICONS[a.kind] ?? "📍"} {a.label}
             </button>
           ))}
         </div>

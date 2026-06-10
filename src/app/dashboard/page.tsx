@@ -363,7 +363,7 @@ export default async function DashboardPage() {
         <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
           🏠 Saved addresses
         </h2>
-        <SavedAddresses initial={myAddresses} />
+        <SavedAddresses initial={myAddresses as import("@/components/SavedAddresses").SavedAddress[]} />
       </section>
     </main>
   );
