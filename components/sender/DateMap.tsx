@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Venue } from "@/lib/venues";
 import { htmlEscape as esc } from "@/lib/html";
 
@@ -18,6 +18,8 @@ type DateMapProps = {
   onCandidateSelect?: (venue: Venue) => void;
   /** Start / pickup waypoints (your place, date's place) */
   waypoints?: { id: string; label: string; lat: number; lng: number; kind: "start" | "pickup" }[];
+  /** "ctrl" (default) = Ctrl/⌘+scroll zooms, plain scroll passes through; "plain" = scroll always zooms */
+  wheelZoomMode?: "ctrl" | "plain";
 };
 
 const STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
@@ -32,6 +34,7 @@ export function DateMap({
   selectedId,
   onCandidateSelect,
   waypoints,
+  wheelZoomMode,
 }: DateMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
@@ -44,6 +47,19 @@ export function DateMap({
     onCandidateSelectRef.current = onCandidateSelect;
   }, [onCandidateSelect]);
 
+  // Wheel-zoom mode (A2): "ctrl" = Google-Maps-style modifier zoom + hint overlay.
+  const wheelModeRef = useRef<"ctrl" | "plain">(wheelZoomMode ?? "ctrl");
+  const lastWheelZoomRef = useRef(0);
+  const [showZoomHint, setShowZoomHint] = useState(false);
+  const hintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    wheelModeRef.current = wheelZoomMode ?? "ctrl";
+    const map = mapRef.current;
+    if (!map) return;
+    if (wheelModeRef.current === "plain") map.scrollWheelZoom.enable();
+    else map.scrollWheelZoom.disable();
+  }, [wheelZoomMode]);
+
   const renderStops = useCallback((L: typeof import("leaflet"), currentStops: (Venue | null)[]) => {
     const layer = stopsLayerRef.current;
     const map = mapRef.current;
@@ -52,10 +68,10 @@ export function DateMap({
     layer.clearLayers();
     const filled = currentStops.filter(Boolean) as Venue[];
 
-    if (!filled.length) {
-      map.setView([40.73, -73.99], 13);
-      return;
-    }
+    // No stops → stay where we are (search center / last view). Never jump to a
+    // hardcoded city (the old [40.73, -73.99] NYC fallback yanked the map away
+    // from the search area on deselect).
+    if (!filled.length) return;
 
     filled.forEach((venue, i) => {
       const color = STOP_COLORS[i % STOP_COLORS.length];
@@ -214,15 +230,49 @@ export function DateMap({
 
   // Init map once
   useEffect(() => {
+    let wheelCleanup: (() => void) | null = null;
+
     async function init() {
       const L = (await import("leaflet")).default;
       if (!containerRef.current || mapRef.current) return;
 
       const map = L.map(containerRef.current, {
         zoomControl: true,
-        scrollWheelZoom: false,
+        // Wheel zoom is mode-dependent (A2): Leaflet's own handler only for
+        // "plain"; "ctrl" mode uses the custom listener below.
+        scrollWheelZoom: wheelModeRef.current === "plain",
         zoomAnimation: true,
+        // Mobile: pinch-to-zoom + drag explicitly on.
+        touchZoom: true,
+        dragging: true,
       });
+
+      // Initial view (A4): search center → first waypoint → neutral US overview.
+      // Never a hardcoded city.
+      const wp = waypoints?.[0];
+      if (viewCenter) map.setView([viewCenter.lat, viewCenter.lng], 13);
+      else if (wp) map.setView([wp.lat, wp.lng], 12);
+      else map.setView([39.5, -98.35], 4);
+
+      // Ctrl/⌘+scroll zoom + "hold Ctrl" hint when plain-scrolling in ctrl mode.
+      const onWheel = (e: WheelEvent) => {
+        if (wheelModeRef.current !== "ctrl") return; // plain mode → Leaflet handles it
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault(); // also stops browser page-zoom
+          const now = Date.now();
+          if (now - lastWheelZoomRef.current < 80) return;
+          lastWheelZoomRef.current = now;
+          const point = map.mouseEventToContainerPoint(e);
+          map.setZoomAround(point, map.getZoom() + (e.deltaY < 0 ? 1 : -1));
+        } else {
+          setShowZoomHint(true);
+          if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
+          hintTimerRef.current = setTimeout(() => setShowZoomHint(false), 1400);
+        }
+      };
+      const wheelTarget = containerRef.current;
+      wheelTarget.addEventListener("wheel", onWheel, { passive: false });
+      wheelCleanup = () => wheelTarget.removeEventListener("wheel", onWheel);
 
       // CartoDB Positron — clean, minimal, romantic-neutral
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
@@ -244,6 +294,8 @@ export function DateMap({
     void init();
 
     return () => {
+      wheelCleanup?.();
+      if (hintTimerRef.current) clearTimeout(hintTimerRef.current);
       mapRef.current?.remove();
       mapRef.current = null;
     };
@@ -312,7 +364,20 @@ export function DateMap({
         }
         .leaflet-tooltip-top::before { border-top-color: #3a2530; }
       `}</style>
-      <div ref={containerRef} className="h-full w-full rounded-[20px]" />
+      <div className="relative h-full w-full">
+        <div ref={containerRef} className="h-full w-full rounded-[20px]" />
+        {/* "Hold Ctrl to zoom" hint (A2 ctrl mode) — pointer-events-none so it never blocks the map */}
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute inset-0 z-[1000] grid place-items-center rounded-[20px] bg-[#3a2530]/40 transition-opacity duration-300 ${
+            showZoomHint ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <span className="rounded-full bg-white px-4 py-2 text-sm font-black text-[#3a2530] shadow-lg">
+            Hold Ctrl / ⌘ + scroll to zoom
+          </span>
+        </div>
+      </div>
     </>
   );
 }

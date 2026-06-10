@@ -154,6 +154,23 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
 
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [pinMode, setPinMode] = useState(false);
+  // Map wheel-zoom mode (A2). Persisted in localStorage; the Settings page will
+  // read/write the same key once it exists. Read post-mount to avoid hydration mismatch.
+  const [zoomMode, setZoomMode] = useState<"ctrl" | "plain">("ctrl");
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      const stored = localStorage.getItem("ca:mapZoomMode");
+      if (stored === "plain") setZoomMode("plain");
+    });
+  }, []);
+  function changeZoomMode(mode: "ctrl" | "plain") {
+    setZoomMode(mode);
+    try {
+      localStorage.setItem("ca:mapZoomMode", mode);
+    } catch {}
+  }
+  // Mobile: let the map expand taller than its default drawer height (A1).
+  const [mapExpanded, setMapExpanded] = useState(false);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
@@ -462,28 +479,42 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
 
   const radiusMi = Math.max(1, Math.round(parseInt(radius, 10) / 1609));
 
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-6 sm:py-8">
-      <h1 className="mb-1 text-2xl font-black text-[#3a2530] sm:text-3xl">Your date plan ✨</h1>
-      <p className="mb-6 text-[#8a6a78] sm:mb-8">Here&apos;s what {plan.recipientName} chose.</p>
+  const dateEndMinutes = timeline.length
+    ? timeline[timeline.length - 1].endMinutes
+    : startOfDay + 120;
 
-      <div className="grid gap-6 lg:gap-8 lg:grid-cols-[1fr_420px]">
+  return (
+    <div className="mx-auto max-w-[1450px] px-4 py-6 sm:py-8">
+      <h1 className="mb-1 text-2xl font-black text-[#3a2530] sm:text-3xl">Your date plan ✨</h1>
+      <p className="mb-5 text-[#8a6a78]">Here&apos;s what {plan.recipientName} chose.</p>
+
+      {/* Date details — full-width banner (A3) */}
+      <section className="mb-4 rounded-[24px] border-2 border-[#ffd6e8] bg-white px-5 py-4">
+        <div className="flex flex-wrap items-center gap-x-10 gap-y-3">
+          <BannerItem icon="📅" label="Date" value={plan.selectedDateLabel ?? "—"} />
+          <BannerItem icon="🕰️" label="Time" value={plan.selectedTimeLabel ?? "—"} />
+          {plan.dressVibe && (
+            <BannerItem
+              icon="👗"
+              label="Her vibe"
+              value={DRESS_VIBE_LABELS[plan.dressVibe] ?? plan.dressVibe}
+            />
+          )}
+        </div>
+      </section>
+
+      {/* Sun strip — pinned so you can always plan around sunset (D1) */}
+      {sun && (
+        <SunStrip sun={sun} startMinutes={startOfDay} endMinutes={dateEndMinutes} />
+      )}
+
+      <div className="grid gap-6 lg:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* Left column */}
         <div className="space-y-6">
           <section className="rounded-[24px] border-2 border-[#ffd6e8] bg-white p-4 sm:p-5">
             <h2 className="mb-4 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
-              The date
+              Plan the stops
             </h2>
-
-            <dl className="mb-4 grid gap-3">
-              <HerRow icon="📅" label="Date" value={plan.selectedDateLabel ?? "—"} />
-              <HerRow icon="🕰️" label="Time" value={plan.selectedTimeLabel ?? "—"} />
-              {plan.dressVibe && (
-                <HerRow icon="👗" label="Her vibe" value={DRESS_VIBE_LABELS[plan.dressVibe] ?? plan.dressVibe} />
-              )}
-            </dl>
-
-            <hr className="mb-4 border-[#ffd6e8]" />
 
             {/* Getting there — start + pickup */}
             <div className="mb-4">
@@ -717,13 +748,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 )}
               </div>
 
-              {sun && (
-                <p className="mb-4 text-xs font-black text-[#c0a0b0]">
-                  🌅 Sunset ~{formatTime(sun.sunset)} · 🌌 Dark ~{formatTime(sun.dusk)}
-                </p>
-              )}
-
-              <div className="grid gap-3">
+              <div className="mt-3 grid gap-3">
                 {timeline.map((stop) => (
                   <TimelineRow
                     key={stop.key}
@@ -744,10 +769,15 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
           )}
         </div>
 
-        {/* Right column — map */}
+        {/* Right column — map (A1: half the layout, full-height sticky on desktop) */}
         <div>
-          <div className="space-y-3 lg:sticky lg:top-4">
-            <div className="h-[320px] overflow-hidden rounded-[20px] border-2 border-[#ffd6e8] shadow-sm sm:h-[440px]">
+          {/* top offset clears the sticky sun strip */}
+          <div className="space-y-3 lg:sticky lg:top-[92px]">
+            <div
+              className={`overflow-hidden rounded-[20px] border-2 border-[#ffd6e8] shadow-sm ${
+                mapExpanded ? "h-[68vh]" : "h-[340px] sm:h-[460px]"
+              } lg:h-[calc(100vh-180px)] lg:min-h-[480px]`}
+            >
               <DateMap
                 stops={mapStops}
                 pinMode={pinMode}
@@ -760,20 +790,55 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                   if (activeStopKey) selectVenue(activeStopKey, v);
                 }}
                 waypoints={waypoints}
+                wheelZoomMode={zoomMode}
               />
             </div>
 
+            {/* Mobile-only: grow the map */}
             <button
               type="button"
-              onClick={() => setPinMode((p) => !p)}
-              className={`w-full rounded-full border-2 py-2.5 text-sm font-black transition ${
-                pinMode
-                  ? "border-[#ff7aaa] bg-[#ff7aaa] text-white"
-                  : "border-[#ffd6e8] text-[#8a6a78] hover:bg-[#fff7fb]"
-              }`}
+              onClick={() => setMapExpanded((e) => !e)}
+              className="w-full rounded-full border-2 border-[#ffd6e8] py-2 text-xs font-black text-[#8a6a78] transition hover:bg-[#fff7fb] lg:hidden"
             >
-              {pinMode ? "📍 Drag pin to set search area" : "📍 Pick center on map"}
+              {mapExpanded ? "▲ Shrink map" : "▼ Expand map"}
             </button>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPinMode((p) => !p)}
+                className={`flex-1 rounded-full border-2 py-2.5 text-sm font-black transition ${
+                  pinMode
+                    ? "border-[#ff7aaa] bg-[#ff7aaa] text-white"
+                    : "border-[#ffd6e8] text-[#8a6a78] hover:bg-[#fff7fb]"
+                }`}
+              >
+                {pinMode ? "📍 Drag pin to set search area" : "📍 Pick center on map"}
+              </button>
+
+              {/* Zoom mode (A2) — synced to localStorage; Settings will own this later */}
+              <div className="hidden items-center gap-1 rounded-full border-2 border-[#ffd6e8] px-2.5 lg:flex">
+                <span className="text-[10px] font-black uppercase tracking-wide text-[#c0a0b0]">
+                  🖱 Zoom
+                </span>
+                {(["ctrl", "plain"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => changeZoomMode(m)}
+                    aria-pressed={zoomMode === m}
+                    title={m === "ctrl" ? "Hold Ctrl/⌘ + scroll to zoom" : "Scroll always zooms"}
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-black transition ${
+                      zoomMode === m
+                        ? "bg-[#ff7aaa] text-white"
+                        : "text-[#8a6a78] hover:bg-[#fff7fb]"
+                    }`}
+                  >
+                    {m === "ctrl" ? "Ctrl+scroll" : "Scroll"}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {!mapStops.some(Boolean) && !pinMode && (
               <p className="text-center text-sm text-[#c0a0b0]">
@@ -1240,16 +1305,67 @@ function WaypointPicker({
   );
 }
 
-function HerRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+/** A3: large date-detail item for the full-width header banner */
+function BannerItem({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
-    <div className="flex items-start gap-3">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-[#fff7fb] text-lg">
+    <div className="flex items-center gap-3">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#fff7fb] text-2xl">
         {icon}
       </span>
       <div>
-        <dt className="text-xs font-black uppercase tracking-[0.14em] text-[#c0a0b0]">{label}</dt>
-        <dd className="font-black text-[#3a2530]">{value}</dd>
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#c0a0b0]">{label}</p>
+        <p className="text-lg font-black leading-tight text-[#3a2530]">{value}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * D1: always-visible sun timeline — a sticky strip showing sunset/dusk markers
+ * on a day→night axis with the planned date window overlaid.
+ */
+function SunStrip({
+  sun,
+  startMinutes,
+  endMinutes,
+}: {
+  sun: { sunset: number; dusk: number };
+  startMinutes: number;
+  endMinutes: number;
+}) {
+  const axisStart = Math.min(startMinutes, sun.sunset) - 45;
+  const axisEnd = Math.max(endMinutes, sun.dusk) + 45;
+  const span = Math.max(axisEnd - axisStart, 1);
+  const pct = (m: number) => Math.min(100, Math.max(0, ((m - axisStart) / span) * 100));
+
+  return (
+    <section className="sticky top-2 z-30 mb-5 rounded-2xl border-2 border-[#ffd6a5] bg-white/95 px-4 pb-3.5 pt-3 shadow-sm backdrop-blur">
+      <div className="mb-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs font-black">
+        <span className="text-[#3a2530]">
+          💞 Your date {formatTime(startMinutes)} – {formatTime(endMinutes)}
+        </span>
+        <span className="text-[#d98a3a]">🌅 Sunset {formatTime(sun.sunset)}</span>
+        <span className="text-[#7c5aa0]">🌌 Dark {formatTime(sun.dusk)}</span>
+      </div>
+      <div className="relative h-3 rounded-full bg-gradient-to-r from-[#ffe9b8] via-[#ffc88a] to-[#4a3858]">
+        {/* planned window */}
+        <div
+          className="absolute top-0 h-3 rounded-full bg-[#ff7aaa]/80 ring-2 ring-white"
+          style={{
+            left: `${pct(startMinutes)}%`,
+            width: `${Math.max(pct(endMinutes) - pct(startMinutes), 2)}%`,
+          }}
+        />
+        {/* sunset + dark markers */}
+        <div
+          className="absolute -top-1 h-5 w-[3px] -translate-x-1/2 rounded bg-[#d98a3a]"
+          style={{ left: `${pct(sun.sunset)}%` }}
+        />
+        <div
+          className="absolute -top-1 h-5 w-[3px] -translate-x-1/2 rounded bg-[#4a3858]"
+          style={{ left: `${pct(sun.dusk)}%` }}
+        />
+      </div>
+    </section>
   );
 }
