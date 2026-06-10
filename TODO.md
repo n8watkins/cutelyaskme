@@ -3,6 +3,9 @@
 A living status doc: what's shipped, what's broken, and what's next.
 For the end-to-end product flow + decisions (auth, notifications, review states),
 see [`docs/PRODUCT_FLOW.md`](docs/PRODUCT_FLOW.md).
+**The current roadmap is [`docs/PLANNER_V2.md`](docs/PLANNER_V2.md)** — the full
+June 2026 walkthrough breakdown (planner UX, Yelp economy, post-date lifecycle,
+keepsake card) with sub-agent-ready work packages.
 
 ---
 
