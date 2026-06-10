@@ -36,12 +36,15 @@ export async function GET(request: NextRequest) {
   const radius = Math.min(parseInt(searchParams.get("radius") ?? "8000", 10), 40000);
   const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10));
   const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") ?? "5", 10)), 10);
+  // Optional per-stop price level (C3): Yelp's price param, "1".."4".
+  const priceRaw = parseInt(searchParams.get("price") ?? "0", 10);
+  const price = priceRaw >= 1 && priceRaw <= 4 ? String(priceRaw) : null;
 
   if (!q || !location) {
     return NextResponse.json({ venues: [] });
   }
 
-  const cacheKey = `yelp:${q.toLowerCase()}:${location.toLowerCase()}:r${radius}:o${offset}:l${limit}`;
+  const cacheKey = `yelp:${q.toLowerCase()}:${location.toLowerCase()}:r${radius}:o${offset}:l${limit}:p${price ?? "any"}`;
   const now = new Date().toISOString();
 
   try {
@@ -66,6 +69,7 @@ export async function GET(request: NextRequest) {
     url.searchParams.set("offset", String(offset));
     url.searchParams.set("sort_by", "rating");
     url.searchParams.set("radius", String(radius));
+    if (price) url.searchParams.set("price", price);
 
     const response = await fetch(url.toString(), {
       headers: { Authorization: `Bearer ${apiKey}` },

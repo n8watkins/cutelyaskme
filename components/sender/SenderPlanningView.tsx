@@ -7,6 +7,7 @@ import SunCalc from "suncalc";
 import { parseTimeToMinutes, formatTime, formatDuration } from "@/lib/datetime";
 import { buildItineraryText, icsEscape, buildGCalLink } from "@/lib/calendar";
 import { sunWarning } from "@/lib/sun";
+import { haversineMiles, formatMiles, type LatLng } from "@/lib/geo";
 import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
 
 type Waypoint = { label: string; lat: number; lng: number };
@@ -134,9 +135,14 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   const [venueLoading, setVenueLoading] = useState<Record<string, boolean>>({});
   const [venueOffset, setVenueOffset] = useState<Record<string, number>>({});
   const [venueHasMore, setVenueHasMore] = useState<Record<string, boolean>>({});
+  // Whether a stop has been explicitly searched at the current center (C1) —
+  // distinguishes "not searched yet" from "searched, came up empty".
+  const [venueSearched, setVenueSearched] = useState<Record<string, boolean>>({});
 
   const [radius, setRadius] = useState("8000");
-  const [priceFilter, setPriceFilter] = useState<number | null>(null);
+  // C3: each stop carries its own price level (null = any) — tacos can be $
+  // while dinner is $$$.
+  const [stopPrices, setStopPrices] = useState<Record<string, number | null>>({});
   const [stopDurations, setStopDurations] = useState<Record<string, number>>(() => {
     const d: Record<string, number> = {};
     for (const key of buildStops(plan)) {
@@ -210,7 +216,14 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     return key === ENTREE_KEY ? entreeVenue : (activityVenues[key] ?? null);
   }
 
-  async function fetchVenues(key: string, _query: string, radiusVal: string, loc: string, append = false) {
+  async function fetchVenues(
+    key: string,
+    _query: string,
+    radiusVal: string,
+    loc: string,
+    append = false,
+    priceOverride?: number | null,
+  ) {
     if (!loc.trim()) return;
     setVenueLoading((p) => ({ ...p, [key]: true }));
     try {
@@ -223,7 +236,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
         const q = key === ENTREE_KEY
           ? `${plan.selectedEntree ?? ""} restaurant`
           : (ACTIVITY_PLACE_QUERY[key] ?? key);
-        url = `/api/places?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&radius=${radiusVal}&offset=${offset}&limit=${PAGE_SIZE}`;
+        const price = priceOverride !== undefined ? priceOverride : (stopPrices[key] ?? null);
+        url = `/api/places?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&radius=${radiusVal}&offset=${offset}&limit=${PAGE_SIZE}${price ? `&price=${price}` : ""}`;
       }
 
       const res = await fetch(url);
@@ -238,22 +252,34 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
         }));
         setVenueHasMore((p) => ({ ...p, [key]: isYelp && incoming.length === PAGE_SIZE }));
         setVenueOffset((p) => ({ ...p, [key]: offset + incoming.length }));
+        setVenueSearched((p) => ({ ...p, [key]: true }));
       }
     } catch {}
     setVenueLoading((p) => ({ ...p, [key]: false }));
   }
 
-  function fetchAll(radiusVal: string, loc: string) {
-    for (const key of buildStops(plan)) {
-      const query = getStopQuery(key);
-      if (query) void fetchVenues(key, query, radiusVal, loc);
-    }
+  // C1: results from a previous center/radius are stale — drop them so every
+  // stop goes back to its explicit "Search spots" button. No automatic refetch.
+  function clearResults() {
+    setVenueResults({});
+    setVenueOffset({});
+    setVenueHasMore({});
+    setVenueSearched({});
   }
 
+  // C1: re-fetch ONLY the stop that's already being searched (radius/price
+  // refinements) — never the whole lineup.
+  function refetchActive(radiusVal: string) {
+    if (!activeStopKey) return;
+    if (!(venueResults[activeStopKey]?.length)) return;
+    const query = getStopQuery(activeStopKey);
+    if (query) void fetchVenues(activeStopKey, query, radiusVal, searchLocation);
+  }
+
+  // C1: zero venue calls on load — only resolve the map center.
   useEffect(() => {
     if (hasFetched.current || !searchLocation) return;
     hasFetched.current = true;
-    fetchAll(radius, searchLocation);
     // Pickup point already carries coords — only geocode when we don't have them.
     if (!plan.pickupPoint?.lat) void geocodeForward(searchLocation);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -322,7 +348,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     const loc = locationDraft.trim();
     if (!loc) return;
     setSearchLocation(loc);
-    fetchAll(radius, loc);
+    clearResults(); // old area's results are stale; stops re-search on demand
     await geocodeForward(loc);
   }
 
@@ -387,7 +413,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
       if (data.label) {
         setLocationDraft(data.label);
         setSearchLocation(data.label);
-        fetchAll(radius, data.label);
+        clearResults(); // new center → stale results; search per stop on demand
       }
     } catch {}
   }
@@ -583,9 +609,12 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                   onClick={() => void applyLocation()}
                   className="shrink-0 rounded-full bg-[#ff7aaa] px-4 py-2 text-sm font-black text-white outline-none focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
                 >
-                  Search
+                  Set area
                 </button>
               </div>
+              <p className="mt-1 text-[10px] text-[#c0a0b0]">
+                Sets the search center — each stop searches on its own when you hit 🔍.
+              </p>
             </div>
 
             {/* Search range slider */}
@@ -601,34 +630,13 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 value={radiusMi}
                 aria-label="Search range in miles"
                 onChange={(e) => setRadius(String(Math.round(Number(e.target.value) * 1609)))}
-                onPointerUp={() => fetchAll(radius, searchLocation)}
-                onKeyUp={() => fetchAll(radius, searchLocation)}
+                onPointerUp={() => refetchActive(radius)}
+                onKeyUp={() => refetchActive(radius)}
                 className="w-full accent-[#ff7aaa]"
               />
               <p className="mt-0.5 text-[10px] text-[#c0a0b0]">
                 Searches up to 25 miles around your center.
               </p>
-            </div>
-
-            {/* Price */}
-            <div className="mb-4 flex flex-wrap gap-2">
-              <div className="flex items-center gap-1 rounded-full border-2 border-[#ffd6e8] px-3 py-1.5">
-                <span className="mr-1 text-xs font-black text-[#c0a0b0]">💰 Price</span>
-                {([null, 1, 2, 3, 4] as const).map((p) => (
-                  <button
-                    key={p ?? "all"}
-                    type="button"
-                    onClick={() => setPriceFilter(p)}
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-black transition ${
-                      priceFilter === p
-                        ? "bg-[#ff7aaa] text-white"
-                        : "text-[#8a6a78] hover:bg-[#fff7fb]"
-                    }`}
-                  >
-                    {p === null ? "All" : PRICE_LABELS[p]}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Reminisce — rebuild a date from past favorites */}
@@ -704,13 +712,32 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 const lovedVenues = lovedByActivity[key] ?? [];
                 const lovedIds = new Set(lovedVenues.map((v) => v.id));
                 const rawResults = (venueResults[key] ?? []).filter((v) => !lovedIds.has(v.id));
-                const results =
-                  priceFilter === null || isNatural(key)
-                    ? rawResults
-                    : rawResults.filter((v) => v.priceLevel === priceFilter);
+
+                // C2: anchor = the previous stop's chosen venue (walking back past
+                // unchosen stops), else pickup → start → search center. Results are
+                // sorted by distance from it.
+                let anchor: (LatLng & { name: string }) | null = null;
+                for (let j = i - 1; j >= 0 && !anchor; j--) {
+                  const prev = getSelectedVenue(stopOrder[j]);
+                  if (prev) anchor = { lat: prev.lat, lng: prev.lng, name: prev.name };
+                }
+                if (!anchor && pickupPoint?.lat)
+                  anchor = { lat: pickupPoint.lat, lng: pickupPoint.lng, name: "pickup" };
+                if (!anchor && startPoint?.lat)
+                  anchor = { lat: startPoint.lat, lng: startPoint.lng, name: "your place" };
+                if (!anchor && mapCenter)
+                  anchor = { ...mapCenter, name: "search center" };
+
+                const results = anchor
+                  ? rawResults
+                      .map((v) => ({ ...v, distMi: haversineMiles(anchor, v) }))
+                      .sort((a, b) => a.distMi - b.distMi)
+                  : rawResults;
+
                 const loading = venueLoading[key] ?? false;
                 const hasMore = venueHasMore[key] ?? false;
                 const duration = stopDurations[key] ?? 60;
+                const price = stopPrices[key] ?? null;
 
                 return (
                   <StopCard
@@ -722,23 +749,42 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                     selected={selected}
                     lovedVenues={lovedVenues}
                     results={results}
+                    anchorName={anchor?.name ?? null}
+                    searched={venueSearched[key] ?? false}
                     loading={loading}
                     hasMore={hasMore}
                     isFirst={i === 0}
                     isLast={i === stopOrder.length - 1}
                     duration={duration}
                     isActive={key === activeStopKey}
+                    price={price}
+                    showPrice={hasVenueSearch && !isNatural(key)}
+                    onPriceChange={(p) => {
+                      setStopPrices((prev) => ({ ...prev, [key]: p }));
+                      // A price tap on a searched stop is search intent — refine it.
+                      if (hasVenueSearch && (venueResults[key]?.length ?? 0) > 0 && query) {
+                        void fetchVenues(key, query, radius, searchLocation, false, p);
+                      }
+                    }}
                     onActivate={() => setActiveStopKey(key)}
                     onDurationChange={(m) => setDuration(key, m)}
                     onMoveUp={() => moveStop(i, -1)}
                     onMoveDown={() => moveStop(i, 1)}
                     onSelect={(v) => selectVenue(key, v)}
-                    onRefresh={hasVenueSearch ? () => void fetchVenues(key, query, radius, searchLocation) : undefined}
+                    onSearch={
+                      hasVenueSearch
+                        ? () => {
+                            setActiveStopKey(key);
+                            void fetchVenues(key, query, radius, searchLocation);
+                          }
+                        : undefined
+                    }
                     onLoadMore={
                       hasVenueSearch && !isNatural(key)
                         ? () => void fetchVenues(key, query, radius, searchLocation, true)
                         : undefined
                     }
+                    searchLabel={searchLocation}
                   />
                 );
               })}
@@ -992,6 +1038,8 @@ function TimelineRow({
   );
 }
 
+type RankedVenue = Venue & { distMi?: number };
+
 function StopCard({
   stopNumber,
   label,
@@ -1000,19 +1048,25 @@ function StopCard({
   selected,
   lovedVenues,
   results,
+  anchorName,
+  searched,
   loading,
   hasMore,
   isFirst,
   isLast,
   duration,
   isActive,
+  price,
+  showPrice,
+  onPriceChange,
   onActivate,
   onDurationChange,
   onMoveUp,
   onMoveDown,
   onSelect,
-  onRefresh,
+  onSearch,
   onLoadMore,
+  searchLabel,
 }: {
   stopNumber: number;
   label: string;
@@ -1020,21 +1074,28 @@ function StopCard({
   hasQuery: boolean;
   selected: Venue | null;
   lovedVenues: Venue[];
-  results: Venue[];
+  results: RankedVenue[];
+  anchorName: string | null;
+  searched: boolean;
   loading: boolean;
   hasMore: boolean;
   isFirst: boolean;
   isLast: boolean;
   duration: number;
   isActive: boolean;
+  price: number | null;
+  showPrice: boolean;
+  onPriceChange: (p: number | null) => void;
   onActivate: () => void;
   onDurationChange: (m: number) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onSelect: (v: Venue | null) => void;
-  onRefresh?: () => void;
+  onSearch?: () => void;
   onLoadMore?: () => void;
+  searchLabel: string;
 }) {
+  const hasResults = results.length > 0;
   return (
     <div
       className={`rounded-[20px] border-2 p-4 transition ${
@@ -1086,17 +1147,41 @@ function StopCard({
           </button>
         )}
 
-        {onRefresh && (
+        {onSearch && hasResults && (
           <button
             type="button"
-            onClick={onRefresh}
+            onClick={onSearch}
             disabled={loading}
             className="shrink-0 rounded-full border-2 border-[#ffd6e8] px-3 py-1 text-xs font-black text-[#8a6a78] transition hover:bg-[#ffd6e8] disabled:opacity-50"
           >
-            {loading && results.length > 0 ? "…" : "Refresh"}
+            {loading ? "…" : "Refresh"}
           </button>
         )}
       </div>
+
+      {/* C3: per-stop price (Yelp searches only) */}
+      {showPrice && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <span className="text-xs font-black text-[#c0a0b0]">💰 Price</span>
+          <div className="flex flex-wrap gap-1">
+            {([null, 1, 2, 3, 4] as const).map((p) => (
+              <button
+                key={p ?? "any"}
+                type="button"
+                onClick={() => onPriceChange(p)}
+                aria-pressed={price === p}
+                className={`rounded-full px-2 py-0.5 text-xs font-black transition ${
+                  price === p
+                    ? "bg-[#ff7aaa] text-white"
+                    : "border border-[#ffd6e8] text-[#8a6a78] hover:bg-[#ffd6e8]"
+                }`}
+              >
+                {p === null ? "Any" : PRICE_LABELS[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Duration selector */}
       <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
@@ -1140,14 +1225,19 @@ function StopCard({
       {/* Venue results */}
       {hasQuery && (
         <div className="mt-3 grid gap-2">
-          {loading && results.length === 0 ? (
+          {loading && !hasResults ? (
             <>
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-[72px] animate-pulse rounded-2xl bg-[#ffd6e8]/40" />
               ))}
             </>
-          ) : results.length > 0 ? (
+          ) : hasResults ? (
             <>
+              {anchorName && (
+                <p className="text-[10px] font-black text-[#c0a0b0]">
+                  sorted by distance from {anchorName}
+                </p>
+              )}
               {results.map((v) => (
                 <VenueCard
                   key={v.id}
@@ -1169,10 +1259,30 @@ function StopCard({
                 </button>
               )}
             </>
+          ) : !searched && onSearch ? (
+            // C1: nothing is fetched until this is pressed.
+            <button
+              type="button"
+              onClick={onSearch}
+              className="w-full rounded-full border-2 border-dashed border-[#ff7aaa] py-2.5 text-sm font-black text-[#ff7aaa] transition hover:bg-[#fff7fb]"
+            >
+              🔍 Search spots{searchLabel ? ` near ${searchLabel.split(",")[0]}` : ""}
+            </button>
           ) : (
-            <p className="py-2 text-center text-sm text-[#c0a0b0]">
-              No spots found — try a wider range or different location.
-            </p>
+            <div className="py-2 text-center">
+              <p className="text-sm text-[#c0a0b0]">
+                No spots found — try a wider range or different location.
+              </p>
+              {onSearch && (
+                <button
+                  type="button"
+                  onClick={onSearch}
+                  className="mt-1.5 rounded-full border-2 border-[#ffd6e8] px-3 py-1 text-xs font-black text-[#8a6a78] transition hover:bg-[#ffd6e8]"
+                >
+                  Search again
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1190,7 +1300,7 @@ function VenueCard({
   onSelect,
   loved = false,
 }: {
-  venue: Venue;
+  venue: RankedVenue;
   selected: boolean;
   onSelect: () => void;
   loved?: boolean;
@@ -1230,6 +1340,9 @@ function VenueCard({
           {loved
             ? "You loved this"
             : `${venue.rating > 0 ? `★ ${venue.rating.toFixed(1)}` : "Free"} · ${venue.priceLevel === 1 ? "Free" : PRICE_LABELS[venue.priceLevel]}`}
+          {venue.distMi != null && (
+            <span className="text-[#c7a6ff]"> · 📍 {formatMiles(venue.distMi)}</span>
+          )}
         </p>
       </button>
 
