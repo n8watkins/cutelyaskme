@@ -32,12 +32,21 @@ usable height; no layout overflow at 375px.
 ### A2. Can't scroll-zoom while hovering the map
 **Root cause (confirmed):** `scrollWheelZoom: false` at `components/sender/DateMap.tsx:223`
 and `components/HistoryMap.tsx:33`.
-**Spec:** Enable scroll zoom on the planner map. To avoid page-scroll hijacking,
-use focus-based gating: enable wheel zoom on click/hover-intent, show a subtle
-"use ⌘/Ctrl+scroll to zoom" hint OR enable it after first map interaction.
-On mobile keep two-finger gestures default.
-**Accept:** Hovering the planner map and scrolling zooms the map; scrolling the
-page outside the map never zooms it.
+**Spec (decided):** Zoom behavior is a **user setting** (lives in `/settings`,
+B4) with two modes:
+- **Ctrl/⌘ + scroll** (default) — Google-Maps-style; plain scroll passes through
+  to the page. Show a brief "hold Ctrl to zoom" overlay hint when the user
+  plain-scrolls over the map.
+- **Plain scroll** — wheel always zooms the map.
+Implementation: Leaflet `scrollWheelZoom: false` + a custom `wheel` handler that
+checks the setting/modifier (or Leaflet's `gestureHandling`-style pattern).
+**Mobile:** ensure `touchZoom` (pinch), `dragging`, and `tap` are enabled; use
+two-finger pan-to-move if the map is inside a scrollable page so one-finger
+scrolling the page still works (Leaflet default `dragging` on touch + CSS
+`touch-action` tuning).
+**Accept:** Default mode: Ctrl+scroll zooms, plain scroll scrolls the page with
+a hint shown; switching the setting makes plain scroll zoom. On mobile, pinch
+zooms the map and one-finger page scroll is never trapped.
 
 ### A3. Date details block wastes left column
 **Problem:** Plan details (who/when/vibe) sit in the left vertical column,
@@ -221,6 +230,10 @@ produces a visible suggestion; accepting it reorders the lineup so it's last.
 per-leg `distanceMeters` + `durationSec`. Cache by rounded coords (4 decimals)
 in `place_cache`, 30-day TTL. Timeline shows between entries:
 "🚗 12 min · 4.3 mi". Calendar export (E3) includes travel buffers.
+**Mode (decided):** Driving by default. When a leg is **< 0.8 mi**, also fetch
+the walking profile (`/route/v1/foot/…`) and render a toggle on that leg —
+"🚗 4 min / 🚶 12 min" — the user picks either; the chosen mode persists per leg
+(stored with the plan's waypoint/leg data) and feeds the timeline + calendar.
 **Fallback:** OSRM unreachable → haversine × 1.3 at 28 mph city average,
 flagged "~estimate".
 **Accept:** The timeline between two chosen venues shows drive time + distance
@@ -299,8 +312,9 @@ it stores rating + verdicts.
 **Spec:** Add `status` to `date_plans` (`draft | sent | confirmed | canceled`)
 or a `canceledAt` timestamp. "Cancel this date" (with confirm) on the plan page
 → recipient link shows a graceful "this one's been called off 💔" state; sender
-dashboard moves it out of Upcoming. Optionally notify (email/push) the other
-person.
+dashboard moves it out of Upcoming. **Notify (decided):** if the plan was
+already shared/sent, email + push the other person on cancel (gentle copy, no
+guilt: "tonight's plan was called off — more soon 💌").
 **Accept:** Canceling hides the plan from Upcoming, the share link shows the
 canceled state, and nothing about it can still be edited.
 
@@ -325,8 +339,11 @@ no address book at the bottom.
 - **Photos:** Cloudinary images in a gentle **slideshow/cross-fade**, plus a
   small gallery strip.
 - **Animation:** CSS float/fade (hearts drifting, poem fade-in on load).
-- **Music:** tap-to-play background track (a "♪" button — browsers block
-  autoplay). Start with 2–3 bundled royalty-free loops (CC0), selectable.
+- **Music (decided):** tap-to-play background track (a "♪" button — browsers
+  block autoplay). Source 2–3 **royalty-free romantic loops** (CC0/CC-BY from
+  e.g. Pixabay Music, Free Music Archive, Kevin MacLeod/incompetech with
+  attribution) — soft piano / lo-fi / acoustic. Bundle as small looped MP3/OGG
+  in `public/audio/`; selectable per memory, stored in `music_track`.
 - **Shareable:** participants-only by default; optional public share-link toggle
   (separate token) so it can be sent like a card.
 - Replaces the inline `MemoryKeepsake` block on the plan page with a teaser
@@ -373,17 +390,15 @@ native share sheet.
 
 ---
 
-## Open questions (answer when convenient — defaults will be used otherwise)
+## Open questions — ALL RESOLVED (June 2026)
 
-1. **A2 zoom gating:** plain scroll-zoom always-on over the map, or
-   Ctrl/⌘+scroll (Google-Maps-style) to protect page scrolling? *Default:
-   always-on for the big planner map, since A1 makes it sticky.*
-2. **D3 travel mode:** assume driving for all legs, or add a walk toggle for
-   sub-mile hops? *Default: driving, show walk time too when < 0.8 mi.*
-3. **F4 cancel notification:** silently cancel, or email/push the other person?
-   *Default: notify if the plan was already shared.*
-4. **G1 music:** bundled royalty-free loops okay for v1 (vs. user-uploaded or
-   streaming links, which get into licensing)? *Default: bundled CC0 loops.*
+1. **A2 zoom:** a setting — **Ctrl/⌘+scroll default**, plain-scroll optional;
+   full mobile gesture support (pinch zoom, no scroll-trapping). → spec in A2.
+2. **D3 travel mode:** **driving default**; legs < 0.8 mi also fetch walking and
+   show a per-leg drive/walk toggle. → spec in D3.
+3. **F4 cancel:** **notify** the other person when a shared plan is canceled. → spec in F4.
+4. **G1 music:** **yes** — source royalty-free romantic loops (CC0/CC-BY),
+   bundle locally. → spec in G1.
 
 ## Suggested sub-agent batches (in build order)
 
