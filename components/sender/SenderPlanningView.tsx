@@ -182,6 +182,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   }
   // Mobile: let the map expand taller than its default drawer height (A1).
   const [mapExpanded, setMapExpanded] = useState(false);
+  // A5: which stop is waiting for a map click to become its custom-pin venue.
+  const [pickStopKey, setPickStopKey] = useState<string | null>(null);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
@@ -214,6 +216,36 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
 
   function getSelectedVenue(key: string): Venue | null {
     return key === ENTREE_KEY ? entreeVenue : (activityVenues[key] ?? null);
+  }
+
+  function stopLabel(key: string): string {
+    return key === ENTREE_KEY ? (plan.selectedEntree ?? "Food") : key;
+  }
+
+  // A5: a map click while picking becomes that stop's venue — a named custom
+  // pin that saves/maps/exports like any other venue.
+  async function handleMapPick(lat: number, lng: number) {
+    const key = pickStopKey;
+    if (!key) return;
+    setPickStopKey(null);
+    let address = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    try {
+      const res = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
+      if (res.ok) {
+        const data = (await res.json()) as { label: string | null };
+        if (data.label) address = data.label;
+      }
+    } catch {}
+    selectVenue(key, {
+      id: `custom-${Date.now()}`,
+      name: `${stopLabel(key)} spot`,
+      address,
+      rating: 0,
+      priceLevel: 1,
+      lat,
+      lng,
+      source: "custom",
+    });
   }
 
   async function fetchVenues(
@@ -771,6 +803,16 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                     onMoveUp={() => moveStop(i, -1)}
                     onMoveDown={() => moveStop(i, 1)}
                     onSelect={(v) => selectVenue(key, v)}
+                    isPicking={pickStopKey === key}
+                    onDropPin={() => {
+                      setPinMode(false);
+                      setActiveStopKey(key);
+                      setPickStopKey((p) => (p === key ? null : key));
+                    }}
+                    onRenameCustom={(name) => {
+                      const sel = getSelectedVenue(key);
+                      if (sel) selectVenue(key, { ...sel, name });
+                    }}
                     onSearch={
                       hasVenueSearch
                         ? () => {
@@ -874,6 +916,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 }}
                 waypoints={waypoints}
                 wheelZoomMode={zoomMode}
+                pickLabel={pickStopKey ? stopLabel(pickStopKey) : null}
+                onMapPick={(lat, lng) => void handleMapPick(lat, lng)}
               />
             </div>
 
@@ -1064,6 +1108,9 @@ function StopCard({
   onMoveUp,
   onMoveDown,
   onSelect,
+  isPicking,
+  onDropPin,
+  onRenameCustom,
   onSearch,
   onLoadMore,
   searchLabel,
@@ -1091,11 +1138,29 @@ function StopCard({
   onMoveUp: () => void;
   onMoveDown: () => void;
   onSelect: (v: Venue | null) => void;
+  isPicking: boolean;
+  onDropPin: () => void;
+  onRenameCustom: (name: string) => void;
   onSearch?: () => void;
   onLoadMore?: () => void;
   searchLabel: string;
 }) {
   const hasResults = results.length > 0;
+  const customSelected = selected?.source === "custom" ? selected : null;
+
+  const dropPinButton = (
+    <button
+      type="button"
+      onClick={onDropPin}
+      className={`w-full rounded-full border-2 py-2 text-xs font-black transition ${
+        isPicking
+          ? "border-[#3a2530] bg-[#3a2530] text-white"
+          : "border-dashed border-[#c7a6ff] text-[#7c5aa0] hover:bg-[#f5f0ff]"
+      }`}
+    >
+      {isPicking ? "👆 Click the map… (tap to cancel)" : "📍 Drop a pin on the map instead"}
+    </button>
+  );
   return (
     <div
       className={`rounded-[20px] border-2 p-4 transition ${
@@ -1204,6 +1269,33 @@ function StopCard({
         </div>
       </div>
 
+      {/* A5: hand-dropped pin as this stop's venue — rename inline */}
+      {customSelected && (
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border-2 border-[#3a2530]/30 bg-white p-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#3a2530] text-xl">
+            📍
+          </span>
+          <div className="min-w-0 flex-1">
+            <input
+              value={customSelected.name}
+              onChange={(e) => onRenameCustom(e.target.value)}
+              aria-label="Name this spot"
+              className="w-full rounded-lg border border-transparent bg-transparent font-black text-[#3a2530] outline-none transition focus:border-[#ffd6e8] focus:bg-[#fff7fb] focus:px-1.5"
+            />
+            <p className="truncate text-xs text-[#8a6a78]">{customSelected.address}</p>
+            <p className="text-[10px] font-black text-[#c0a0b0]">your pin · tap name to edit</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSelect(null)}
+            aria-label="Remove pin"
+            className="shrink-0 px-2 text-xs font-black text-[#c0a0b0] transition hover:text-[#d32323]"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Places you loved (from past 👍 swipes for this activity) */}
       {lovedVenues.length > 0 && (
         <div className="mt-3">
@@ -1282,13 +1374,20 @@ function StopCard({
                   Search again
                 </button>
               )}
+              <p className="mt-2 text-xs font-black text-[#7c5aa0]">Know a spot? 👇</p>
             </div>
           )}
+          {!customSelected && dropPinButton}
         </div>
       )}
 
-      {!hasQuery && (
-        <p className="mt-2 text-xs text-[#c0a0b0]">No specific venue needed for this stop.</p>
+      {!hasQuery && !customSelected && (
+        <div className="mt-3 grid gap-1.5">
+          <p className="text-xs text-[#c0a0b0]">
+            No venue search for this one — but you can point at the exact spot.
+          </p>
+          {dropPinButton}
+        </div>
       )}
     </div>
   );

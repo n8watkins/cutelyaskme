@@ -7,6 +7,8 @@ export type Venue = {
   lat: number;
   lng: number;
   imageUrl?: string;
+  /** "custom" = a hand-dropped map pin (A5); absent = Yelp/OSM result */
+  source?: "custom";
 };
 
 export const PRICE_LABELS: Record<number, string> = { 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };

@@ -20,6 +20,9 @@ type DateMapProps = {
   waypoints?: { id: string; label: string; lat: number; lng: number; kind: "start" | "pickup" }[];
   /** "ctrl" (default) = Ctrl/⌘+scroll zooms, plain scroll passes through; "plain" = scroll always zooms */
   wheelZoomMode?: "ctrl" | "plain";
+  /** A5: when set, the next map click is a placement — shows "click to place {pickLabel}" + crosshair */
+  pickLabel?: string | null;
+  onMapPick?: (lat: number, lng: number) => void;
 };
 
 const STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
@@ -35,6 +38,8 @@ export function DateMap({
   onCandidateSelect,
   waypoints,
   wheelZoomMode,
+  pickLabel,
+  onMapPick,
 }: DateMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("leaflet").Map | null>(null);
@@ -46,6 +51,21 @@ export function DateMap({
   useEffect(() => {
     onCandidateSelectRef.current = onCandidateSelect;
   }, [onCandidateSelect]);
+
+  // Map-click behavior (A5): pick mode wins, then pin-mode click-to-set-center.
+  const onMapPickRef = useRef(onMapPick);
+  const pickActiveRef = useRef(!!pickLabel);
+  const pinModeRef = useRef(!!pinMode);
+  const onCenterChangeRef = useRef(onCenterChange);
+  // The draggable search pin + circle, so a click can move them too.
+  const pinMarkerRef = useRef<import("leaflet").Marker | null>(null);
+  const pinCircleRef = useRef<import("leaflet").Circle | null>(null);
+  useEffect(() => {
+    onMapPickRef.current = onMapPick;
+    pickActiveRef.current = !!pickLabel;
+    pinModeRef.current = !!pinMode;
+    onCenterChangeRef.current = onCenterChange;
+  }, [onMapPick, pickLabel, pinMode, onCenterChange]);
 
   // Wheel-zoom mode (A2): "ctrl" = Google-Maps-style modifier zoom + hint overlay.
   const wheelModeRef = useRef<"ctrl" | "plain">(wheelZoomMode ?? "ctrl");
@@ -203,7 +223,8 @@ export function DateMap({
 
     const pin = L.marker([center.lat, center.lng], { icon: pinIcon, draggable: true })
       .addTo(layer)
-      .bindTooltip("Drag to set search area", { direction: "top", offset: [0, -22], permanent: false });
+      .bindTooltip("Drag — or click the map — to set search area", { direction: "top", offset: [0, -22], permanent: false });
+    pinMarkerRef.current = pin;
 
     // Radius circle (updates as pin drags)
     const circle = L.circle([center.lat, center.lng], {
@@ -215,6 +236,7 @@ export function DateMap({
       fillOpacity: 0.07,
       dashArray: "7 5",
     }).addTo(layer);
+    pinCircleRef.current = circle;
 
     pin.on("drag", () => {
       const { lat, lng } = pin.getLatLng();
@@ -273,6 +295,18 @@ export function DateMap({
       const wheelTarget = containerRef.current;
       wheelTarget.addEventListener("wheel", onWheel, { passive: false });
       wheelCleanup = () => wheelTarget.removeEventListener("wheel", onWheel);
+
+      // A5: clicks place a custom pin (pick mode) or move the search center
+      // (pin mode). Refs keep the behavior current without re-binding.
+      map.on("click", (e: import("leaflet").LeafletMouseEvent) => {
+        if (pickActiveRef.current) {
+          onMapPickRef.current?.(e.latlng.lat, e.latlng.lng);
+        } else if (pinModeRef.current) {
+          pinMarkerRef.current?.setLatLng(e.latlng);
+          pinCircleRef.current?.setLatLng(e.latlng);
+          onCenterChangeRef.current?.(e.latlng.lat, e.latlng.lng);
+        }
+      });
 
       // CartoDB Positron — clean, minimal, romantic-neutral
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
@@ -364,8 +398,19 @@ export function DateMap({
         }
         .leaflet-tooltip-top::before { border-top-color: #3a2530; }
       `}</style>
-      <div className="relative h-full w-full">
+      <div className={`relative h-full w-full ${pickLabel ? "map-pick-mode" : ""}`}>
+        {pickLabel && (
+          <style>{`.map-pick-mode .leaflet-container { cursor: crosshair !important; }`}</style>
+        )}
         <div ref={containerRef} className="h-full w-full rounded-[20px]" />
+        {/* A5: placement banner */}
+        {pickLabel && (
+          <div className="pointer-events-none absolute left-1/2 top-3 z-[1000] -translate-x-1/2">
+            <span className="rounded-full bg-[#3a2530] px-4 py-1.5 text-xs font-black text-white shadow-lg">
+              📍 Click the map to place {pickLabel}
+            </span>
+          </div>
+        )}
         {/* "Hold Ctrl to zoom" hint (A2 ctrl mode) — pointer-events-none so it never blocks the map */}
         <div
           aria-hidden
