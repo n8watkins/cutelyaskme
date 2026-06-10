@@ -130,6 +130,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
             selectedActivityVenues: activityVenues,
             startPoint: safeParse<{ label: string; lat: number; lng: number } | null>(plan.startPoint, null),
             pickupPoint: safeParse<{ label: string; lat: number; lng: number } | null>(plan.pickupPoint, null),
+            legModes: safeParse<Record<string, "drive" | "walk">>(plan.legModes, {}),
           }}
         />
         <div className="mx-auto max-w-lg px-4 pb-12">
@@ -252,7 +253,7 @@ function ItinerarySection({ itinerary }: { itinerary: ItineraryJson | null }) {
       )}
       {itinerary.tips && itinerary.tips.length > 0 && (
         <div className="mb-6 rounded-[24px] border-2 border-[#ffd6e8] bg-[#fff7fb] p-5">
-          <h2 className="mb-2 font-black text-[#3a2530]">Pro tips 💡</h2>
+          <h2 className="mb-2 font-black text-[#3a2530]">Tips for tonight ✨</h2>
           <ul className="grid gap-1.5">
             {itinerary.tips.map((tip, i) => (
               <li key={i} className="flex gap-2 text-sm text-[#8a6a78]">

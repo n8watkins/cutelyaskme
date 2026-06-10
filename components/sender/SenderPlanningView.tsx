@@ -5,9 +5,26 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SunCalc from "suncalc";
 import { parseTimeToMinutes, formatTime, formatDuration } from "@/lib/datetime";
-import { buildItineraryText, icsEscape, buildGCalLink } from "@/lib/calendar";
+import {
+  buildGCalLinks,
+  buildICS,
+  CALENDAR_MODE_KEY,
+  parseCalendarMode,
+  type CalendarMode,
+  type CalendarStop,
+} from "@/lib/calendar";
 import { sunWarning } from "@/lib/sun";
+import { suggestOrder } from "@/lib/schedule";
 import { haversineMiles, formatMiles, type LatLng } from "@/lib/geo";
+import {
+  formatLeg,
+  formatLegDuration,
+  legInfoForMode,
+  METERS_PER_MILE,
+  type LegInfo,
+  type LegMode,
+  type RouteLeg,
+} from "@/lib/route-legs";
 import { yelpDayFromDate, formatDayHours, openBadge, type VenueDetails } from "@/lib/hours";
 import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
 
@@ -60,6 +77,7 @@ type PlanData = {
   selectedActivityVenues: Record<string, Venue>;
   startPoint: Waypoint | null;
   pickupPoint: Waypoint | null;
+  legModes: Record<string, LegMode>;
 };
 
 type TimelineStop = {
@@ -77,47 +95,9 @@ function buildStops(plan: PlanData): string[] {
 }
 
 
-function downloadICS(
-  timeline: TimelineStop[],
-  selectedDate: string | null,
-  planId: string,
-  planLink: string,
-) {
-  const lines = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//CutelyAsk//EN",
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
-  ];
-
-  const datePart = selectedDate ? selectedDate.replace(/-/g, "") : new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const description = icsEscape(buildItineraryText(timeline, planLink));
-
-  for (const stop of timeline) {
-    if (!stop.venue) continue;
-    const startH = Math.floor(stop.startMinutes / 60) % 24;
-    const startM = stop.startMinutes % 60;
-    const endH = Math.floor(stop.endMinutes / 60) % 24;
-    const endM = stop.endMinutes % 60;
-    const dtstart = `${datePart}T${startH.toString().padStart(2, "0")}${startM.toString().padStart(2, "0")}00`;
-    const dtend = `${datePart}T${endH.toString().padStart(2, "0")}${endM.toString().padStart(2, "0")}00`;
-
-    lines.push(
-      "BEGIN:VEVENT",
-      `DTSTART:${dtstart}`,
-      `DTEND:${dtend}`,
-      `SUMMARY:${icsEscape(`${stop.icon} ${stop.label} — ${stop.venue.name}`)}`,
-      `DESCRIPTION:${description}`,
-      `LOCATION:${icsEscape(stop.venue.address)}`,
-      `UID:${stop.key}-${planId}@cutelyask`,
-      "END:VEVENT",
-    );
-  }
-
-  lines.push("END:VCALENDAR");
-
-  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+// Trigger a browser download of an .ics file (content built by lib/calendar).
+function downloadICSFile(ics: string) {
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -188,7 +168,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   // C4/C5: per-venue hours + reviews, fetched on select (cached server-side).
   const [venueDetails, setVenueDetails] = useState<Record<string, VenueDetails | "loading" | "error">>({});
   // C7: today's outbound API call counts.
-  const [usage, setUsage] = useState<{ yelp: number; overpass: number } | null>(null);
+  const [usage, setUsage] = useState<{ yelp: number; overpass: number; osrm: number } | null>(null);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
@@ -201,6 +181,12 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   const [savedAddrs, setSavedAddrs] = useState<SavedAddress[]>([]);
   const [startPoint, setStartPoint] = useState<Waypoint | null>(plan.startPoint);
   const [pickupPoint, setPickupPoint] = useState<Waypoint | null>(plan.pickupPoint);
+
+  // D3: per-leg drive/walk picks (persisted on the plan) + the fetched legs for
+  // the current waypoint sequence. `signature` ties results to the node list
+  // they were fetched for, so a venue swap never shows stale numbers.
+  const [legModes, setLegModes] = useState<Record<string, LegMode>>(plan.legModes);
+  const [travel, setTravel] = useState<{ signature: string; legs: RouteLeg[] } | null>(null);
 
   const hasFetched = useRef(false);
 
@@ -407,7 +393,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   function loadUsage() {
     fetch("/api/usage")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { usage?: { yelp: number; overpass: number } } | null) => {
+      .then((d: { usage?: { yelp: number; overpass: number; osrm: number } } | null) => {
         if (d?.usage) setUsage(d.usage);
       })
       .catch(() => {});
@@ -453,7 +439,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     JSON.stringify(activityVenues) !== JSON.stringify(plan.selectedActivityVenues) ||
     entreeVenue?.id !== plan.selectedEntreeVenue?.id ||
     JSON.stringify(startPoint) !== JSON.stringify(plan.startPoint) ||
-    JSON.stringify(pickupPoint) !== JSON.stringify(plan.pickupPoint);
+    JSON.stringify(pickupPoint) !== JSON.stringify(plan.pickupPoint) ||
+    JSON.stringify(legModes) !== JSON.stringify(plan.legModes);
 
   // Compute timeline — running accumulator via reduce (no render-time reassignment)
   const startOfDay = parseTimeToMinutes(plan.selectedTime);
@@ -471,6 +458,80 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     });
     return acc;
   }, []);
+
+  // D3: ordered route nodes — your place → pickup → each stop WITH a venue.
+  // Stops without a venue are skipped (their leg spans to the next chosen one).
+  const routeNodes = useMemo(() => {
+    const nodes: { id: string; lat: number; lng: number }[] = [];
+    if (startPoint?.lat) nodes.push({ id: "start", lat: startPoint.lat, lng: startPoint.lng });
+    if (pickupPoint?.lat) nodes.push({ id: "pickup", lat: pickupPoint.lat, lng: pickupPoint.lng });
+    for (const key of stopOrder) {
+      const v = key === ENTREE_KEY ? entreeVenue : (activityVenues[key] ?? null);
+      if (v) nodes.push({ id: key, lat: v.lat, lng: v.lng });
+    }
+    return nodes;
+  }, [startPoint, pickupPoint, stopOrder, activityVenues, entreeVenue]);
+
+  const routeSignature = useMemo(
+    () => routeNodes.map((n) => `${n.id}:${n.lat.toFixed(4)},${n.lng.toFixed(4)}`).join("|"),
+    [routeNodes],
+  );
+
+  // Fetch travel legs whenever the node sequence changes (server caches 30d,
+  // so repeat views are free). Discrete user actions only — no debounce needed.
+  useEffect(() => {
+    if (routeNodes.length < 2) return;
+    let active = true;
+    const signature = routeSignature;
+    fetch("/api/route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ points: routeNodes.map(({ lat, lng }) => ({ lat, lng })) }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { legs?: RouteLeg[] } | null) => {
+        if (active && d?.legs?.length === routeNodes.length - 1) {
+          setTravel({ signature, legs: d.legs });
+        }
+        loadUsage();
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeSignature]);
+
+  const travelLegs = travel?.signature === routeSignature ? travel.legs : null;
+
+  // Incoming leg per destination node id ("pickup", stop keys…). D2 (projected
+  // start times) and E3 (calendar travel buffers) read travel data from here.
+  const legByDestination = useMemo(() => {
+    const m: Record<string, { legKey: string; leg: RouteLeg }> = {};
+    if (!travelLegs) return m;
+    for (let i = 1; i < routeNodes.length; i++) {
+      m[routeNodes[i].id] = {
+        legKey: `${routeNodes[i - 1].id}→${routeNodes[i].id}`,
+        leg: travelLegs[i - 1],
+      };
+    }
+    return m;
+  }, [travelLegs, routeNodes]);
+
+  /** The leg into a node under the user's chosen mode (drive unless toggled). */
+  function chosenLeg(
+    destId: string,
+  ): { legKey: string; mode: LegMode; info: LegInfo; leg: RouteLeg } | null {
+    const entry = legByDestination[destId];
+    if (!entry) return null;
+    const mode: LegMode = legModes[entry.legKey] === "walk" && entry.leg.walk ? "walk" : "drive";
+    return { legKey: entry.legKey, mode, info: legInfoForMode(entry.leg, mode), leg: entry.leg };
+  }
+
+  function pickLegMode(legKey: string, mode: LegMode) {
+    setLegModes((p) => ({ ...p, [legKey]: mode }));
+    setSaved(false);
+  }
 
   async function handlePinMove(lat: number, lng: number) {
     setMapCenter({ lat, lng });
@@ -518,6 +579,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
           startPoint,
           pickupPoint,
           activityOrder: stopOrder.filter((k) => k !== ENTREE_KEY),
+          legModes,
         }),
       });
       if (res.ok) {
@@ -588,9 +650,30 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     return { sunset: toMin(t.sunset), dusk };
   })();
 
+  // D2: if a sun-sensitive stop's projected start (durations + travel legs,
+  // when routed) lands outside its window, offer a one-tap reorder.
+  const travelMinutesByStop: Record<string, number> = {};
+  for (const key of stopOrder) {
+    const legIn = chosenLeg(key);
+    if (legIn) travelMinutesByStop[key] = Math.round(legIn.info.durationSec / 60);
+  }
+  const orderSuggestion = suggestOrder(stopOrder, stopDurations, sun, {
+    startMinutes: startOfDay,
+    travelMinutes: travelMinutesByStop,
+  });
+
   const planLink =
     (typeof window !== "undefined" ? window.location.origin : "") + `/plan/${planId}`;
-  const itineraryText = buildItineraryText(timeline, planLink);
+
+  // E3: the timeline plus formatted travel-in legs (D3) for calendar exports.
+  // travelIn is null until the route is loaded — exports degrade gracefully.
+  const calendarStops: CalendarStop[] = timeline.map((stop) => {
+    const t = chosenLeg(stop.key);
+    return {
+      ...stop,
+      travelIn: t ? `${t.mode === "walk" ? "🚶" : "🚗"} ${formatLeg(t.info)}` : null,
+    };
+  });
 
   const radiusMi = Math.max(1, Math.round(parseInt(radius, 10) / 1609));
 
@@ -707,7 +790,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
               </p>
               {usage && (
                 <p className="mt-1.5 text-[10px] font-black text-[#c0a0b0]">
-                  📊 API calls today — Yelp {usage.yelp} · OpenStreetMap {usage.overpass}
+                  📊 API calls today — Yelp {usage.yelp} · OpenStreetMap {usage.overpass} · Routing {usage.osrm}
                 </p>
               )}
             </div>
@@ -913,31 +996,60 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                   Timeline
                 </h2>
                 {hasAnyVenue && (
-                  <button
-                    type="button"
-                    onClick={() => downloadICS(timeline, plan.selectedDate, planId, planLink)}
-                    className="rounded-full border-2 border-[#c7a6ff] px-3 py-1 text-xs font-black text-[#7c5aa0] transition hover:bg-[#f5f0ff]"
-                  >
-                    📅 Download .ics
-                  </button>
+                  <CalendarMenu
+                    stops={calendarStops}
+                    selectedDate={plan.selectedDate}
+                    planId={planId}
+                    planLink={planLink}
+                  />
                 )}
               </div>
 
+              {/* D2: sunset-aware ordering — one-tap fix when a sun stop misses its window */}
+              {orderSuggestion && (
+                <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 border-[#ffd6a5] bg-[#fff8ec] px-3.5 py-2.5">
+                  <p className="min-w-0 flex-1 text-xs font-black leading-snug text-[#b06a1f]">
+                    {orderSuggestion.message}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStopOrder(orderSuggestion.order);
+                      setSaved(false);
+                    }}
+                    className="shrink-0 rounded-full bg-[#d98a3a] px-3 py-1 text-xs font-black text-white transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffd6a5]"
+                  >
+                    Reorder ✨
+                  </button>
+                </div>
+              )}
+
               <div className="mt-3 grid gap-3">
-                {timeline.map((stop) => (
-                  <TimelineRow
-                    key={stop.key}
-                    stop={stop}
-                    selectedDate={plan.selectedDate}
-                    details={itineraryText}
-                    warning={sunWarning(stop.key, stop.startMinutes, sun)}
-                  />
-                ))}
+                {timeline.map((stop) => {
+                  const travelIn = chosenLeg(stop.key);
+                  return (
+                    <div key={stop.key} className="grid gap-2">
+                      {/* D3: travel from the previous point (pickup/last venue) */}
+                      {travelIn && (
+                        <TravelChip
+                          legKey={travelIn.legKey}
+                          mode={travelIn.mode}
+                          leg={travelIn.leg}
+                          onMode={pickLegMode}
+                        />
+                      )}
+                      <TimelineRow
+                        stop={stop}
+                        warning={sunWarning(stop.key, stop.startMinutes, sun)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
 
               {!hasAnyVenue && (
                 <p className="mt-2 text-center text-sm text-[#c0a0b0]">
-                  Select spots above to see Google Calendar links.
+                  Select spots above to add the date to your calendar.
                 </p>
               )}
             </section>
@@ -1070,29 +1182,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   );
 }
 
-function TimelineRow({
-  stop,
-  selectedDate,
-  details,
-  warning,
-}: {
-  stop: TimelineStop;
-  selectedDate: string | null;
-  details: string;
-  warning: string | null;
-}) {
-  const venueLocation = stop.venue?.address ?? "";
-  const gcalLink = stop.venue
-    ? buildGCalLink(
-        `${stop.icon} ${stop.label} — ${stop.venue.name}`,
-        stop.startMinutes,
-        stop.endMinutes,
-        venueLocation,
-        selectedDate,
-        details,
-      )
-    : null;
-
+function TimelineRow({ stop, warning }: { stop: TimelineStop; warning: string | null }) {
   return (
     <div className="flex items-start gap-3">
       <div className="shrink-0 text-right">
@@ -1111,23 +1201,189 @@ function TimelineRow({
           <p className="text-[11px] font-black text-[#d98a3a]">{warning}</p>
         )}
         {stop.venue ? (
-          <>
-            <p className="truncate text-xs text-[#8a6a78]">{stop.venue.name}</p>
-            {gcalLink && (
-              <a
-                href={gcalLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#f5f0ff] px-2.5 py-0.5 text-[10px] font-black text-[#7c5aa0] transition hover:bg-[#e7d9ff]"
-              >
-                📅 Add to Google Calendar
-              </a>
-            )}
-          </>
+          <p className="truncate text-xs text-[#8a6a78]">{stop.venue.name}</p>
         ) : (
           <p className="text-xs text-[#c0a0b0]">No spot selected yet</p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** "1️⃣", "2️⃣"… for the per-stop GCal list (plain "10." past nine). */
+function keycap(n: number): string {
+  return n >= 1 && n <= 9 ? `${n}️⃣` : `${n}.`;
+}
+
+/**
+ * E3: the ONE calendar control. The export shape comes from the
+ * `ca:calendarMode` setting (localStorage until the Settings page exists,
+ * read post-mount): "single" = one all-evening event, "per-stop" = one
+ * event per stop. The .ics download handles both modes in one file; Google
+ * Calendar web links are one event per click, so per-stop mode expands an
+ * ordered list of pre-filled links.
+ */
+function CalendarMenu({
+  stops,
+  selectedDate,
+  planId,
+  planLink,
+}: {
+  stops: CalendarStop[];
+  selectedDate: string | null;
+  planId: string;
+  planLink: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<CalendarMode>("single");
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      setMode(parseCalendarMode(localStorage.getItem(CALENDAR_MODE_KEY)));
+    });
+  }, []);
+
+  function changeMode(m: CalendarMode) {
+    setMode(m);
+    try {
+      localStorage.setItem(CALENDAR_MODE_KEY, m);
+    } catch {}
+  }
+
+  const gcalLinks = buildGCalLinks(stops, { mode, selectedDate, planLink });
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="rounded-full border-2 border-[#c7a6ff] px-3 py-1 text-xs font-black text-[#7c5aa0] transition hover:bg-[#f5f0ff]"
+      >
+        📅 Add to calendar {open ? "▴" : "▾"}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border-2 border-[#e7d9ff] bg-white p-3 shadow-[0_12px_28px_rgba(124,90,160,0.18)]">
+          {/* The setting — synced to localStorage; Settings page will own this later */}
+          <div className="flex items-center gap-1">
+            <span className="mr-1 text-[10px] font-black uppercase tracking-wide text-[#c0a0b0]">
+              Export
+            </span>
+            {(["single", "per-stop"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => changeMode(m)}
+                aria-pressed={mode === m}
+                title={m === "single" ? "One event for the whole date" : "One event per stop"}
+                className={`rounded-full px-2 py-0.5 text-[10px] font-black transition ${
+                  mode === m ? "bg-[#c7a6ff] text-white" : "text-[#8a6a78] hover:bg-[#f5f0ff]"
+                }`}
+              >
+                {m === "single" ? "One event" : "Per stop"}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => downloadICSFile(buildICS(stops, { mode, selectedDate, planId, planLink }))}
+            className="mt-2 w-full rounded-full border-2 border-[#c7a6ff] py-1.5 text-xs font-black text-[#7c5aa0] transition hover:bg-[#f5f0ff]"
+          >
+            ⬇️ Download .ics
+            {mode === "per-stop" && gcalLinks.length > 1 ? ` (${gcalLinks.length} events)` : ""}
+          </button>
+
+          {mode === "single" ? (
+            <a
+              href={gcalLinks[0]?.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 block w-full rounded-full bg-[#f5f0ff] py-1.5 text-center text-xs font-black text-[#7c5aa0] transition hover:bg-[#e7d9ff]"
+            >
+              Open in Google Calendar
+            </a>
+          ) : (
+            <div className="mt-2">
+              <p className="text-[10px] font-black uppercase tracking-wide text-[#c0a0b0]">
+                Google Calendar — one per stop
+              </p>
+              <ol className="mt-1 grid gap-1">
+                {gcalLinks.map((link, i) => (
+                  <li key={link.key}>
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-full bg-[#f5f0ff] px-2.5 py-1 text-[11px] font-black text-[#7c5aa0] transition hover:bg-[#e7d9ff]"
+                    >
+                      <span>{keycap(i + 1)}</span>
+                      <span className="truncate">{link.label}</span>
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * D3: travel between consecutive timeline points — "🚗 12 min · 4.3 mi".
+ * Legs under 0.8 mi also carry a walking option and render a drive/walk
+ * toggle; the pick persists on the plan (legModes). "~" marks a haversine
+ * estimate (OSRM unreachable).
+ */
+function TravelChip({
+  legKey,
+  mode,
+  leg,
+  onMode,
+}: {
+  legKey: string;
+  mode: LegMode;
+  leg: RouteLeg;
+  onMode: (legKey: string, mode: LegMode) => void;
+}) {
+  const chosen = legInfoForMode(leg, mode);
+  const estTitle = chosen.estimate ? "Straight-line estimate — live routing unavailable" : undefined;
+
+  if (!leg.walk) {
+    return (
+      <div className="ml-12 flex items-center" title={estTitle}>
+        <span className="rounded-full bg-[#fff7fb] px-2.5 py-0.5 text-[11px] font-black text-[#8a6a78]">
+          🚗 {formatLeg(leg.drive)}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ml-12 flex flex-wrap items-center gap-1.5" title={estTitle}>
+      {(["drive", "walk"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onMode(legKey, m)}
+          aria-pressed={mode === m}
+          title={m === "drive" ? "Drive this leg" : "Walk this leg"}
+          className={`rounded-full px-2.5 py-0.5 text-[11px] font-black transition ${
+            mode === m
+              ? "bg-[#c7a6ff] text-white"
+              : "border border-[#ffd6e8] text-[#8a6a78] hover:bg-[#fff7fb]"
+          }`}
+        >
+          {m === "drive" ? "🚗" : "🚶"} {formatLegDuration(legInfoForMode(leg, m).durationSec)}
+        </button>
+      ))}
+      <span className="text-[11px] font-black text-[#c0a0b0]">
+        · {chosen.estimate ? "~" : ""}
+        {formatMiles(chosen.distanceMeters / METERS_PER_MILE)}
+      </span>
     </div>
   );
 }

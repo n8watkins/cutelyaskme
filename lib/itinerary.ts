@@ -1,13 +1,144 @@
 import type { ItineraryJson } from "./db/schema";
+import { formatTime, parseTimeToMinutes } from "./datetime";
+import { ACTIVITY_ICONS, DEFAULT_STOP_DURATIONS } from "./venues";
 
-type ItineraryInput = {
+export type ItineraryInput = {
   selectedDateLabel: string | null;
   selectedTimeLabel: string | null;
+  /** "HH:MM" — drives the deterministic timeline's projected times. */
+  selectedTime?: string | null;
   selectedEntree: string | null;
   selectedActivities: string[];
   selectedEntreeVenue?: { name: string; address: string } | null;
   selectedActivityVenues?: Record<string, { name: string; address: string }>;
 };
+
+/** One canonical stop the itinerary must cover — nothing more, nothing less. */
+export type ItineraryStop = {
+  /** Duration/icon lookup key ("Coffee", "__entree__", …). */
+  key: string;
+  /** Display name ("Coffee", or the entree like "Tacos"). */
+  label: string;
+  emoji: string;
+  venue: { name: string; address: string } | null;
+};
+
+const ENTREE_KEY = "__entree__";
+
+/** The exact stops a plan's itinerary must contain, in lineup order. */
+export function buildItineraryStops(input: ItineraryInput): ItineraryStop[] {
+  const stops: ItineraryStop[] = input.selectedActivities.map((act) => ({
+    key: act,
+    label: act,
+    emoji: ACTIVITY_ICONS[act] ?? "✨",
+    venue: input.selectedActivityVenues?.[act] ?? null,
+  }));
+  if (input.selectedEntree && input.selectedEntree !== "Surprise me") {
+    stops.push({
+      key: ENTREE_KEY,
+      label: input.selectedEntree,
+      emoji: "🍽️",
+      venue: input.selectedEntreeVenue ?? null,
+    });
+  }
+  return stops;
+}
+
+/**
+ * E1: the timeline we can always trust — one entry per selected stop, in
+ * order, with times projected from the default stop durations.
+ */
+export function deterministicTimeline(
+  stops: ItineraryStop[],
+  startMinutes: number,
+): ItineraryJson["timeline"] {
+  let t = startMinutes;
+  return stops.map((stop) => {
+    const entry = {
+      time: formatTime(t),
+      emoji: stop.emoji,
+      activity: stop.venue ? `${stop.label} at ${stop.venue.name}` : stop.label,
+      note: stop.venue ? stop.venue.address : "",
+    };
+    t += DEFAULT_STOP_DURATIONS[stop.key] ?? 60;
+    return entry;
+  });
+}
+
+/**
+ * E1/E2: force whatever Gemini returned back onto the real plan.
+ *
+ * The timeline is ALWAYS the deterministic one (N stops in → N entries out,
+ * venue names verbatim); Gemini only contributes the playful `note` for
+ * entries we can confidently match to a stop. Hallucinated stops ("Cozy
+ * Corner coffee and chat") match nothing, so their notes are dropped. Tips
+ * are kept only when they mention an actual stop or venue, capped at 3.
+ */
+export function sanitizeItinerary(raw: unknown, input: ItineraryInput): ItineraryJson {
+  const stops = buildItineraryStops(input);
+  const timeline = deterministicTimeline(stops, parseTimeToMinutes(input.selectedTime ?? null));
+
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Partial<ItineraryJson>;
+
+  // Merge Gemini's notes onto matching stops (each stop claims at most one entry).
+  const entries = Array.isArray(obj.timeline) ? obj.timeline : [];
+  const claimed = new Set<number>();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") continue;
+    const activity = typeof entry.activity === "string" ? entry.activity : "";
+    const note = typeof entry.note === "string" ? entry.note.trim() : "";
+    if (!note) continue;
+    const text = `${activity} ${note}`;
+    const i = stops.findIndex((s, idx) => !claimed.has(idx) && entryMatchesStop(text, s));
+    if (i >= 0) {
+      claimed.add(i);
+      timeline[i] = { ...timeline[i], note };
+    }
+  }
+
+  const tips = (Array.isArray(obj.tips) ? obj.tips : [])
+    .filter((tip): tip is string => typeof tip === "string" && tipMentionsStops(tip, stops))
+    .slice(0, 3);
+
+  return {
+    title:
+      typeof obj.title === "string" && obj.title.trim() ? obj.title.trim() : "Your Date Night",
+    summary: typeof obj.summary === "string" ? obj.summary.trim() : "",
+    timeline,
+    tips,
+  };
+}
+
+/**
+ * A timeline entry belongs to a stop only if it names it: the chosen venue
+ * when there is one (so invented venues can't ride along on a generic
+ * activity name), otherwise the activity label.
+ */
+function entryMatchesStop(text: string, stop: ItineraryStop): boolean {
+  const target = stop.venue?.name ?? stop.label;
+  return normalize(text).includes(normalize(target));
+}
+
+/** E2: a tip must mention one of the real stops or venues by name. */
+function tipMentionsStops(tip: string, stops: ItineraryStop[]): boolean {
+  const tipWords = significantWords(tip);
+  return stops.some((stop) =>
+    [...significantWords(stop.label), ...(stop.venue ? significantWords(stop.venue.name) : [])]
+      .some((w) => tipWords.has(w)),
+  );
+}
+
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function significantWords(s: string): Set<string> {
+  return new Set(normalize(s).split(" ").filter((w) => w.length >= 4));
+}
 
 export async function generateItinerary(
   input: ItineraryInput,
@@ -60,42 +191,31 @@ export async function generateItinerary(
       .replace(/^```\s*/i, "")
       .replace(/```$/i, "")
       .trim();
-    return JSON.parse(cleaned) as ItineraryJson;
+    // E1: never trust the raw response — pin it to the selected stops.
+    return sanitizeItinerary(JSON.parse(cleaned), input);
   } catch {
     return null;
   }
 }
 
-function buildItineraryPrompt({
-  selectedDateLabel,
-  selectedTimeLabel,
-  selectedEntree,
-  selectedActivities,
-  selectedEntreeVenue,
-  selectedActivityVenues,
-}: ItineraryInput) {
-  const dinnerLine = selectedEntreeVenue
-    ? `Dinner: ${selectedEntree} at ${selectedEntreeVenue.name}, ${selectedEntreeVenue.address}.`
-    : `Dinner: ${selectedEntree ?? "dinner"}.`;
-
-  const activityLines = selectedActivities
-    .map((act) => {
-      const venue = selectedActivityVenues?.[act];
-      return venue ? `${act} at ${venue.name}, ${venue.address}` : act;
-    })
-    .join(" and ");
+function buildItineraryPrompt(input: ItineraryInput) {
+  const stops = buildItineraryStops(input);
+  const stopLines = stops.map(
+    (s, i) =>
+      `${i + 1}. ${s.label}${s.venue ? ` at ${s.venue.name}, ${s.venue.address}` : ""}`,
+  );
 
   return [
-    'Return JSON only in this exact shape: {"title":"string","summary":"one romantic sentence","timeline":[{"time":"H:MM PM","emoji":"emoji","activity":"short name","note":"1-sentence tip or detail"}],"tips":["short tip","short tip"]}.',
-    "Create a detailed, romantic date night itinerary with 4-6 timeline entries.",
-    "The timeline should flow naturally from arrival time through dinner and activities.",
-    "Each entry has a realistic time, one emoji, a short activity name, and a brief note.",
-    "When a real venue name and address are given, use them verbatim in the activity name and note.",
-    "Tips should be thoughtful, practical suggestions (reservation reminder, vibe tip, etc).",
-    "Keep the tone warm, playful, and slightly romantic. No generic advice.",
-    `Date: ${selectedDateLabel ?? "upcoming"}.`,
-    `Start time: ${selectedTimeLabel ?? "evening"}.`,
-    dinnerLine,
-    `Activities: ${activityLines || "a fun evening"}.`,
+    'Return JSON only in this exact shape: {"title":"string","summary":"one romantic sentence","timeline":[{"time":"H:MM PM","emoji":"emoji","activity":"short name","note":"1-sentence tip or detail"}],"tips":["short tip"]}.',
+    "You are writing a romantic date night itinerary.",
+    `Use EXACTLY these ${stops.length} stops, in this order — do not add, remove, or rename venues:`,
+    ...stopLines,
+    `The timeline must have exactly ${stops.length} entries, one per stop above, in the same order.`,
+    "Each entry has a realistic time, one emoji, a short activity name, and a playful 1-sentence note specific to that stop.",
+    "When a venue name and address are given, use the venue name verbatim in the activity name.",
+    "tips: at most 3, each about a specific stop above — logistics like parking, reservations, or sunset timing — and each must mention that stop or venue by name. No generic advice.",
+    "Keep the tone warm, playful, and slightly romantic.",
+    `Date: ${input.selectedDateLabel ?? "upcoming"}.`,
+    `Start time: ${input.selectedTimeLabel ?? "evening"}.`,
   ].join("\n");
 }

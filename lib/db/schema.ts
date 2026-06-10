@@ -51,6 +51,9 @@ export const datePlans = sqliteTable("date_plans", {
   // Start / pickup waypoints chosen by the sender (JSON: { label, lat, lng }).
   startPoint: text("start_point"),
   pickupPoint: text("pickup_point"),
+  // D3: per-leg travel mode picks (JSON: { "pickup→Coffee": "walk" }); keys are
+  // "fromId→toId" node ids (start/pickup/stop key), absent = drive.
+  legModes: text("leg_modes").notNull().default("{}"),
   // Set when the sender locks venues + hits Share/Surprise. Gates post-date reviews.
   confirmedAt: text("confirmed_at"),
   completedAt: text("completed_at"),

@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
     generateItinerary({
       selectedDateLabel,
       selectedTimeLabel,
+      selectedTime,
       selectedEntree,
       selectedActivities: selectedActivities ?? [],
       selectedEntreeVenue: null,

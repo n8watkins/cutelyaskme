@@ -22,8 +22,14 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json().catch(() => null);
-  const { selectedEntreeVenue, selectedActivityVenues, activityOrder, startPoint, pickupPoint } =
-    body ?? {};
+  const {
+    selectedEntreeVenue,
+    selectedActivityVenues,
+    activityOrder,
+    startPoint,
+    pickupPoint,
+    legModes,
+  } = body ?? {};
 
   // Load the plan first — we need its date/time/entree to regenerate the itinerary,
   // and it also enforces ownership before we do any work.
@@ -54,12 +60,23 @@ export async function PATCH(
     updateValues.selectedActivities = JSON.stringify(activities);
   }
 
+  // D3: per-leg drive/walk choices. Only persist well-formed entries.
+  if (legModes && typeof legModes === "object" && !Array.isArray(legModes)) {
+    const modes = Object.fromEntries(
+      Object.entries(legModes as Record<string, unknown>).filter(
+        ([, v]) => v === "drive" || v === "walk",
+      ),
+    );
+    updateValues.legModes = JSON.stringify(modes);
+  }
+
   // Regenerate the itinerary so it reflects the venues the sender just chose.
   // Returns null when GEMINI_API_KEY is unset or the call fails — in that case we
   // keep the existing itinerary rather than wiping it.
   const itinerary = await generateItinerary({
     selectedDateLabel: plan.selectedDateLabel,
     selectedTimeLabel: plan.selectedTimeLabel,
+    selectedTime: plan.selectedTime,
     selectedEntree: plan.selectedEntree,
     selectedActivities: activities,
     selectedEntreeVenue: entreeVenue,
