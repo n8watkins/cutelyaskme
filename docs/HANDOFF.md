@@ -25,11 +25,17 @@ Overpass/OSM, Nominatim, Leaflet, Cloudinary, web-push, suncalc, Vitest.
 
 ## State of the roadmap
 
-Batches 1–8 of `PLANNER_V2.md` are shipped + deployed (status table at the
-bottom of that file, with commit hashes). **Batch 9 is next**: the G1 keepsake
-card (see "After Batch 8" below; F3's "write your keepsake →" link and the F2
-reflection view currently point at `/plan/[id]` and should move to the G1
-memory page). Batch 8 added `user_settings` (1 row per user; migration
+**All batches (1–9) of `PLANNER_V2.md` are shipped + deployed** (status table
+at the bottom of that file, with commit hashes). Batch 9 (G1) added the
+keepsake card: `/plan/[id]/memory` (`KeepsakeCard` client component — poem in
+Playfair Display, photo cross-fade slideshow, CSS hearts, tap-to-play music),
+`date_memories.share_token` (unique) + `music_track` (migration applied),
+`lib/memory-music.ts` / `lib/memory-display.ts` / `lib/memory-share.ts` (all
+tested), `PATCH /api/memories/share` (author-only share mint/revoke +
+music_track persist), a logged-out `?share=<token>` path, three CC-BY loops in
+`public/audio/` (attribution in `ATTRIBUTION.md` AND rendered on the card —
+keep both), the `MemoryKeepsake` teaser, and the F2/F3 links repointed at the
+memory page. Batch 8 added `user_settings` (1 row per user; migration
 applied), `lib/settings.ts` (defaults/validation/`legacySettingsPatch`,
 tested), `lib/user-settings.ts` (`getUserSettings` / `getUserSettingsState`),
 GET/PATCH `/api/settings`, and the `/settings` page (radius default+bounds,

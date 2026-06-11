@@ -431,7 +431,7 @@ native share sheet.
 | 6 | D2, D3, E1, E2, E3 (+ `leg_modes` migration) | ✅ **shipped + deployed** | `de8dab0` |
 | 7 | F1–F5 (+ `canceled_at` migration) | ✅ **shipped + deployed** | `005cace` + `b9ec917` + `2706e25` |
 | 8 | B4 + WP-H (Settings; absorbs `ca:mapZoomMode` + calendar mode + usage meter) | ✅ **shipped + deployed** | `c88ebb3` + `b4d6d8e` |
-| 9 | G1 keepsake card | ⬜ **NEXT** | — |
+| 9 | G1 keepsake card (+ `share_token`/`music_track` migration) | ✅ **shipped + deployed** | `2f93a9a` + `e66120a` |
 
 For project conventions, verification loop, deploy steps, and the orchestrator
 playbook, see [`HANDOFF.md`](HANDOFF.md).
