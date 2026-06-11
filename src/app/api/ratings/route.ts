@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { datePlans, dateRatings } from "@/lib/db/schema";
+import { isDateOver } from "@/lib/date-end";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -18,13 +19,18 @@ export async function POST(request: NextRequest) {
   }
 
   const [plan] = await db
-    .select({ senderId: datePlans.senderId, recipientId: datePlans.recipientId })
+    .select()
     .from(datePlans)
     .where(eq(datePlans.id, planId))
     .limit(1);
 
   if (!plan || (plan.senderId !== userId && plan.recipientId !== userId)) {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+  }
+
+  // F1: ratings only open up once the date's end time has passed.
+  if (!isDateOver(plan)) {
+    return NextResponse.json({ message: "Come back after your date 💞" }, { status: 403 });
   }
 
   try {

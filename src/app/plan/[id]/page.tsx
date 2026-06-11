@@ -9,6 +9,8 @@ import { RatingWidget } from "@/components/RatingWidget";
 import { VenueVerdicts, type VerdictStop, type VerdictStatus } from "@/components/VenueVerdicts";
 import { MemoryKeepsake } from "@/components/MemoryKeepsake";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
+import { DateMap } from "@/components/sender/DateMap";
+import { isDateOver } from "@/lib/date-end";
 
 type PlanPageProps = {
   params: Promise<{ id: string }>;
@@ -79,8 +81,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
     userVerdicts = Object.fromEntries(rows.map((r) => [r.venueId, r.status]));
   }
 
-  // Reviews + keepsake unlock only once the sender has confirmed the plan.
-  const isConfirmed = plan.confirmedAt !== null;
+  // F1: reviews + keepsake unlock only once the date's end time has passed
+  // (selected date + last stop's end, from the deterministic timeline).
+  const dateOver = isDateOver(plan);
 
   // This user's keepsake (notes + poem + photos) for the date.
   let userMemory: {
@@ -103,6 +106,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
     }
   }
 
+  const startPoint = safeParse<{ label: string; lat: number; lng: number } | null>(plan.startPoint, null);
+  const pickupPoint = safeParse<{ label: string; lat: number; lng: number } | null>(plan.pickupPoint, null);
+
   if (isSender) {
     const invite = plan.inviteId
       ? (await db
@@ -111,6 +117,66 @@ export default async function PlanPage({ params }: PlanPageProps) {
           .where(eq(invites.id, plan.inviteId))
           .limit(1))[0]
       : undefined;
+
+    // F2: a past date is a memory, not a draft — render the read-only
+    // reflection view instead of the planner. No editing, no regeneration.
+    if (dateOver) {
+      const mapWaypoints = [
+        ...(startPoint ? [{ id: "start", label: startPoint.label, lat: startPoint.lat, lng: startPoint.lng, kind: "start" as const }] : []),
+        ...(pickupPoint ? [{ id: "pickup", label: pickupPoint.label, lat: pickupPoint.lat, lng: pickupPoint.lng, kind: "pickup" as const }] : []),
+      ];
+      const mapStops = verdictStops.map((s) => s.venue);
+
+      return (
+        <main className="mx-auto max-w-lg px-4 py-10">
+          <div className="mb-6 text-center">
+            <div className="mb-2 text-5xl">💞</div>
+            <h1 className="text-3xl font-black text-[#3a2530]">
+              {itinerary?.title ?? "Your Date"}
+            </h1>
+            <p className="mt-1 text-[#8a6a78]">
+              How it went with {invite?.recipientName ?? "your date"} ✨
+            </p>
+          </div>
+
+          <div className="mb-6 rounded-[24px] border-2 border-[#ffd6e8] bg-white/90 p-5 shadow-sm">
+            <dl className="grid gap-3">
+              <PlanRow icon="📅" label="Date" value={plan.selectedDateLabel ?? "—"} />
+              <PlanRow icon="🕰️" label="Time" value={plan.selectedTimeLabel ?? "—"} />
+              <PlanRow icon="💌" label="Activities" value={activities.join(" + ") || "—"} />
+              <PlanRow icon="🍽️" label="Dinner" value={plan.selectedEntree ?? "—"} />
+            </dl>
+          </div>
+
+          {(mapStops.length > 0 || mapWaypoints.length > 0) && (
+            <div className="mb-6 h-[300px]">
+              <DateMap stops={mapStops} waypoints={mapWaypoints} />
+            </div>
+          )}
+
+          <ItinerarySection itinerary={itinerary} />
+
+          <div className="mt-8">
+            <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
+            <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
+          </div>
+          {verdictStops.length > 0 && (
+            <div className="mt-8">
+              <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
+            </div>
+          )}
+          <div className="mt-8">
+            <MemoryKeepsake
+              planId={id}
+              initialNotes={userMemory?.notes ?? ""}
+              initialPoem={userMemory?.poem ?? null}
+              initialPhotos={userMemory?.photos ?? []}
+              askExtraStop
+            />
+          </div>
+        </main>
+      );
+    }
 
     return (
       <>
@@ -128,34 +194,15 @@ export default async function PlanPage({ params }: PlanPageProps) {
             location: invite?.location ?? null,
             selectedEntreeVenue: entreeVenue,
             selectedActivityVenues: activityVenues,
-            startPoint: safeParse<{ label: string; lat: number; lng: number } | null>(plan.startPoint, null),
-            pickupPoint: safeParse<{ label: string; lat: number; lng: number } | null>(plan.pickupPoint, null),
+            startPoint,
+            pickupPoint,
             legModes: safeParse<Record<string, "drive" | "walk">>(plan.legModes, {}),
           }}
         />
         <div className="mx-auto max-w-lg px-4 pb-12">
           <ItinerarySection itinerary={itinerary} />
-          <div className="mt-8">
-            <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
-            <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
-          </div>
-          {isConfirmed && (
-            <>
-              {verdictStops.length > 0 && (
-                <div className="mt-8">
-                  <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
-                </div>
-              )}
-              <div className="mt-8">
-                <MemoryKeepsake
-                  planId={id}
-                  initialNotes={userMemory?.notes ?? ""}
-                  initialPoem={userMemory?.poem ?? null}
-                  initialPhotos={userMemory?.photos ?? []}
-                />
-              </div>
-            </>
-          )}
+          {/* F1: ratings, verdicts, and the keepsake stay locked until dateEnd. */}
+          <LockedUntilAfterDate />
         </div>
       </>
     );
@@ -198,20 +245,20 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
       <ItinerarySection itinerary={itinerary} />
 
-      {userId && (
+      {userId && dateOver && (
         <div className="mt-8">
           <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
           <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
         </div>
       )}
 
-      {userId && isConfirmed && verdictStops.length > 0 && (
+      {userId && dateOver && verdictStops.length > 0 && (
         <div className="mt-8">
           <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
         </div>
       )}
 
-      {userId && isConfirmed && (
+      {userId && dateOver && (
         <div className="mt-8">
           <MemoryKeepsake
             planId={id}
@@ -221,6 +268,9 @@ export default async function PlanPage({ params }: PlanPageProps) {
           />
         </div>
       )}
+
+      {/* F1: ratings, verdicts, and the keepsake stay locked until dateEnd. */}
+      {userId && !dateOver && <LockedUntilAfterDate />}
     </main>
   );
 }
@@ -265,6 +315,19 @@ function ItinerarySection({ itinerary }: { itinerary: ItineraryJson | null }) {
         </div>
       )}
     </>
+  );
+}
+
+// F1: shown in place of ratings/verdicts/keepsake until the date's end time passes.
+function LockedUntilAfterDate() {
+  return (
+    <div className="mt-8 rounded-[24px] border-2 border-dashed border-[#ffd6e8] bg-[#fff7fb] p-6 text-center">
+      <div className="mb-1 text-3xl">🔒</div>
+      <p className="font-black text-[#3a2530]">Come back after your date 💞</p>
+      <p className="mt-1 text-sm text-[#8a6a78]">
+        Ratings, venue verdicts, and your keepsake unlock once the night wraps up.
+      </p>
+    </div>
   );
 }
 

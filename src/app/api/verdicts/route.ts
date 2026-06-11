@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { venueVerdicts } from "@/lib/db/schema";
+import { datePlans, venueVerdicts } from "@/lib/db/schema";
+import { isDateOver } from "@/lib/date-end";
 import type { Venue } from "@/lib/venues";
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -52,6 +53,15 @@ export async function POST(request: NextRequest) {
 
   if (!planId || !venue?.id || !status || !STATUSES.includes(status)) {
     return NextResponse.json({ message: "Invalid payload" }, { status: 400 });
+  }
+
+  // F1: verdicts only open up once the date's end time has passed.
+  const [plan] = await db.select().from(datePlans).where(eq(datePlans.id, planId)).limit(1);
+  if (!plan) {
+    return NextResponse.json({ message: "Plan not found" }, { status: 404 });
+  }
+  if (!isDateOver(plan)) {
+    return NextResponse.json({ message: "Come back after your date 💞" }, { status: 403 });
   }
 
   const now = new Date().toISOString();

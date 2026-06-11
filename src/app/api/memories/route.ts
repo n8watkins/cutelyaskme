@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { dateMemories, datePlans, invites } from "@/lib/db/schema";
+import { isDateOver } from "@/lib/date-end";
 import { generateMemoryPoem } from "@/lib/memory-poem";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -39,6 +40,11 @@ export async function POST(request: NextRequest) {
     userId === plan.senderId || userId === plan.recipientId || plan.recipientId === null;
   if (!isParticipant) {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+  }
+
+  // F1: keepsakes only open up once the date's end time has passed.
+  if (!isDateOver(plan)) {
+    return NextResponse.json({ message: "Come back after your date 💞" }, { status: 403 });
   }
 
   let recipientName: string | null = null;
