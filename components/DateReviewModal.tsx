@@ -239,7 +239,7 @@ export function DateReviewModal({
               All saved — your favorites come back as suggestions next time.
             </p>
             <Link
-              href={`/plan/${planId}`}
+              href={`/plan/${planId}/memory`}
               className="block w-full rounded-full bg-[#ff7aaa] py-3 font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105"
             >
               write your keepsake →

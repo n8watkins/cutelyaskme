@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 
 type PhotoRef = { url: string; publicId: string };
@@ -33,6 +34,40 @@ export function MemoryKeepsake({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // G1: once a memory exists the inline block becomes a teaser linking to the
+  // full keepsake card at /plan/[id]/memory; "edit" reopens the editor below.
+  // (Derived from the SERVER-saved state, so a fresh page with a memory always
+  // teases — the no-memory state still lands straight in the editor.)
+  const hasSavedMemory = Boolean(
+    initialNotes.trim() || initialPoem || initialPhotos.length > 0,
+  );
+  const [editing, setEditing] = useState(!hasSavedMemory);
+
+  if (!editing) {
+    return (
+      <div className="rounded-[24px] border-2 border-[#e7d9ff] bg-white/90 p-5 text-center">
+        <div className="mb-1 text-4xl">💌</div>
+        <h2 className="mb-1 font-black text-[#3a2530]">Your keepsake is ready</h2>
+        <p className="mb-4 text-sm text-[#8a6a78]">
+          Poem, photos, and a little music — wrapped up in a card to keep (and share).
+        </p>
+        <Link
+          href={`/plan/${planId}/memory`}
+          className="block w-full rounded-full bg-[#c7a6ff] py-3 font-black text-white shadow-[0_8px_20px_rgba(199,166,255,0.32)] transition hover:brightness-105"
+        >
+          Open your keepsake 💌
+        </Link>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="mt-2 text-xs font-black text-[#c0a0b0] hover:text-[#8a6a78]"
+        >
+          edit notes &amp; photos
+        </button>
+      </div>
+    );
+  }
 
   async function generate() {
     // F2: an extra-stop answer is appended to the memory notes before saving.
@@ -184,6 +219,14 @@ export function MemoryKeepsake({
         <div className="mt-4 rounded-2xl border-2 border-[#e7d9ff] bg-[#faf7ff] p-4">
           <p className="whitespace-pre-line text-center font-serif text-[15px] leading-relaxed text-[#3a2530]">
             {poem}
+          </p>
+          <p className="mt-3 text-center">
+            <Link
+              href={`/plan/${planId}/memory`}
+              className="text-xs font-black text-[#7c5aa0] underline decoration-[#e7d9ff] decoration-2 underline-offset-4 hover:text-[#5e4380]"
+            >
+              open the full keepsake card 💌
+            </Link>
           </p>
         </div>
       )}

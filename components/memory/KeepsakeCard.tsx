@@ -1,13 +1,14 @@
 "use client";
 
 // G1: the full-screen animated keepsake card rendered by /plan/[id]/memory.
-// Pure presentation + local playback state — all data arrives via props from
-// the server page. Track-choice persistence is Task B's PATCH (switching here
-// only affects local playback for now).
+// All data arrives via props from the server page. The author additionally
+// gets a track picker (persisted via PATCH /api/memories/share) and a share
+// toggle that mints/revokes the public `?share=<token>` link.
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { PhotoRef } from "@/lib/memory-display";
+import { buildShareUrl } from "@/lib/memory-share";
 import { MUSIC_TRACKS, resolveMusicTrack } from "@/lib/memory-music";
 
 const SLIDE_MS = 4500;
@@ -40,6 +41,8 @@ export function KeepsakeCard({
   photos,
   initialTrackId,
   canPickTrack,
+  canShare,
+  initialShareToken,
   serifClass,
 }: {
   planId: string;
@@ -52,6 +55,10 @@ export function KeepsakeCard({
   initialTrackId: string;
   /** True when the viewer authored this memory — shows the track picker. */
   canPickTrack: boolean;
+  /** True when the viewer authored this memory — shows the share toggle. */
+  canShare: boolean;
+  /** The author's current share token (null = sharing off / not the author). */
+  initialShareToken: string | null;
   /** className of the display serif (next/font) for the poem + title. */
   serifClass: string;
 }) {
@@ -94,6 +101,65 @@ export function KeepsakeCard({
       audio.src = resolveMusicTrack(id).src;
       void audio.play().catch(() => setPlaying(false));
     }
+    // Persist the choice (optimistic — local playback already switched; the
+    // picker only renders for the author, whose row the PATCH targets).
+    void fetch("/api/memories/share", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ planId, musicTrack: id }),
+    }).catch(() => {});
+  }
+
+  // ── Share link (author only) ──
+  const [shareToken, setShareToken] = useState(initialShareToken);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  // window.location.origin isn't available during SSR — grab it after mount
+  // (async, per the no-sync-setState-in-effect lint rule).
+  const [origin, setOrigin] = useState("");
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => {
+      if (active) setOrigin(window.location.origin);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  const shareUrl = shareToken && origin ? buildShareUrl(origin, planId, shareToken) : null;
+
+  async function setSharing(on: boolean) {
+    setShareBusy(true);
+    setShareError(null);
+    try {
+      const res = await fetch("/api/memories/share", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId, share: on }),
+      });
+      if (!res.ok) throw new Error("share toggle failed");
+      const data = (await res.json()) as { shareToken: string | null };
+      setShareToken(data.shareToken);
+    } catch {
+      setShareError("Couldn't update the share link. Try again.");
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  function copyShareUrl() {
+    if (!shareUrl) return;
+    void navigator.clipboard
+      .writeText(shareUrl)
+      .then(() => setCopied(true))
+      .catch(() => setShareError("Couldn't copy — select the link and copy it manually."));
   }
 
   return (
@@ -252,6 +318,58 @@ export function KeepsakeCard({
               </p>
               <audio ref={audioRef} src={track.src} loop preload="none" />
             </div>
+
+            {/* Share link (author only) — send the card like a postcard. */}
+            {canShare && (
+              <div className="mt-4 rounded-2xl border-2 border-[#ffe2ee] bg-white/70 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-black text-[#3a2530]">Share this keepsake 💌</p>
+                    <p className="text-xs text-[#8a6a78]">
+                      {shareToken
+                        ? "Anyone with this link can view your keepsake — no account needed."
+                        : "Make a link you can send like a card."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void setSharing(!shareToken)}
+                    disabled={shareBusy}
+                    aria-pressed={!!shareToken}
+                    className={`shrink-0 rounded-full border-2 px-4 py-2 text-xs font-black transition disabled:opacity-60 ${
+                      shareToken
+                        ? "border-[#ff7aaa] bg-[#fff0f6] text-[#ff5f99] hover:bg-[#ffe2ee]"
+                        : "border-[#ffd6e8] text-[#8a6a78] hover:bg-[#fff7fb]"
+                    }`}
+                  >
+                    {shareBusy ? "…" : shareToken ? "Turn off link" : "Create link 🔗"}
+                  </button>
+                </div>
+
+                {shareUrl && (
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      readOnly
+                      value={shareUrl}
+                      onFocus={(e) => e.currentTarget.select()}
+                      aria-label="Share link"
+                      className="w-full min-w-0 rounded-xl border-2 border-[#ffd6e8] bg-[#fff7fb] px-3 py-2 text-xs text-[#8a6a78] outline-none focus:border-[#ff9dc0]"
+                    />
+                    <button
+                      type="button"
+                      onClick={copyShareUrl}
+                      className="shrink-0 rounded-xl bg-[#ff7aaa] px-3 py-2 text-xs font-black text-white shadow-[0_4px_12px_rgba(255,122,170,0.35)] transition hover:brightness-105"
+                    >
+                      {copied ? "Copied! 💗" : "Copy"}
+                    </button>
+                  </div>
+                )}
+
+                {shareError && (
+                  <p className="mt-2 text-center text-xs text-red-500">{shareError}</p>
+                )}
+              </div>
+            )}
 
             <p className="mt-8 text-center">
               <Link

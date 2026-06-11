@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { dateMemories, datePlans } from "@/lib/db/schema";
 import type { ItineraryJson } from "@/lib/db/schema";
 import { parsePhotoRefs, pickMemoryForViewer } from "@/lib/memory-display";
+import { findSharedMemory } from "@/lib/memory-share";
 import { resolveMusicTrack } from "@/lib/memory-music";
 import { KeepsakeCard } from "@/components/memory/KeepsakeCard";
 
@@ -32,38 +33,49 @@ function safeParse<T>(json: string | null, fallback: T): T {
 
 export default async function MemoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ share?: string | string[] }>;
 }) {
   const { id } = await params;
+  const { share } = await searchParams;
+  const shareParam = typeof share === "string" ? share : null;
 
   const [plan] = await db.select().from(datePlans).where(eq(datePlans.id, id)).limit(1);
   if (!plan) notFound();
 
-  // ────────────────────────────────────────────────────────────────────────
-  // ACCESS (Task A: participants only).
-  // Task B adds the logged-out path here: read `?share=<token>` from
-  // searchParams, and when it matches `date_memories.share_token` for this
-  // plan, treat the viewer as allowed with userId = null.
-  // ────────────────────────────────────────────────────────────────────────
-  const { userId } = await auth();
-  if (!userId) {
-    // A participant who isn't signed in yet — same /login flow as elsewhere.
-    redirect(`/login?redirect_url=/plan/${id}/memory`);
-  }
-  // Mirrors the memories API: sender, recipient, or an unclaimed plan
-  // (recipientId null — the recipient may not have linked her account yet).
-  const isParticipant =
-    userId === plan.senderId || userId === plan.recipientId || plan.recipientId === null;
-  if (!isParticipant) notFound();
-
-  // F4: a canceled date never happened — there is no keepsake for it.
+  // F4: a canceled date never happened — there is no keepsake for it,
+  // shared link or not.
   if (plan.canceledAt) notFound();
 
-  // The memory to show: the viewer's own if they wrote one, else their
-  // partner's (one row per (plan, author)).
   const rows = await db.select().from(dateMemories).where(eq(dateMemories.planId, id));
-  const memory = pickMemoryForViewer(rows, userId);
+
+  // ────────────────────────────────────────────────────────────────────────
+  // ACCESS: participants, or anyone holding a valid `?share=<token>` link.
+  // A matching token unlocks exactly the memory it belongs to — logged out
+  // (userId null) or logged in as a non-participant alike, it's a public
+  // card link. /plan(.*) is public in src/middleware.ts, so the share path
+  // is reachable without an account.
+  // ────────────────────────────────────────────────────────────────────────
+  const { userId } = await auth();
+  const sharedMemory = findSharedMemory(rows, shareParam);
+  if (!sharedMemory) {
+    if (!userId) {
+      // A participant who isn't signed in yet — same /login flow as elsewhere.
+      redirect(`/login?redirect_url=/plan/${id}/memory`);
+    }
+    // Mirrors the memories API: sender, recipient, or an unclaimed plan
+    // (recipientId null — the recipient may not have linked her account yet).
+    const isParticipant =
+      userId === plan.senderId || userId === plan.recipientId || plan.recipientId === null;
+    if (!isParticipant) notFound();
+  }
+
+  // The memory to show: a share link shows THE shared row; otherwise the
+  // viewer's own if they wrote one, else their partner's (one row per
+  // (plan, author)).
+  const memory = sharedMemory ?? pickMemoryForViewer(rows, userId);
 
   if (!memory) {
     // Friendly empty state — nothing written yet (or the date isn't over).
@@ -89,6 +101,9 @@ export default async function MemoryPage({
 
   const itinerary = safeParse<ItineraryJson | null>(plan.itinerary, null);
   const track = resolveMusicTrack(memory.musicTrack);
+  // Author-only controls (track picker, share toggle) — never shown on the
+  // share-link path or to the partner viewing this author's memory.
+  const isAuthor = userId !== null && memory.authorId === userId;
 
   return (
     <div className={playfair.variable}>
@@ -100,7 +115,9 @@ export default async function MemoryPage({
         notes={memory.notes}
         photos={parsePhotoRefs(memory.photoRefs)}
         initialTrackId={track.id}
-        canPickTrack={memory.authorId === userId}
+        canPickTrack={isAuthor}
+        canShare={isAuthor}
+        initialShareToken={isAuthor ? memory.shareToken : null}
         serifClass={playfair.className}
       />
     </div>
