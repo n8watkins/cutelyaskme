@@ -57,6 +57,9 @@ export const datePlans = sqliteTable("date_plans", {
   // Set when the sender locks venues + hits Share/Surprise. Gates post-date reviews.
   confirmedAt: text("confirmed_at"),
   completedAt: text("completed_at"),
+  // F4: set when the sender calls the date off. A canceled plan is frozen —
+  // no edits, no notifications, hidden from Upcoming.
+  canceledAt: text("canceled_at"),
   createdAt: text("created_at")
     .notNull()
     .default(sql`(datetime('now'))`),

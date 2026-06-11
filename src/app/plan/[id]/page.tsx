@@ -9,6 +9,7 @@ import { RatingWidget } from "@/components/RatingWidget";
 import { VenueVerdicts, type VerdictStop, type VerdictStatus } from "@/components/VenueVerdicts";
 import { MemoryKeepsake } from "@/components/MemoryKeepsake";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
+import { CancelDateButton } from "@/components/sender/CancelDateButton";
 import { DateMap } from "@/components/sender/DateMap";
 import { isDateOver } from "@/lib/date-end";
 
@@ -85,6 +86,10 @@ export default async function PlanPage({ params }: PlanPageProps) {
   // (selected date + last stop's end, from the deterministic timeline).
   const dateOver = isDateOver(plan);
 
+  // F4: a canceled plan is frozen — both sides see a graceful called-off state,
+  // never the planner or the post-date widgets.
+  const canceled = plan.canceledAt !== null;
+
   // This user's keepsake (notes + poem + photos) for the date.
   let userMemory: {
     notes: string;
@@ -117,6 +122,37 @@ export default async function PlanPage({ params }: PlanPageProps) {
           .where(eq(invites.id, plan.inviteId))
           .limit(1))[0]
       : undefined;
+
+    // F4: canceled → a quiet called-off state. No planner, no widgets, no edits.
+    if (canceled) {
+      return (
+        <main className="mx-auto max-w-lg px-4 py-10">
+          <div className="mb-6 text-center">
+            <div className="mb-2 text-5xl">💔</div>
+            <h1 className="text-3xl font-black text-[#3a2530]">This one&apos;s been called off</h1>
+            <p className="mt-1 text-[#8a6a78]">
+              You canceled this date{invite?.recipientName ? ` with ${invite.recipientName}` : ""}. More soon 💌
+            </p>
+          </div>
+          <div className="mb-6 rounded-[24px] border-2 border-[#ffd6e8] bg-white/90 p-5 opacity-70 shadow-sm">
+            <dl className="grid gap-3">
+              <PlanRow icon="📅" label="Date" value={plan.selectedDateLabel ?? "—"} />
+              <PlanRow icon="🕰️" label="Time" value={plan.selectedTimeLabel ?? "—"} />
+              <PlanRow icon="💌" label="Activities" value={activities.join(" + ") || "—"} />
+              <PlanRow icon="🍽️" label="Dinner" value={plan.selectedEntree ?? "—"} />
+            </dl>
+          </div>
+          <p className="text-center">
+            <a
+              href="/send"
+              className="inline-block rounded-full bg-[#ff7aaa] px-6 py-3 font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105"
+            >
+              Plan a new one ✨
+            </a>
+          </p>
+        </main>
+      );
+    }
 
     // F2: a past date is a memory, not a draft — render the read-only
     // reflection view instead of the planner. No editing, no regeneration.
@@ -203,12 +239,33 @@ export default async function PlanPage({ params }: PlanPageProps) {
           <ItinerarySection itinerary={itinerary} />
           {/* F1: ratings, verdicts, and the keepsake stay locked until dateEnd. */}
           <LockedUntilAfterDate />
+          {/* F4: quietly tucked under the planner — confirm before it does anything. */}
+          <CancelDateButton planId={id} />
         </div>
       </>
     );
   }
 
   // Recipient / shared view
+
+  // F4: canceled → a gentle called-off state instead of the plan. No details,
+  // no itinerary, no post-date widgets.
+  if (canceled) {
+    return (
+      <main className="mx-auto max-w-lg px-4 py-10">
+        <div className="rounded-[24px] border-2 border-[#ffd6e8] bg-white/90 p-8 text-center shadow-sm">
+          <div className="mb-2 text-5xl">💔</div>
+          <h1 className="text-3xl font-black text-[#3a2530]">
+            This one&apos;s been called off
+          </h1>
+          <p className="mt-2 text-[#8a6a78]">
+            Tonight&apos;s plan was called off — more soon 💌
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   let senderName = "someone special";
   try {
     const clerk = await clerkClient();

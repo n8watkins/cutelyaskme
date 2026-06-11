@@ -43,6 +43,11 @@ export async function PATCH(
     return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
 
+  // F4: a canceled plan is frozen — nothing about it can be edited.
+  if (plan.canceledAt) {
+    return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
+  }
+
   const entreeVenue = (selectedEntreeVenue ?? null) as Venue | null;
   const activityVenues = (selectedActivityVenues ?? {}) as Record<string, Venue>;
   const activities = Array.isArray(activityOrder)

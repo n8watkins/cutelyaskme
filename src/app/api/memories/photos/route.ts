@@ -37,6 +37,11 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
+  // F4: a canceled date never happened — nothing about it can be written.
+  if (plan.canceledAt) {
+    return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
+  }
+
   const now = new Date().toISOString();
   const serialized = JSON.stringify(photoRefs);
 

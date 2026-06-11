@@ -60,6 +60,10 @@ export async function POST(request: NextRequest) {
   if (!plan) {
     return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
+  // F4: a canceled date never happened — nothing about it can be written.
+  if (plan.canceledAt) {
+    return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
+  }
   if (!isDateOver(plan)) {
     return NextResponse.json({ message: "Come back after your date 💞" }, { status: 403 });
   }

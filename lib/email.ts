@@ -120,6 +120,38 @@ export async function sendSpotReadyEmail({
   if (sendError) throw new Error(sendError.message);
 }
 
+// F4: gentle heads-up when a shared date gets called off. No guilt, no details.
+export async function sendDateCanceledEmail({
+  recipientEmail,
+  recipientName,
+  senderName,
+  selectedDateLabel,
+}: {
+  recipientEmail: string;
+  recipientName: string;
+  senderName: string;
+  selectedDateLabel: string | null;
+}) {
+  const { error: sendError } = await getResend().emails.send({
+    from: FROM,
+    to: recipientEmail,
+    subject: `A little change of plans 💌`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:#fff7fb;padding:32px;border-radius:24px;">
+        <h1 style="color:#3a2530;font-size:24px;margin-bottom:8px;">Hey ${recipientName} 💌</h1>
+        <p style="color:#8a6a78;font-size:16px;line-height:1.6;">
+          ${selectedDateLabel ? `The plan for <strong>${selectedDateLabel}</strong>` : "The plan"} was called off — more soon 💌
+        </p>
+        <p style="color:#c0a0b0;font-size:14px;margin-top:16px;">
+          ${senderName} will make it up to you. Promise.
+        </p>
+        <p style="color:#c0a0b0;font-size:12px;margin-top:24px;">Planned with Date Night App 🌸</p>
+      </div>
+    `,
+  });
+  if (sendError) throw new Error(sendError.message);
+}
+
 export async function sendInviteEmail({
   recipientName,
   recipientEmail,

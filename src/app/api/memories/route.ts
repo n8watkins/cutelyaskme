@@ -42,6 +42,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
+  // F4: a canceled date never happened — nothing about it can be written.
+  if (plan.canceledAt) {
+    return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
+  }
+
   // F1: keepsakes only open up once the date's end time has passed.
   if (!isDateOver(plan)) {
     return NextResponse.json({ message: "Come back after your date 💞" }, { status: 403 });

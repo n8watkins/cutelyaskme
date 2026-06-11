@@ -30,6 +30,11 @@ export async function POST(
     return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
 
+  // F4: never share/notify a canceled plan.
+  if (plan.canceledAt) {
+    return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
+  }
+
   // Mark the plan confirmed (first time only) — this is what unlocks post-date
   // reviews. Independent of whether the email below succeeds.
   if (!plan.confirmedAt) {

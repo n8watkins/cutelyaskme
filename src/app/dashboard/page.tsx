@@ -38,9 +38,14 @@ export default async function DashboardPage() {
 
   const completedPlans = myPlans.filter((p) => p.completedAt !== null);
   // Split by the date itself: upcoming (today or later) vs past.
+  // F4: canceled plans never count as upcoming — they live in Past, badged.
   const todayStr = new Date().toISOString().slice(0, 10);
-  const upcomingPlans = completedPlans.filter((p) => p.selectedDate && p.selectedDate >= todayStr);
-  const pastPlans = completedPlans.filter((p) => !p.selectedDate || p.selectedDate < todayStr);
+  const upcomingPlans = completedPlans.filter(
+    (p) => !p.canceledAt && p.selectedDate && p.selectedDate >= todayStr,
+  );
+  const pastPlans = completedPlans.filter(
+    (p) => p.canceledAt || !p.selectedDate || p.selectedDate < todayStr,
+  );
 
   const planByInvite = Object.fromEntries(
     completedPlans
@@ -392,6 +397,7 @@ function PlanCard({
     selectedDateLabel: string | null;
     selectedTimeLabel: string | null;
     selectedEntree: string | null;
+    canceledAt: string | null;
   };
   isSender: boolean;
   recipientName: string | null;
@@ -399,6 +405,7 @@ function PlanCard({
   let activities: string[] = [];
   try { activities = JSON.parse(plan.selectedActivities) as string[]; } catch {}
 
+  const canceled = plan.canceledAt !== null;
   const who = isSender
     ? recipientName ? `Date with ${recipientName}` : "You planned this"
     : "Planned for you";
@@ -407,11 +414,18 @@ function PlanCard({
   return (
     <Link
       href={`/plan/${plan.id}`}
-      className="block rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4 transition hover:bg-[#fff7fb]"
+      className={`block rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4 transition hover:bg-[#fff7fb] ${canceled ? "opacity-70" : ""}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-black text-[#3a2530]">{who}</p>
+          <p className="font-black text-[#3a2530]">
+            {who}
+            {canceled && (
+              <span className="ml-2 rounded-full bg-[#f6eef2] px-2 py-0.5 align-middle text-[10px] font-black uppercase tracking-wide text-[#c0708a]">
+                called off 💔
+              </span>
+            )}
+          </p>
           {when && <p className="mt-0.5 text-sm text-[#8a6a78]">{when}</p>}
           {activities.length > 0 && (
             <p className="mt-0.5 text-xs text-[#c0a0b0]">
