@@ -198,12 +198,22 @@ export default async function DashboardPage() {
 
       <div className="mb-8 flex items-center justify-between">
         <h1 className="text-3xl font-black text-[#3a2530]">Your dates 💌</h1>
-        <Link
-          href="/send"
-          className="rounded-full bg-[#ff7aaa] px-5 py-2.5 text-sm font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105"
-        >
-          + New invite
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/settings"
+            aria-label="Settings"
+            title="Settings"
+            className="rounded-full border-2 border-[#ffd6e8] bg-white px-3 py-2 text-sm font-black text-[#8a6a78] transition hover:bg-[#fff7fb]"
+          >
+            ⚙️
+          </Link>
+          <Link
+            href="/send"
+            className="rounded-full bg-[#ff7aaa] px-5 py-2.5 text-sm font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105"
+          >
+            + New invite
+          </Link>
+        </div>
       </div>
 
       <div className="mb-8">

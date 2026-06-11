@@ -139,6 +139,28 @@ export const pushSubscriptions = sqliteTable("push_subscriptions", {
     .default(sql`(datetime('now'))`),
 });
 
+// B4: per-user app settings — 1 row per user, keyed by Clerk userId.
+// Defaults/validation live in lib/settings.ts (DEFAULT_SETTINGS); the row is
+// created lazily on first PATCH, so "no row" simply means "all defaults".
+export const userSettings = sqliteTable("user_settings", {
+  userId: text("user_id").primaryKey(),
+  // B3: planner radius slider — initial value + user-tunable bounds (1–25 mi, Yelp cap).
+  defaultRadiusMi: integer("default_radius_mi").notNull().default(5),
+  radiusMinMi: integer("radius_min_mi").notNull().default(1),
+  radiusMaxMi: integer("radius_max_mi").notNull().default(25),
+  // A2: map wheel-zoom mode (absorbs the ca:mapZoomMode localStorage key).
+  mapZoomMode: text("map_zoom_mode", { enum: ["ctrl", "plain"] })
+    .notNull()
+    .default("ctrl"),
+  // E3: calendar export shape (absorbs ca:calendarMode).
+  calendarMode: text("calendar_mode", { enum: ["single", "per-stop"] })
+    .notNull()
+    .default("single"),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 // Persistent rate limiting (survives serverless cold starts).
 export const rateLimits = sqliteTable("rate_limits", {
   key: text("key").primaryKey(),
