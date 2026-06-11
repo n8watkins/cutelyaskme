@@ -1,4 +1,4 @@
-# HANDOFF — Orchestrator Playbook (Batch 7 onward)
+# HANDOFF — Orchestrator Playbook (Batch 8 onward)
 
 You are picking up an in-flight roadmap with **zero prior context**. This file +
 [`PLANNER_V2.md`](PLANNER_V2.md) contain everything you need. Read both fully
@@ -28,9 +28,10 @@ Overpass/OSM, Nominatim, Leaflet, Cloudinary, web-push, suncalc, Vitest.
 Batches 1–7 of `PLANNER_V2.md` are shipped + deployed (status table at the
 bottom of that file, with commit hashes). **Batch 8 is next**: `/settings` +
 `user_settings` (B4 + WP-H), absorbing `ca:mapZoomMode`, `ca:calendarMode`,
-the new `ca:reviewPrompted:<planId>` flags (F3), the parked address book
-(`components/SavedAddresses.tsx` — removed from the dashboard in F5), radius
-defaults, and the usage meter. Then Batch 9 (keepsake card; F3's "write your
+the parked address book (`components/SavedAddresses.tsx` — removed from the
+dashboard in F5), radius defaults, and the usage meter. (The per-plan
+`ca:reviewPrompted:<planId>` flags from F3 stay in localStorage — they're not
+settings.) Then Batch 9 (keepsake card; F3's "write your
 keepsake →" link currently points at `/plan/[id]` and should move to the G1
 memory page). Batch 7 added `lib/date-end.ts` (`isDateOver`/`dateEndFromPlan`
 from raw plan rows), `date_plans.canceled_at`, and `lib/review-prompt.ts` —
@@ -40,7 +41,7 @@ reuse, don't reinvent.
 
 1. Read the batch's specs in PLANNER_V2.md. Each item has root cause, files,
    and acceptance criteria.
-2. Split into sub-agent tasks (suggested split for Batch 6 below). Give each
+2. Split into sub-agent tasks (suggested split for Batch 8 below). Give each
    sub-agent: the spec text, the file map below, the conventions section, and
    the acceptance criteria. Sub-agents should NOT commit — they return diffs;
    you verify and commit.
@@ -103,6 +104,20 @@ reuse, don't reinvent.
 - **Auth in API routes:** `const { userId } = await auth()` from
   `@clerk/nextjs/server`; route params are a Promise (`{ params }: { params:
   Promise<{ id: string }> }` → `await params`).
+- **react-hooks/purity runs on SERVER components too:** `Date.now()` /
+  `new Date()` inline in a component body is a lint error. Do now-comparisons
+  inside lib helpers (`isDateOver` in `lib/date-end.ts`, `pickReviewPromptPlan`
+  in `lib/review-prompt.ts`) and call those from the component.
+- **Post-date lifecycle (Batch 7):** `isDateOver(plan)` from `lib/date-end`
+  gates ratings/verdicts/memories — client AND server (the POST routes 403
+  with "Come back after your date 💞"). `date_plans.canceled_at` freezes a
+  plan — every per-plan write route (PATCH, notify, ratings, verdicts,
+  memories, photos) rejects canceled plans with 409. `confirmedAt` is what
+  marks a plan shared/sent (set by Share/Surprise; cancel only notifies when
+  it's set). `/plan/[id]` has four render paths: canceled → called-off card;
+  sender+over → read-only reflection view; sender+active → planner;
+  recipient/shared view. F3's never-re-prompt = server check (existing
+  rating/verdicts) + `ca:reviewPrompted:<planId>` localStorage flag.
 
 ## File map (planner core)
 
@@ -121,61 +136,63 @@ reuse, don't reinvent.
 | `src/app/api/places/route.ts` (+ `[id]/route.ts`) | Yelp search (+ details/hours/reviews), `place_cache`d |
 | `src/app/api/natural-places/route.ts` | Overpass natural spots (UA + mirrors + no-fail-caching) |
 | `src/app/api/geocode/route.ts` | Nominatim forward/reverse, cached |
-| `src/app/plan/[id]/page.tsx` | Plan page (server): renders itinerary timeline + tips ("Tips for tonight ✨"), hosts `SenderPlanningView` for the owner |
-| `lib/db/schema.ts` | All tables. Recent: `saved_addresses.kind`, `api_usage`, `date_plans.leg_modes` |
+| `src/app/plan/[id]/page.tsx` | Plan page (server): four render paths (canceled / sender reflection / sender planner / recipient), itinerary timeline + tips |
+| `lib/db/schema.ts` | All tables. Recent: `saved_addresses.kind`, `api_usage`, `date_plans.leg_modes`, `date_plans.canceled_at` |
+| `lib/date-end.ts` | `dateEnd`/`isDateOver`/`dateEndFromPlan` from raw plan rows (tested) — the post-date gate |
+| `lib/review-prompt.ts` | F3 eligibility: `pickReviewPromptPlan`, `reviewPromptTitle` (tested) |
+| `components/DateReviewModal.tsx` | F3 modal: stars → verdict swipe cards → keepsake link |
+| `components/sender/CancelDateButton.tsx` + `src/app/api/plans/[id]/cancel/route.ts` | F4 cancel (idempotent, best-effort notify) |
+| `src/app/dashboard/page.tsx` | Dashboard: F5 order (hero → Upcoming → invites → map+stats → Past → Places), hosts the F3 modal |
 
-### Files Batch 7 will touch
+### Files Batch 8 will touch
 
 | File | What it is |
 |---|---|
-| `src/app/dashboard/page.tsx` | Sender dashboard (F3 modal, F5 reorder) |
-| `components/VenueVerdicts.tsx` / `components/RatingWidget.tsx` / `components/MemoryKeepsake.tsx` | Post-date UI to gate on `dateEnd` (F1) and reuse in the F3 modal |
-| `src/app/api/verdicts/route.ts` / `src/app/api/memories/route.ts` | POST routes to gate server-side on `dateEnd` (F1) |
-| `lib/email.ts` / `lib/push.ts` | Resend email + web-push helpers — reuse for F4 cancel notify |
-| `components/SavedAddresses.tsx` | Address book — F5 removes it from the dashboard bottom (parks it until Batch 8 Settings absorbs it) |
+| `src/app/settings/page.tsx` + `src/app/api/settings/route.ts` | NEW — the Settings page + its GET/PATCH API |
+| `lib/db/schema.ts` | add `user_settings` (1 row per user; migration via the pattern above) |
+| `components/SavedAddresses.tsx` | Address book — parked since F5 (not mounted anywhere); re-home it in `/settings` |
+| `components/sender/SenderPlanningView.tsx` | Reads `ca:mapZoomMode` + `ca:calendarMode` post-mount and owns the radius slider (B3 default/bounds) — switch to settings |
+| `components/sender/DateMap.tsx` | `wheelZoomMode` prop ("ctrl" \| "plain") fed from the zoom setting |
+| `src/app/api/usage/route.ts` | Existing usage endpoint (`api_usage` table) — the C7 meter reads from here |
 
-## Batch 7 — what to build (specs: PLANNER_V2.md F1–F5)
+## Batch 8 — what to build (specs: PLANNER_V2.md B4 + WP-H, meter from C7)
 
-Everything hinges on a shared **`dateEnd`** notion: selected date + last stop's
-end time, derived from the saved deterministic timeline (stop durations +
-travel legs where available). Build it once as a pure tested helper (extend
-`lib/schedule.ts` or a new `lib/date-end.ts`) usable server-side from the plan
-row's saved itinerary/venues JSON.
+Auth-gated `/settings` page + `user_settings` table (1 row per user, JSON or
+columns) that becomes the home for:
 
-Suggested sub-agent split (3 tasks, **run sequentially** — they share the plan
-page and dashboard, and B/C both consume Task A's `dateEnd` helper):
+- **Default search radius + bounds** (B3) — the planner slider's initial
+  value/range. Accept: changing the default in Settings changes the planner's
+  initial slider value.
+- **Map wheel-zoom mode** (A2) — absorbs `ca:mapZoomMode` ("ctrl" | "plain").
+- **Calendar export mode** (E3) — absorbs `ca:calendarMode` (one event |
+  per stop).
+- **Address book** — mount `SavedAddresses` here (it's been unmounted since F5).
+- **Yelp usage meter** (C7) — "Yelp: N calls today" + free-tier reference;
+  `api_usage` + `/api/usage` already exist. Accept: count increments after a
+  search.
+- Future hooks only (don't build): theme/style switcher, notification prefs.
 
-1. **Task A — `dateEnd` + F1 gating + F2 reflection view:** pure `dateEnd`
-   helper + tests; gate `VenueVerdicts`, `RatingWidget`, `MemoryKeepsake`
-   rendering AND their POST routes on `now > dateEnd` (server-side too,
-   "come back after your date 💞" before); past dates render a read-only
-   reflection view on `/plan/[id]` (final itinerary, venues, map, rating,
-   verdicts, memory, photos, optional "did you go anywhere else?" note
-   appended to the memory) — no editing, no regeneration.
-2. **Task B — F4 cancel a date:** `status` column or `canceledAt` on
-   `date_plans` (migration via the pattern above); "Cancel this date" +
-   confirm on the plan page; recipient link shows "this one's been called
-   off 💔"; canceled plans leave Upcoming; **notify (decided):** if already
-   shared/sent, email + push the other person (gentle copy, no guilt —
-   reuse `lib/email.ts` / `lib/push.ts`).
-3. **Task C — F3 "How did it go?" modal + F5 dashboard polish:** on dashboard
-   load, if a confirmed plan's `dateEnd` passed with no rating/verdicts →
-   one-time modal (star rating + swipe cards per visited venue reusing
-   `VenueVerdicts` logic → "write your keepsake →" link); store `promptedAt`
-   or local flag + server check so it never re-prompts per plan. Then F5:
-   reorder dashboard to (1) prompt/next-date hero, (2) Upcoming, (3) Map +
-   Stats, (4) Past dates, (5) Your Places; address book out of the bottom;
-   consistent card paddings.
+Suggested split (2 tasks, sequential):
 
-Acceptance criteria for each are in PLANNER_V2.md — quote them to sub-agents.
+1. **Task A — table + API + page:** `user_settings` schema (sub-agent reports
+   the SQL; orchestrator migrates), GET/PATCH `/api/settings`, `/settings` UI
+   in the app's pink visual language (radius default/bounds, zoom mode,
+   calendar mode, usage meter, address book), link to it from the dashboard
+   header.
+2. **Task B — wire the planner:** planner/map/calendar consume settings, with
+   the old `ca:` localStorage values as a one-time fallback/migration so
+   nobody's existing prefs reset; radius slider honors configured
+   default + bounds.
 
-## After Batch 7
+Acceptance criteria are in PLANNER_V2.md (B4, C7) — quote them to sub-agents.
 
-Batch 8 builds `/settings` (+ `user_settings` table) and absorbs
-`ca:mapZoomMode`, `ca:calendarMode`, the address book, radius defaults, and
-the usage meter (specs B4 + WP-H + C7's meter surface). Batch 9 is the
-animated keepsake card (music files → `public/audio/`, CC0 romantic loops;
-spec G1).
+## After Batch 8
+
+Batch 9 is the animated keepsake card (spec G1): `/plan/[id]/memory`, music
+files → `public/audio/` (CC0 romantic loops), `date_memories` gains
+`share_token` + `music_track`. Two existing links should then point there:
+the F3 modal's "write your keepsake →" and the F2 reflection view (both
+currently land on `/plan/[id]`).
 
 ## Launch status (separate track, user-driven)
 
