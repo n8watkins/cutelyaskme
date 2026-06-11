@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SunCalc from "suncalc";
@@ -35,6 +36,8 @@ import { yelpDayFromDate, formatDayHours, openBadge, type VenueDetails } from "@
 import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
 
 type Waypoint = { label: string; lat: number; lng: number };
+// Why a venue search failed: expired session vs. anything else.
+type VenueErrorKind = "auth" | "generic";
 import type { Venue } from "@/lib/venues";
 import {
   ACTIVITY_ICONS,
@@ -148,6 +151,10 @@ export function SenderPlanningView({
   // Whether a stop has been explicitly searched at the current center (C1) —
   // distinguishes "not searched yet" from "searched, came up empty".
   const [venueSearched, setVenueSearched] = useState<Record<string, boolean>>({});
+  // Per-stop search failure: "auth" = session expired (401), "generic" =
+  // anything else. Cleared at the start of the next explicit search — never
+  // auto-retried (API frugality).
+  const [venueError, setVenueError] = useState<Record<string, VenueErrorKind | null>>({});
 
   // B3/B4: the search radius (meters, as a string for the API) starts at the
   // user's configured default. Initial-value only — mid-session slider moves
@@ -319,6 +326,7 @@ export function SenderPlanningView({
   ) {
     if (!loc.trim()) return;
     setVenueLoading((p) => ({ ...p, [key]: true }));
+    setVenueError((p) => ({ ...p, [key]: null }));
     try {
       let url: string;
       if (isNatural(key)) {
@@ -346,8 +354,16 @@ export function SenderPlanningView({
         setVenueHasMore((p) => ({ ...p, [key]: isYelp && incoming.length === PAGE_SIZE }));
         setVenueOffset((p) => ({ ...p, [key]: offset + incoming.length }));
         setVenueSearched((p) => ({ ...p, [key]: true }));
+      } else if (res.status === 401) {
+        // Clerk session expired mid-planning — tell the sender instead of
+        // failing silently. No automatic retry/refetch.
+        setVenueError((p) => ({ ...p, [key]: "auth" }));
+      } else {
+        setVenueError((p) => ({ ...p, [key]: "generic" }));
       }
-    } catch {}
+    } catch {
+      setVenueError((p) => ({ ...p, [key]: "generic" }));
+    }
     setVenueLoading((p) => ({ ...p, [key]: false }));
     loadUsage();
   }
@@ -359,6 +375,7 @@ export function SenderPlanningView({
     setVenueOffset({});
     setVenueHasMore({});
     setVenueSearched({});
+    setVenueError({});
   }
 
   // C1: re-fetch ONLY the stop that's already being searched (radius/price
@@ -979,6 +996,7 @@ export function SenderPlanningView({
                     results={results}
                     anchorName={anchor?.name ?? null}
                     searched={venueSearched[key] ?? false}
+                    error={venueError[key] ?? null}
                     loading={loading}
                     hasMore={hasMore}
                     isFirst={i === 0}
@@ -1462,6 +1480,7 @@ function StopCard({
   results,
   anchorName,
   searched,
+  error,
   loading,
   hasMore,
   isFirst,
@@ -1497,6 +1516,7 @@ function StopCard({
   results: RankedVenue[];
   anchorName: string | null;
   searched: boolean;
+  error: VenueErrorKind | null;
   loading: boolean;
   hasMore: boolean;
   isFirst: boolean;
@@ -1798,6 +1818,43 @@ function StopCard({
       {/* Venue results */}
       {hasQuery && (
         <div className="mt-3 grid gap-2">
+          {/* Search failure banner — sits above results/search button so it
+              also covers a failed "load more" without hiding existing spots. */}
+          {error && !loading && (
+            <div
+              role="alert"
+              className="rounded-2xl border-2 border-[#ffb3c8] bg-[#fff1f5] px-3 py-3 text-center"
+            >
+              {error === "auth" ? (
+                <>
+                  <p className="text-sm font-black text-[#d32323]">
+                    Your session expired — sign in again to keep planning.
+                  </p>
+                  <Link
+                    href="/login"
+                    className="mt-2 inline-block rounded-full bg-[#ff7aaa] px-4 py-1.5 text-xs font-black text-white transition hover:brightness-105"
+                  >
+                    Sign in
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-black text-[#d32323]">
+                    Something went wrong — try again.
+                  </p>
+                  {onSearch && (
+                    <button
+                      type="button"
+                      onClick={onSearch}
+                      className="mt-2 rounded-full border-2 border-[#ffd6e8] px-4 py-1.5 text-xs font-black text-[#8a6a78] transition hover:bg-[#ffd6e8]"
+                    >
+                      Try again
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           {loading && !hasResults ? (
             <>
               {[1, 2, 3].map((i) => (

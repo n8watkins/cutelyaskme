@@ -10,6 +10,8 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
+  // Absolute base so OG/twitter image URLs resolve correctly in unfurls.
+  metadataBase: new URL("https://date-planner-mini-site.vercel.app"),
   title: "Cutely Ask — Date Night",
   description: "Plan the perfect date and keep the memory.",
   icons: {

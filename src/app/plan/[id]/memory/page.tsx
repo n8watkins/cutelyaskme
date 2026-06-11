@@ -55,7 +55,7 @@ export default async function MemoryPage({
   // ACCESS: participants, or anyone holding a valid `?share=<token>` link.
   // A matching token unlocks exactly the memory it belongs to — logged out
   // (userId null) or logged in as a non-participant alike, it's a public
-  // card link. /plan(.*) is public in src/middleware.ts, so the share path
+  // card link. /plan(.*) is public in src/proxy.ts, so the share path
   // is reachable without an account.
   // ────────────────────────────────────────────────────────────────────────
   const { userId } = await auth();

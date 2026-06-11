@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { DatePlanner } from "@/components/date-planner/DatePlanner";
 import { db } from "@/lib/db";
 import { invites } from "@/lib/db/schema";
@@ -10,6 +11,38 @@ type InvitePageProps = {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Unfurl copy for shared invite links. Name slugs are public (they're in the
+// URL), so we personalize those; opaque UUID tokens stay generic — no DB hit
+// for crawler/preview-bot requests.
+export async function generateMetadata({
+  params,
+}: InvitePageProps): Promise<Metadata> {
+  const { recipient } = await params;
+
+  let name: string | null = null;
+  if (!UUID_RE.test(recipient)) {
+    try {
+      const formatted = formatRecipientName(recipient);
+      if (formatted !== "Hey") name = formatted;
+    } catch {
+      // Malformed percent-encoding — keep the generic copy.
+    }
+  }
+
+  const title = name
+    ? `${name}, you're invited on a date 💌`
+    : "You're invited on a date 💌";
+  const description =
+    "Someone special planned something cute for you. Open the invite to answer.";
+
+  return {
+    title: `${title} — CutelyAsk`,
+    description,
+    openGraph: { title, description },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
 
 export default async function InvitePage({ params }: InvitePageProps) {
   const { recipient } = await params;
