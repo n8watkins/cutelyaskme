@@ -1,6 +1,11 @@
 # Progress & Next Steps
 
-_Last updated: June 2026 (post venue-architecture migration)_
+> **⚠️ Historical snapshot** (June 2026, post venue-architecture migration —
+> pre-PLANNER_V2). Everything below still shipped, but a lot more has landed
+> since: the full PLANNER_V2 roadmap (planner UX, settings, post-date
+> lifecycle, keepsake card) is done — see the status table in
+> [`PLANNER_V2.md`](PLANNER_V2.md) and current state in
+> [`../TODO.md`](../TODO.md). Kept for history; not maintained.
 
 ---
 
@@ -18,8 +23,8 @@ _Last updated: June 2026 (post venue-architecture migration)_
 | Venues | Yelp Fusion (businesses) + Overpass/OpenStreetMap (parks, viewpoints, stargazing) — 24h DB cache |
 | Geocoding | Nominatim (OpenStreetMap) — no API key |
 | Map | Leaflet / OpenStreetMap — no API key, free |
-| Deployment | Vercel — (pending redeploy with new env vars) |
-| Domain | cutelyask.me (purchased, not yet connected) |
+| Deployment | Vercel — live at date-planner-mini-site.vercel.app |
+| Domain | cutelyask.me — **not yet registered** (verified June 11, 2026; see [`LAUNCH.md`](LAUNCH.md)) |
 
 ---
 

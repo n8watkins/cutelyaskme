@@ -208,5 +208,8 @@ build unprompted).
 
 ## Launch status (separate track, user-driven)
 
-`docs/LAUNCH.md` has the 3 manual steps (cutelyask.me DNS → Vercel, Resend
-domain verify, Clerk production instance). Not blocking feature work.
+`docs/LAUNCH.md` has the manual steps. **Step 0 is buying cutelyask.me — the
+domain is NOT registered** (verified against the .me registry RDAP + DNS,
+June 11, 2026), so everything else there (DNS → Vercel, Resend domain verify,
+Clerk production instance) is blocked on that purchase. Not blocking feature
+work.

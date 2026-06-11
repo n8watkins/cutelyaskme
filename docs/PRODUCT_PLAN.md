@@ -6,6 +6,12 @@
 
 ## Current State (as of June 2026)
 
+> **Note (June 11, 2026):** this table predates the PLANNER_V2 roadmap, which
+> has since fully shipped (map-first planner, settings, post-date lifecycle,
+> keepsake card with sharing + music). See the status table in
+> [`PLANNER_V2.md`](PLANNER_V2.md) and [`../TODO.md`](../TODO.md) for what's
+> current; what's below is still accurate, just incomplete.
+
 The following is **live** at https://date-planner-mini-site.vercel.app:
 
 | Feature | Status |

@@ -1,11 +1,23 @@
 # Launch Checklist
 
-Everything code-side is done. These three steps are dashboard/DNS work only —
+Everything code-side is done. These steps are purchase/dashboard/DNS work only —
 they make the app run on **cutelyask.me**, email the recipient (not just you),
 and use a real Clerk auth instance.
 
-Do them in this order. All three add records at your **domain registrar's DNS**
-(wherever you bought cutelyask.me), so keep that tab open throughout.
+## 0. Buy cutelyask.me (verified NOT registered as of June 11, 2026)
+
+The domain is **not currently registered** (checked via the .me registry RDAP
+and public DNS — both NXDOMAIN). Nothing below can start without it.
+
+- **Easiest path: buy through Vercel** (`npx vercel domains buy cutelyask.me`
+  or dashboard → Domains). Vercel then hosts the DNS zone, step 1 collapses to
+  almost nothing, and the Resend/Clerk records in steps 2–3 can be added via
+  `npx vercel dns add` instead of a registrar UI.
+- Or buy at any registrar (Namecheap, Porkbun, …) — cheaper sometimes, but
+  every DNS record below is then manual in that registrar's dashboard.
+
+Do the remaining steps in order. They all add DNS records for cutelyask.me,
+so keep your DNS tab open throughout.
 
 Current state to change:
 | Env var (Vercel + `.env.local`) | Now | After launch |

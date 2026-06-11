@@ -1,199 +1,90 @@
 # Open Work & Roadmap
 
-A living status doc: what's shipped, what's broken, and what's next.
-For the end-to-end product flow + decisions (auth, notifications, review states),
-see [`docs/PRODUCT_FLOW.md`](docs/PRODUCT_FLOW.md).
-**The current roadmap is [`docs/PLANNER_V2.md`](docs/PLANNER_V2.md)** — the full
-June 2026 walkthrough breakdown (planner UX, Yelp economy, post-date lifecycle,
-keepsake card) with sub-agent-ready work packages.
+A living status doc: what's shipped, what's open, what's next.
+**The PLANNER_V2 roadmap is fully shipped** — see the status table (with commit
+hashes) at the bottom of [`docs/PLANNER_V2.md`](docs/PLANNER_V2.md), and
+[`docs/HANDOFF.md`](docs/HANDOFF.md) for conventions + the orchestrator
+playbook. For the end-to-end product flow + decisions, see
+[`docs/PRODUCT_FLOW.md`](docs/PRODUCT_FLOW.md).
+
+_Last updated: June 11, 2026._
 
 ---
 
-## ✅ Recently shipped
+## 🚀 Open — launch (the only real blocker)
 
-- **Venue architecture migration** — recipient picks *categories*; the **sender**
-  picks specific venues on `/plan/[id]`, stored in
-  `date_plans.selected_entree_venue` / `selected_activity_venues`. Real pins on
-  the map. `lib/mock-venues.ts` retired.
-- **Venue sources** — Yelp Fusion (`/api/places`) for businesses + Overpass/OSM
-  (`/api/natural-places`) for parks/viewpoints/stargazing, both 24h-cached.
-- **Per-stop durations → timeline** with Google Calendar links + `.ics` export.
-- **Itinerary regenerates on sender save** — `PATCH /api/plans/[id]` re-runs
-  Gemini with the chosen venues so the plan page reflects reality.
-- **Notify on lock-in** — share / surprise emails.
-- **Docs refresh** — README, PROGRESS, this file.
+- [ ] **Buy `cutelyask.me`** — verified June 11, 2026 (registry RDAP + DNS):
+      the domain is **not registered**. Nothing in
+      [`docs/LAUNCH.md`](docs/LAUNCH.md) can proceed without it. Buying through
+      Vercel makes the rest mostly CLI-automatable; an external registrar
+      means hand-adding DNS records.
+- [ ] The three LAUNCH.md steps once the domain exists: Vercel domain connect,
+      Resend domain verify (so invitees actually receive email — the shared
+      `onboarding@resend.dev` only delivers to the account owner), Clerk
+      production instance (+ own Google OAuth client).
+- [ ] Post-launch smoke test: invite → email arrives → wizard → plan → share.
+- [ ] Optional niceties: DMARC record, `support@cutelyask.me` in Clerk.
 
----
+## 🧹 Open — minor housekeeping
 
-## 🐛 Bugs
+- [ ] Trim stop-flow dead code sweep / component split of
+      `SenderPlanningView.tsx` (~1600 lines) if it keeps growing — no
+      functional issue today.
+- [ ] Yelp review excerpts (C5) light up automatically if the Yelp plan is
+      ever upgraded — code is wired and degrades gracefully. Nothing to do
+      unless upgrading.
 
-- **Session expiry shows wrong error** — when the sender's Clerk session expires,
-  `/api/places` + `/api/natural-places` return `401 { venues: [] }`, which the UI
-  renders as "No spots found." Detect `401` in `SenderPlanningView.fetchVenues`
-  and prompt a refresh / re-login.
+## 💡 Future / thinking only (WP-I — do not build unprompted)
 
----
-
-## 🚀 Big feature — Post-date memory & keepsake poem
-
-**Vision:** after the date, the couple captures how it went, and Gemini turns it
-into a little keepsake. Each date gets a revisitable "memory page" you can come
-back to later.
-
-### Capture flow ("How was it?")
-- Prompt for **highlights**, **funny moments**, **things you liked**, free-text
-  thoughts.
-- Optional **photo upload** from the date.
-- Extend the existing star **`RatingWidget` / `date_ratings`** rather than building
-  a parallel system.
-
-### Gemini keepsake poem
-- Feed the captured inputs **+ the saved itinerary** (venues, activities, date)
-  into Gemini → a short, warm poem about the evening.
-- Store the generated poem; allow **regenerate** (like the itinerary flow).
-- New helper alongside `lib/itinerary.ts` (e.g. `lib/memory-poem.ts`).
-
-### Memory page
-- A persistent page per date (e.g. `/plan/[id]/memory` or a section on the plan
-  page) showing the poem, photos, highlights, and the original lineup.
-
-### Public vs. private
-- **Shared reflections** both people can see (the poem, highlights, photos).
-- **Private verdict** — a simple **pass/fail swipe** per place (see the next
-  feature), visible only to its author. Never expose another user's verdict.
-
-### Sub-tasks
-- [x] Schema: `date_memories` (`plan_id`, `author_id`, `notes`, `poem`,
-      `photo_refs`, timestamps; unique per author) — pushed to Turso.
-- [x] Poem generation — `lib/memory-poem.ts` (Gemini 3.1 Flash Lite, thinking off);
-      `POST /api/memories` saves notes + (re)generates the poem. Verified live.
-- [x] Privacy — participant-only check server-side; one memory per author.
-- [x] Capture + display UI — `MemoryKeepsake` on the plan page (notes textarea,
-      generate/rewrite, poem card). _(Move to a dedicated memory page later.)_
-- [x] **Photo upload to Cloudinary** — signed direct uploads (`GET
-      /api/memories/sign` → browser → Cloudinary), refs persisted via
-      `PUT /api/memories/photos`, optimized thumbnail gallery in `MemoryKeepsake`.
-      Verified end-to-end (upload + destroy).
-- [ ] Orphan cleanup — removing a photo drops it from `photo_refs` but leaves the
-      Cloudinary asset; add a `destroy` call later if storage matters.
-- [ ] Photo storage notes — Turso has no blob store; not using Supabase.
-      Free-tier options (researched June 2026):
-      - **Cloudinary** — ~25 GB (25 credits/mo; 1 credit = 1 GB storage / 1 GB
-        bandwidth / 1k transforms, shared). Built-in resize/optimize/CDN. Best
-        for an image feature; ~5× Vercel's storage. **Recommended.**
-      - **Vercel Blob** — 5 GB, 100 GB transfer, on our existing stack, hard cap
-        with no overage billing. Simplest, but we'd resize images ourselves.
-        ~3,000–5,000 photos @ 1–1.5 MB.
-      - **Cloudflare R2** — 10 GB, **zero egress fees ever**, 1M writes / 10M
-        reads free. Best raw-storage + free-serving option (needs S3 plumbing).
-      - **DECIDED: Cloudinary** (optimization + most storage). Add
-        `CLOUDINARY_*` env vars; upload via signed/unsigned preset; store the
-        returned secure URL + public_id in `photo_refs`.
-- [ ] Poem prompt design + JSON/plain-text handling + graceful fallback when
-      `GEMINI_API_KEY` is unset.
-- [ ] Privacy model: enforce per-user private notes server-side.
-- [ ] Memory page route + UI.
+- Monetization candidates: premium keepsakes (animated templates, music
+  library, printed card), "Couple+" subscription, reservation affiliate links,
+  B2B date-night gift links. Core ask-someone-out flow stays free (it's the
+  growth loop).
+- Instagram: Basic Display API is dead (Dec 2024). When wanted: Web Share API
+  with the keepsake card rendered to an image (`@vercel/og` or canvas) — no
+  OAuth.
 
 ---
 
-## 🔁 Big feature — Swipe verdicts → recommendations & "Reminisce" mode
+## ✅ Shipped (June 2026, PLANNER_V2 Batches 1–9 + follow-ups)
 
-**Vision:** after a date, rate each place we went with a dead-simple **pass/fail
-swipe** ("would we go back?" — Tinder-style). The places we liked build up into a
-pile we own, and that pile powers two things: smarter recommendations next time,
-and a "reminisce" option to deliberately revisit a favorite.
+Highlights — full detail lives in `docs/PLANNER_V2.md` + `docs/HANDOFF.md`:
 
-### 1. The swipe
-- Per visited venue, **three states** — 👍 loved / 😐 neutral (default; didn't go
-  / closed) / 👎 nope. One tap, per-user. Only available once the plan is
-  **confirmed**.
-- Captured on the post-date memory page, alongside the poem/photos.
+- **Planner UX (WP-A/B/C/D/E):** map-first layout, configurable wheel-zoom,
+  click-to-pick + custom dropped-pin venues, saved home/pickup addresses,
+  on-demand per-stop Yelp searches (zero calls on page load) with per-stop
+  price + distance-from-previous sorting, business hours + open-during-date
+  badges, Overpass natural-place fixes (UA, mirrors, no-fail-caching), sun
+  strip + sunset-aware reordering, OSRM travel legs with per-leg drive/walk
+  toggle, deterministic itineraries (Gemini only writes notes/tips), single
+  calendar control (one event vs. per-stop, user setting).
+- **Settings (WP-H):** `/settings` + `user_settings` table — radius
+  default/bounds, zoom mode, calendar mode, Yelp usage meter, address book.
+- **Post-date lifecycle (WP-F):** ratings/verdicts/memories gate on the date
+  actually being over (client + server), read-only reflection view for past
+  dates, dashboard "How did your date go?" modal, cancel-a-date with gentle
+  notify, dashboard reordering.
+- **Keepsake (WP-G):** `/plan/[id]/memory` animated card — poem in a display
+  serif, Cloudinary photo cross-fade slideshow, drifting hearts, tap-to-play
+  CC-BY music loops (`public/audio/`, attribution on-card), per-memory track,
+  public share links via `share_token` that work logged-out.
+- **Launch-prep fixes (June 11):** Cloudinary assets are now destroyed when
+  photos are removed from a gallery (no more orphans); OG unfurl cards for
+  invite links + site-wide default; venue search surfaces session-expiry
+  (401 → sign-in prompt) instead of failing silently; `middleware` → `proxy`
+  per Next 16.
+- **Earlier foundations:** venue architecture migration (sender picks venues),
+  memory poem + Cloudinary photo uploads, swipe verdicts → "Places you loved"
+  + Reminisce mode, server-side geocoding + caching, persistent rate limiting,
+  Vitest suite (164 tests over `lib/*` pure helpers — `npm test`).
 
-### 2. Recommend what we loved
-- When the sender is picking a venue for an activity (e.g. Coffee), surface
-  **"Places you loved"** for that activity type at the top of the picker —
-  pulled from past 👍 swipes — above the fresh Yelp/Overpass results.
+## 📚 Resolved investigations (kept for history)
 
-### 3. "Reminisce" mode
-- An explicit option when planning: *"Take me somewhere we've been before."*
-- Lists all previously-liked venues (optionally filtered by activity) so we can
-  re-pick a favorite instead of searching from scratch — a whole date built from
-  greatest hits.
-
-### Sub-tasks
-- [x] Schema: `venue_verdicts` (`user_id`, `plan_id`, `activity`, `venue` JSON
-      snapshot, `status`, `created_at`) — pushed to Turso.
-- [x] Three-state swipe UI (`VenueVerdicts`) + `POST /api/verdicts`, gated on the
-      plan being confirmed (`confirmedAt`).
-- [x] De-dupe — unique `(user_id, venue_id)` so re-rating updates in place.
-- [x] Liked-places query (`GET /api/verdicts?liked=true`) wired into
-      `SenderPlanningView` — "💘 Places you loved" surfaces matching past
-      favorites at the top of each stop's picker, deduped against fresh results.
-- [x] "Reminisce" mode — collapsible panel in the planner listing all liked
-      venues; one-tap "Use for [activity]" drops a favorite into a matching stop.
-
----
-
-## 🔌 Investigation — connect a Yelp account & preferences
-
-**Goal:** pull the user's *own* Yelp tastes (saved/favorited spots, past reviews,
-preferences) into our venue suggestions.
-
-**Status: CONFIRMED — not possible (verified June 2026 against Yelp docs).**
-The Yelp Fusion API authenticates with an **app-level API key** (OAuth 2.0 for
-queries was removed in 2018). The only OAuth flow that exists is for **Yelp for
-Business accounts** — it lets a partner manage a business owner's claimed
-listings / respond to reviews ("Get Businesses Associated with Access Token"
-returns claimed *business* IDs). There is **no consumer "Log in with Yelp"**
-flow and **no endpoint** that exposes an individual's saved/favorited
-businesses, personal preferences, or their own reviews.
-
-- [x] Verified against developer.yelp.com — consumer account access is not offered.
-- [x] **Plan B chosen — own our preference signal** via the swipe-verdict
-      feature above (👍/👎 per place → "Places you loved" + Reminisce mode).
-      No dependency on Yelp account data.
-
----
-
-## 🛠️ Robustness / production-readiness
-
-- [x] **Server-side geocoding** — `/api/geocode` (forward + reverse) replaces the
-      browser Nominatim calls in `SenderPlanningView` (browsers drop the required
-      User-Agent header → the map wasn't responding to "Search near"). Fixed.
-- [x] **Persistent rate limiting** — `rate_limits` table + `lib/rate-limit.ts`;
-      `date-ideas` now uses it (survives cold starts).
-- [x] **Geocode caching** — `/api/geocode` caches forward + reverse results in
-      `place_cache` (30-day TTL).
-- [x] **Escape venue HTML** in map popups — `DateMap` + `HistoryMap` escape all
-      interpolated values.
-- [ ] **Overpass fallback** — single endpoint, no retry; add a mirror or clearer
-      timeout messaging.
-
----
-
-## 📦 Ship it (not live yet)
-
-- [ ] Add `RESEND_API_KEY`, `GEMINI_API_KEY` to `.env.local` + Vercel.
-- [ ] Redeploy on Vercel with all env vars.
-- [ ] Connect **cutelyask.me** DNS → Vercel; set `NEXT_PUBLIC_SITE_URL`.
-- [ ] **OG image** for invite links (`@vercel/og`) — they currently unfurl blank
-      when shared in texts.
-
----
-
-## 🎨 Polish
-
-- [ ] Store hours / "open now" badge on venue cards.
-- [ ] "Surprise ending" sender flow — sender picks a secret final stop.
-- [ ] Mobile map layout — map as a toggleable drawer (currently a fixed sidebar).
-- [x] **Tests** — Vitest suite (21 tests) over the extracted pure helpers:
-      `lib/datetime`, `lib/calendar` (gcal/ics/itinerary text), `lib/sun`,
-      `lib/html`, `lib/venues` (mapPrice). Run with `npm test`.
-
----
-
-## ✅ Resolved (kept for history)
-
-- Recipient's venue choices never persisted → fixed by the venue migration.
-- Stale venue list on manual activity toggle → moot (recipient venue picker removed).
-- Itinerary ignored the sender's venues → fixed (regenerates on save).
+- **Yelp account/preferences import:** not possible — no consumer OAuth or
+  saved-places endpoint (verified June 2026). Plan B shipped: own the signal
+  via swipe verdicts.
+- **Yelp review excerpts:** moved to a paid tier (Reviews endpoint 404s on the
+  free key). Wired + degrades gracefully.
+- **Photo storage:** Cloudinary chosen over Vercel Blob / Cloudflare R2
+  (free credits + built-in optimization). Signed direct uploads; refs in
+  `date_memories.photo_refs`; assets destroyed on removal.
