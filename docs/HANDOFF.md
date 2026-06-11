@@ -1,4 +1,4 @@
-# HANDOFF — Orchestrator Playbook (Batch 8 onward)
+# HANDOFF — Orchestrator Playbook (Batch 9 onward)
 
 You are picking up an in-flight roadmap with **zero prior context**. This file +
 [`PLANNER_V2.md`](PLANNER_V2.md) contain everything you need. Read both fully
@@ -86,9 +86,14 @@ reuse, don't reinvent.
 - **API frugality (user cares a lot):** never fetch venues eagerly — searches
   are explicit per-stop actions; track outbound calls via
   `trackApiUsage(service)` from `@/lib/api-usage` (cache hits don't count).
-- **Settings-before-Settings-page:** user preferences go in localStorage with
-  an `ca:` key (existing: `ca:mapZoomMode`, `ca:calendarMode`), read post-mount
-  (hydration), and get absorbed by the `/settings` page in Batch 8.
+- **Settings (Batch 8, live):** user preferences live in the `user_settings`
+  table — add new prefs as columns + `lib/settings.ts` parse/merge validation,
+  NOT as new `ca:` localStorage keys. The planner gets settings as server
+  props from `/plan/[id]` (sender branch, `getUserSettingsState`); in-planner
+  toggles PATCH `/api/settings` and mirror the legacy `ca:` keys. Legacy
+  `ca:mapZoomMode`/`ca:calendarMode` migrate up once when no row exists — the
+  row's existence is the migration flag; don't add another flag. Per-plan
+  flags (`ca:reviewPrompted:<planId>`) stay in localStorage.
 - **OSRM (Batch 6):** public demo server, no key. Its `foot` profile serves
   car-speed data, so `/api/route` runs walks through `plausibleWalk`
   (`lib/route-legs.ts`) and substitutes a 3 mph estimate when implausible —
@@ -147,57 +152,53 @@ reuse, don't reinvent.
 | `lib/review-prompt.ts` | F3 eligibility: `pickReviewPromptPlan`, `reviewPromptTitle` (tested) |
 | `components/DateReviewModal.tsx` | F3 modal: stars → verdict swipe cards → keepsake link |
 | `components/sender/CancelDateButton.tsx` + `src/app/api/plans/[id]/cancel/route.ts` | F4 cancel (idempotent, best-effort notify) |
-| `src/app/dashboard/page.tsx` | Dashboard: F5 order (hero → Upcoming → invites → map+stats → Past → Places), hosts the F3 modal |
+| `src/app/dashboard/page.tsx` | Dashboard: F5 order (hero → Upcoming → invites → map+stats → Past → Places), hosts the F3 modal; header links to `/settings` |
+| `lib/settings.ts` | `UserSettings` type, `DEFAULT_SETTINGS`, 1–25 mi hard limits, `parseSettingsPatch`/`mergeSettings`/`legacySettingsPatch`, `YELP_FREE_TIER_DAILY_CALLS` (tested) |
+| `lib/user-settings.ts` | `getUserSettings` / `getUserSettingsState` (returns `{ settings, persisted }`) / `saveUserSettings` upsert |
+| `src/app/settings/page.tsx` + `components/SettingsView.tsx` + `src/app/api/settings/route.ts` | Settings page (radius default+bounds, zoom mode, calendar mode, Yelp usage meter, address book) + GET/PATCH API |
 
-### Files Batch 8 will touch
+### Files Batch 9 will touch
 
 | File | What it is |
 |---|---|
-| `src/app/settings/page.tsx` + `src/app/api/settings/route.ts` | NEW — the Settings page + its GET/PATCH API |
-| `lib/db/schema.ts` | add `user_settings` (1 row per user; migration via the pattern above) |
-| `components/SavedAddresses.tsx` | Address book — parked since F5 (not mounted anywhere); re-home it in `/settings` |
-| `components/sender/SenderPlanningView.tsx` | Reads `ca:mapZoomMode` + `ca:calendarMode` post-mount and owns the radius slider (B3 default/bounds) — switch to settings |
-| `components/sender/DateMap.tsx` | `wheelZoomMode` prop ("ctrl" \| "plain") fed from the zoom setting |
-| `src/app/api/usage/route.ts` | Existing usage endpoint (`api_usage` table) — the C7 meter reads from here |
+| `src/app/plan/[id]/memory/page.tsx` | NEW — the G1 keepsake card page (+ its client components) |
+| `lib/db/schema.ts` | `date_memories` gains `share_token` + `music_track` (migration via the pattern above). Current columns: id, plan_id, author_id, notes, poem, photo_refs (JSON `[{url, publicId}]`), created_at, updated_at; unique (plan_id, author_id) |
+| `public/audio/` | NEW — 2–3 small royalty-free romantic loops (CC0/CC-BY; note attribution if CC-BY) |
+| `components/MemoryKeepsake.tsx` | Inline memory block on the plan page — becomes a teaser ("Open your keepsake 💌") once a memory exists |
+| `components/DateReviewModal.tsx` | F3 modal — its "write your keepsake →" link moves to the memory page |
+| `src/app/plan/[id]/page.tsx` | F2 reflection view — its keepsake link moves to the memory page |
+| `src/app/api/memories/route.ts` | Existing memory POST/GET — extend for `music_track` + share toggle (or a small sibling route) |
 
-## Batch 8 — what to build (specs: PLANNER_V2.md B4 + WP-H, meter from C7)
+## Batch 9 — what to build (spec: PLANNER_V2.md G1 — read it verbatim)
 
-Auth-gated `/settings` page + `user_settings` table (1 row per user, JSON or
-columns) that becomes the home for:
+`/plan/[id]/memory` — a standalone animated keepsake card: decorative pink
+frame, poem centerpiece in a display serif, Cloudinary photo
+slideshow/cross-fade + gallery strip, CSS float/fade animation, tap-to-play
+background music (browsers block autoplay) from `public/audio/`, per-memory
+track stored in `music_track`. Participants-only by default; optional public
+share-link toggle via a separate `share_token` that works logged-out. The
+inline `MemoryKeepsake` block on the plan page becomes a teaser once a memory
+exists; the F3 modal + F2 reflection links point at the memory page.
 
-- **Default search radius + bounds** (B3) — the planner slider's initial
-  value/range. Accept: changing the default in Settings changes the planner's
-  initial slider value.
-- **Map wheel-zoom mode** (A2) — absorbs `ca:mapZoomMode` ("ctrl" | "plain").
-- **Calendar export mode** (E3) — absorbs `ca:calendarMode` (one event |
-  per stop).
-- **Address book** — mount `SavedAddresses` here (it's been unmounted since F5).
-- **Yelp usage meter** (C7) — "Yelp: N calls today" + free-tier reference;
-  `api_usage` + `/api/usage` already exist. Accept: count increments after a
-  search.
-- Future hooks only (don't build): theme/style switcher, notification prefs.
+**Accept (G1):** a past date with a memory opens a full-screen animated card
+with poem, photo slideshow, and working tap-to-play music; share toggle
+produces a link that works logged-out.
 
 Suggested split (2 tasks, sequential):
 
-1. **Task A — table + API + page:** `user_settings` schema (sub-agent reports
-   the SQL; orchestrator migrates), GET/PATCH `/api/settings`, `/settings` UI
-   in the app's pink visual language (radius default/bounds, zoom mode,
-   calendar mode, usage meter, address book), link to it from the dashboard
-   header.
-2. **Task B — wire the planner:** planner/map/calendar consume settings, with
-   the old `ca:` localStorage values as a one-time fallback/migration so
-   nobody's existing prefs reset; radius slider honors configured
-   default + bounds.
+1. **Task A — schema + card page:** `share_token`/`music_track` migration
+   (sub-agent reports SQL; orchestrator migrates), the memory page itself
+   (card, animations, slideshow, music player), music files sourced into
+   `public/audio/` (if the sub-agent can't download audio, it should say so —
+   sourcing may fall back to the orchestrator or a manual user step).
+2. **Task B — sharing + wiring:** share-token mint/toggle + logged-out access
+   path, MemoryKeepsake teaser, repoint the F3 modal and F2 reflection links.
 
-Acceptance criteria are in PLANNER_V2.md (B4, C7) — quote them to sub-agents.
+## After Batch 9
 
-## After Batch 8
-
-Batch 9 is the animated keepsake card (spec G1): `/plan/[id]/memory`, music
-files → `public/audio/` (CC0 romantic loops), `date_memories` gains
-`share_token` + `music_track`. Two existing links should then point there:
-the F3 modal's "write your keepsake →" and the F2 reflection view (both
-currently land on `/plan/[id]`).
+The PLANNER_V2 roadmap table is then fully shipped. Remaining tracks: launch
+steps (below, user-driven) and WP-I business ideas (thinking only — do not
+build unprompted).
 
 ## Launch status (separate track, user-driven)
 
