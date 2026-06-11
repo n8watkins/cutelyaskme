@@ -429,8 +429,8 @@ native share sheet.
 | 4 | A5, C6 (Overpass UA/mirror/cache fix) | ✅ **shipped + deployed** | `d815e37` |
 | 5 | C4, C5, C7 (+ `/api/places/[id]`, `api_usage`) | ✅ **shipped + deployed** (C5 = paid-tier, degrades gracefully) | `b0a051e` |
 | 6 | D2, D3, E1, E2, E3 (+ `leg_modes` migration) | ✅ **shipped + deployed** | `de8dab0` |
-| 7 | F1–F5 | ⬜ **NEXT** | — |
-| 8 | B4 + WP-H (Settings; absorbs `ca:mapZoomMode` + calendar mode + usage meter) | ⬜ | — |
+| 7 | F1–F5 (+ `canceled_at` migration) | ✅ **shipped + deployed** | `005cace` + `b9ec917` + `2706e25` |
+| 8 | B4 + WP-H (Settings; absorbs `ca:mapZoomMode` + calendar mode + usage meter) | ⬜ **NEXT** | — |
 | 9 | G1 keepsake card | ⬜ | — |
 
 For project conventions, verification loop, deploy steps, and the orchestrator

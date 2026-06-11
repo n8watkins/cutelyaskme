@@ -25,11 +25,16 @@ Overpass/OSM, Nominatim, Leaflet, Cloudinary, web-push, suncalc, Vitest.
 
 ## State of the roadmap
 
-Batches 1–6 of `PLANNER_V2.md` are shipped + deployed (status table at the
-bottom of that file, with commit hashes). **Batch 7 is next**: F1–F5 post-date
-lifecycle. Then Batch 8 (Settings), Batch 9 (keepsake card). Batch 7's
-`dateEnd` notion can build on Batch 6's leg data (`lib/route-legs.ts`,
-`legByDestination`/`chosenLeg` in `SenderPlanningView`) plus stop durations.
+Batches 1–7 of `PLANNER_V2.md` are shipped + deployed (status table at the
+bottom of that file, with commit hashes). **Batch 8 is next**: `/settings` +
+`user_settings` (B4 + WP-H), absorbing `ca:mapZoomMode`, `ca:calendarMode`,
+the new `ca:reviewPrompted:<planId>` flags (F3), the parked address book
+(`components/SavedAddresses.tsx` — removed from the dashboard in F5), radius
+defaults, and the usage meter. Then Batch 9 (keepsake card; F3's "write your
+keepsake →" link currently points at `/plan/[id]` and should move to the G1
+memory page). Batch 7 added `lib/date-end.ts` (`isDateOver`/`dateEndFromPlan`
+from raw plan rows), `date_plans.canceled_at`, and `lib/review-prompt.ts` —
+reuse, don't reinvent.
 
 ## Orchestrator loop (per batch)
 
