@@ -1,12 +1,14 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { invites, datePlans, venueVerdicts, savedAddresses } from "@/lib/db/schema";
+import { invites, datePlans, dateRatings, venueVerdicts } from "@/lib/db/schema";
 import { and, eq, ne, or, inArray, desc, sql } from "drizzle-orm";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { EnableNotifications } from "@/components/EnableNotifications";
 import { HistoryMap, type HistoryPoint } from "@/components/HistoryMap";
-import { SavedAddresses } from "@/components/SavedAddresses";
+import { DateReviewModal } from "@/components/DateReviewModal";
+import type { VerdictStop } from "@/components/VenueVerdicts";
+import { pickReviewPromptPlan, reviewPromptTitle } from "@/lib/review-prompt";
 import { ACTIVITY_ICONS, type Venue } from "@/lib/venues";
 
 function parseJson<T>(json: string | null, fallback: T): T {
@@ -47,6 +49,13 @@ export default async function DashboardPage() {
     (p) => p.canceledAt || !p.selectedDate || p.selectedDate < todayStr,
   );
 
+  // F5: the soonest upcoming date is the hero; the rest list below it.
+  const upcomingSorted = [...upcomingPlans].sort((a, b) =>
+    (a.selectedDate ?? "") < (b.selectedDate ?? "") ? -1 : 1,
+  );
+  const heroPlan = upcomingSorted[0] ?? null;
+  const laterPlans = upcomingSorted.slice(1);
+
   const planByInvite = Object.fromEntries(
     completedPlans
       .filter((p) => p.inviteId)
@@ -83,18 +92,38 @@ export default async function DashboardPage() {
   );
 
   // Your verdicts → "Your places" + status overlay on the map.
-  const myAddresses = await db
-    .select()
-    .from(savedAddresses)
-    .where(eq(savedAddresses.userId, userId))
-    .orderBy(desc(savedAddresses.createdAt));
-
   const myVerdicts = await db
     .select()
     .from(venueVerdicts)
     .where(eq(venueVerdicts.userId, userId))
     .orderBy(desc(venueVerdicts.createdAt));
   const statusByVenueId = new Map(myVerdicts.map((v) => [v.venueId, v.status]));
+
+  // F3: "How did your date go?" — prompt once about the most recently ended
+  // confirmed plan this user hasn't rated or swiped verdicts for. The client
+  // adds a ca:reviewPrompted:<planId> localStorage flag so dismissing it never
+  // re-prompts either.
+  const myRatings = await db
+    .select({ planId: dateRatings.planId })
+    .from(dateRatings)
+    .where(eq(dateRatings.raterId, userId));
+  const reviewedPlanIds = new Set<string>([
+    ...myRatings.map((r) => r.planId),
+    ...myVerdicts.map((v) => v.planId),
+  ]);
+  const reviewPlan = pickReviewPromptPlan(myPlans, reviewedPlanIds);
+  let reviewStops: VerdictStop[] = [];
+  if (reviewPlan) {
+    const activityVenues = parseJson<Record<string, Venue>>(reviewPlan.selectedActivityVenues, {});
+    const entreeVenue = parseJson<Venue | null>(reviewPlan.selectedEntreeVenue ?? null, null);
+    const activities = parseJson<string[]>(reviewPlan.selectedActivities, []);
+    reviewStops = [
+      ...activities
+        .filter((a) => activityVenues[a])
+        .map((a) => ({ activity: a, venue: activityVenues[a] })),
+      ...(entreeVenue ? [{ activity: "__entree__", venue: entreeVenue }] : []),
+    ];
+  }
 
   type PlaceItem = { venue: Venue; activity: string | null };
   const likedPlaces: PlaceItem[] = myVerdicts
@@ -155,8 +184,18 @@ export default async function DashboardPage() {
   }
   const favActivity = mode(allActivities);
 
+  // F5 order: act on what's next (review prompt, next date, invites) →
+  // browse history (map + stats, past dates, your places).
   return (
     <main className="mx-auto max-w-lg px-4 py-10">
+      {reviewPlan && (
+        <DateReviewModal
+          planId={reviewPlan.id}
+          title={reviewPromptTitle(reviewPlan.selectedDate)}
+          stops={reviewStops}
+        />
+      )}
+
       <div className="mb-8 flex items-center justify-between">
         <h1 className="text-3xl font-black text-[#3a2530]">Your dates 💌</h1>
         <Link
@@ -171,34 +210,36 @@ export default async function DashboardPage() {
         <EnableNotifications />
       </div>
 
-      {totalDates > 0 && (
+      {heroPlan && (
         <section className="mb-8">
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-            <Stat icon="💞" value={totalDates} label={totalDates === 1 ? "date" : "dates"} />
-            <Stat icon="📍" value={mapPoints.length} label="places" />
-            <Stat icon="❤️" value={likedPlaces.length} label="loved" />
-            {favCuisine && <Stat icon="🍽️" value={favCuisine} label="go-to" />}
-            {favActivity && <Stat icon="🎯" value={favActivity} label="favorite" />}
-          </div>
+          <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
+            💘 Up next
+          </h2>
+          <HeroPlanCard
+            plan={heroPlan}
+            isSender={heroPlan.senderId === userId}
+            recipientName={
+              heroPlan.inviteId ? inviteRecipientName[heroPlan.inviteId] ?? null : null
+            }
+          />
         </section>
       )}
 
-      {mapPoints.length > 0 && (
+      {laterPlans.length > 0 && (
         <section className="mb-8">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
-              💞 Your map
-            </h2>
-            <span className="text-xs font-black text-[#c0a0b0]">{mapPoints.length} spots</span>
+          <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
+            Upcoming dates
+          </h2>
+          <div className="grid gap-3">
+            {laterPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isSender={plan.senderId === userId}
+                recipientName={plan.inviteId ? inviteRecipientName[plan.inviteId] ?? null : null}
+              />
+            ))}
           </div>
-          <div className="h-[300px] overflow-hidden rounded-[24px] border-2 border-[#ffd6e8] shadow-sm">
-            <HistoryMap points={mapPoints} />
-          </div>
-          <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-black text-[#c0a0b0]">
-            <span>🟢 loved</span>
-            <span>🔴 nope</span>
-            <span>🩷 been there</span>
-          </p>
         </section>
       )}
 
@@ -293,25 +334,41 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {upcomingPlans.length > 0 && (
+      {(mapPoints.length > 0 || totalDates > 0) && (
         <section className="mb-8">
-          <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
-            Upcoming dates
-          </h2>
-          <div className="grid gap-3">
-            {upcomingPlans.map((plan) => (
-              <PlanCard
-                key={plan.id}
-                plan={plan}
-                isSender={plan.senderId === userId}
-                recipientName={plan.inviteId ? inviteRecipientName[plan.inviteId] ?? null : null}
-              />
-            ))}
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
+              💞 Your map + stats
+            </h2>
+            {mapPoints.length > 0 && (
+              <span className="text-xs font-black text-[#c0a0b0]">{mapPoints.length} spots</span>
+            )}
           </div>
+          {mapPoints.length > 0 && (
+            <>
+              <div className="h-[300px] overflow-hidden rounded-[24px] border-2 border-[#ffd6e8] shadow-sm">
+                <HistoryMap points={mapPoints} />
+              </div>
+              <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-black text-[#c0a0b0]">
+                <span>🟢 loved</span>
+                <span>🔴 nope</span>
+                <span>🩷 been there</span>
+              </p>
+            </>
+          )}
+          {totalDates > 0 && (
+            <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+              <Stat icon="💞" value={totalDates} label={totalDates === 1 ? "date" : "dates"} />
+              <Stat icon="📍" value={mapPoints.length} label="places" />
+              <Stat icon="❤️" value={likedPlaces.length} label="loved" />
+              {favCuisine && <Stat icon="🍽️" value={favCuisine} label="go-to" />}
+              {favActivity && <Stat icon="🎯" value={favActivity} label="favorite" />}
+            </div>
+          )}
         </section>
       )}
 
-      <section>
+      <section className="mb-8">
         <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
           Past dates
         </h2>
@@ -332,7 +389,7 @@ export default async function DashboardPage() {
       </section>
 
       {myVerdicts.length > 0 && (
-        <section className="mt-8">
+        <section>
           <h2 className="mb-1 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
             ⭐ Your places
           </h2>
@@ -363,13 +420,6 @@ export default async function DashboardPage() {
           </div>
         </section>
       )}
-
-      <section className="mt-8">
-        <h2 className="mb-3 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
-          🏠 Saved addresses
-        </h2>
-        <SavedAddresses initial={myAddresses as import("@/components/SavedAddresses").SavedAddress[]} />
-      </section>
     </main>
   );
 }
@@ -386,30 +436,69 @@ function Stat({ icon, value, label }: { icon: string; value: string | number; la
   );
 }
 
+type PlanCardPlan = {
+  id: string;
+  selectedActivities: string;
+  selectedDateLabel: string | null;
+  selectedTimeLabel: string | null;
+  selectedEntree: string | null;
+  canceledAt: string | null;
+};
+
+function planCardCopy(plan: PlanCardPlan, isSender: boolean, recipientName: string | null) {
+  let activities: string[] = [];
+  try { activities = JSON.parse(plan.selectedActivities) as string[]; } catch {}
+  const who = isSender
+    ? recipientName ? `Date with ${recipientName}` : "You planned this"
+    : "Planned for you";
+  const when = [plan.selectedDateLabel, plan.selectedTimeLabel].filter(Boolean).join(" at ");
+  return { activities, who, when };
+}
+
+// F5 hero: the soonest upcoming date, big enough to act on at a glance.
+function HeroPlanCard({
+  plan,
+  isSender,
+  recipientName,
+}: {
+  plan: PlanCardPlan;
+  isSender: boolean;
+  recipientName: string | null;
+}) {
+  const { activities, who, when } = planCardCopy(plan, isSender, recipientName);
+  return (
+    <Link
+      href={`/plan/${plan.id}`}
+      className="block rounded-[24px] border-2 border-[#ffd6e8] bg-white p-5 shadow-sm transition hover:bg-[#fff7fb]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-lg font-black text-[#3a2530]">{who}</p>
+          {when && <p className="mt-1 text-sm font-black text-[#ff7aaa]">{when}</p>}
+          {activities.length > 0 && (
+            <p className="mt-1 text-xs text-[#c0a0b0]">
+              {activities.join(" + ")}
+              {plan.selectedEntree ? ` · ${plan.selectedEntree}` : ""}
+            </p>
+          )}
+        </div>
+        <span className="shrink-0 text-2xl">💘</span>
+      </div>
+    </Link>
+  );
+}
+
 function PlanCard({
   plan,
   isSender,
   recipientName,
 }: {
-  plan: {
-    id: string;
-    selectedActivities: string;
-    selectedDateLabel: string | null;
-    selectedTimeLabel: string | null;
-    selectedEntree: string | null;
-    canceledAt: string | null;
-  };
+  plan: PlanCardPlan;
   isSender: boolean;
   recipientName: string | null;
 }) {
-  let activities: string[] = [];
-  try { activities = JSON.parse(plan.selectedActivities) as string[]; } catch {}
-
+  const { activities, who, when } = planCardCopy(plan, isSender, recipientName);
   const canceled = plan.canceledAt !== null;
-  const who = isSender
-    ? recipientName ? `Date with ${recipientName}` : "You planned this"
-    : "Planned for you";
-  const when = [plan.selectedDateLabel, plan.selectedTimeLabel].filter(Boolean).join(" at ");
 
   return (
     <Link
