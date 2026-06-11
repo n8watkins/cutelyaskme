@@ -117,6 +117,11 @@ export const dateMemories = sqliteTable(
     notes: text("notes"), // freeform highlights / funny moments
     poem: text("poem"), // Gemini-generated keepsake
     photoRefs: text("photo_refs").notNull().default("[]"), // JSON [{ url, publicId }]
+    // G1: public share-link token for the keepsake card — null = participants only.
+    shareToken: text("share_token").unique(),
+    // G1: background music for the keepsake card — a MUSIC_TRACKS id
+    // (lib/memory-music.ts); null = the default track.
+    musicTrack: text("music_track"),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),

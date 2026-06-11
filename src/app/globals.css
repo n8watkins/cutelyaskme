@@ -89,3 +89,33 @@ input {
     filter: blur(0.5px);
   }
 }
+
+/* G1 keepsake card — hearts drifting up the page and the poem's entrance.
+   The global prefers-reduced-motion rule above flattens both. */
+@keyframes keepsake-heart-drift {
+  0% {
+    transform: translateY(0) translateX(0) scale(0.9);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.65;
+  }
+  55% {
+    transform: translateY(-55vh) translateX(14px) scale(1.05);
+  }
+  100% {
+    transform: translateY(-108vh) translateX(-10px) scale(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes keepsake-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
