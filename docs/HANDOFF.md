@@ -25,15 +25,20 @@ Overpass/OSM, Nominatim, Leaflet, Cloudinary, web-push, suncalc, Vitest.
 
 ## State of the roadmap
 
-Batches 1–7 of `PLANNER_V2.md` are shipped + deployed (status table at the
-bottom of that file, with commit hashes). **Batch 8 is next**: `/settings` +
-`user_settings` (B4 + WP-H), absorbing `ca:mapZoomMode`, `ca:calendarMode`,
-the parked address book (`components/SavedAddresses.tsx` — removed from the
-dashboard in F5), radius defaults, and the usage meter. (The per-plan
+Batches 1–8 of `PLANNER_V2.md` are shipped + deployed (status table at the
+bottom of that file, with commit hashes). **Batch 9 is next**: the G1 keepsake
+card (see "After Batch 8" below; F3's "write your keepsake →" link and the F2
+reflection view currently point at `/plan/[id]` and should move to the G1
+memory page). Batch 8 added `user_settings` (1 row per user; migration
+applied), `lib/settings.ts` (defaults/validation/`legacySettingsPatch`,
+tested), `lib/user-settings.ts` (`getUserSettings` / `getUserSettingsState`),
+GET/PATCH `/api/settings`, and the `/settings` page (radius default+bounds,
+zoom mode, calendar mode, Yelp usage meter, re-homed address book). The
+planner consumes settings via server props from `/plan/[id]`; legacy
+`ca:mapZoomMode`/`ca:calendarMode` localStorage values migrate up once when no
+settings row exists (the row itself is the migration flag). (The per-plan
 `ca:reviewPrompted:<planId>` flags from F3 stay in localStorage — they're not
-settings.) Then Batch 9 (keepsake card; F3's "write your
-keepsake →" link currently points at `/plan/[id]` and should move to the G1
-memory page). Batch 7 added `lib/date-end.ts` (`isDateOver`/`dateEndFromPlan`
+settings.) Batch 7 added `lib/date-end.ts` (`isDateOver`/`dateEndFromPlan`
 from raw plan rows), `date_plans.canceled_at`, and `lib/review-prompt.ts` —
 reuse, don't reinvent.
 

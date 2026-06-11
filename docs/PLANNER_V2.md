@@ -430,8 +430,8 @@ native share sheet.
 | 5 | C4, C5, C7 (+ `/api/places/[id]`, `api_usage`) | ✅ **shipped + deployed** (C5 = paid-tier, degrades gracefully) | `b0a051e` |
 | 6 | D2, D3, E1, E2, E3 (+ `leg_modes` migration) | ✅ **shipped + deployed** | `de8dab0` |
 | 7 | F1–F5 (+ `canceled_at` migration) | ✅ **shipped + deployed** | `005cace` + `b9ec917` + `2706e25` |
-| 8 | B4 + WP-H (Settings; absorbs `ca:mapZoomMode` + calendar mode + usage meter) | ⬜ **NEXT** | — |
-| 9 | G1 keepsake card | ⬜ | — |
+| 8 | B4 + WP-H (Settings; absorbs `ca:mapZoomMode` + calendar mode + usage meter) | ✅ **shipped + deployed** | `c88ebb3` + `b4d6d8e` |
+| 9 | G1 keepsake card | ⬜ **NEXT** | — |
 
 For project conventions, verification loop, deploy steps, and the orchestrator
 playbook, see [`HANDOFF.md`](HANDOFF.md).
