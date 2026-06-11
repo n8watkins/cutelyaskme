@@ -12,6 +12,7 @@ import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
 import { CancelDateButton } from "@/components/sender/CancelDateButton";
 import { DateMap } from "@/components/sender/DateMap";
 import { isDateOver } from "@/lib/date-end";
+import { getUserSettingsState } from "@/lib/user-settings";
 
 type PlanPageProps = {
   params: Promise<{ id: string }>;
@@ -154,6 +155,12 @@ export default async function PlanPage({ params }: PlanPageProps) {
       );
     }
 
+    // B4/Task B: the sender's saved settings drive the planner's radius
+    // slider (default + bounds), map zoom mode, and calendar export mode.
+    // `persisted` is false when no settings row exists yet — the client then
+    // migrates any legacy `ca:` localStorage prefs up exactly once.
+    const { settings, persisted } = await getUserSettingsState(plan.senderId);
+
     // F2: a past date is a memory, not a draft — render the read-only
     // reflection view instead of the planner. No editing, no regeneration.
     if (dateOver) {
@@ -186,7 +193,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
           {(mapStops.length > 0 || mapWaypoints.length > 0) && (
             <div className="mb-6 h-[300px]">
-              <DateMap stops={mapStops} waypoints={mapWaypoints} />
+              <DateMap stops={mapStops} waypoints={mapWaypoints} wheelZoomMode={settings.mapZoomMode} />
             </div>
           )}
 
@@ -218,6 +225,8 @@ export default async function PlanPage({ params }: PlanPageProps) {
       <>
         <SenderPlanningView
           planId={id}
+          settings={settings}
+          settingsPersisted={persisted}
           plan={{
             selectedDate: plan.selectedDate,
             selectedDateLabel: plan.selectedDateLabel,

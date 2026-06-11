@@ -9,10 +9,16 @@ import {
   buildGCalLinks,
   buildICS,
   CALENDAR_MODE_KEY,
-  parseCalendarMode,
   type CalendarMode,
   type CalendarStop,
 } from "@/lib/calendar";
+import {
+  DEFAULT_SETTINGS,
+  legacySettingsPatch,
+  MAP_ZOOM_MODE_KEY,
+  type MapZoomMode,
+  type UserSettings,
+} from "@/lib/settings";
 import { sunWarning } from "@/lib/sun";
 import { suggestOrder } from "@/lib/schedule";
 import { haversineMiles, formatMiles, type LatLng } from "@/lib/geo";
@@ -106,7 +112,30 @@ function downloadICSFile(ics: string) {
   URL.revokeObjectURL(url);
 }
 
-export function SenderPlanningView({ planId, plan }: { planId: string; plan: PlanData }) {
+// Fire-and-forget persistence for in-planner preference toggles (zoom mode,
+// calendar mode). The local UI state is already updated by the caller —
+// failures just mean the pref doesn't stick across devices.
+function patchSettings(patch: Partial<UserSettings>) {
+  fetch("/api/settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  }).catch(() => {});
+}
+
+export function SenderPlanningView({
+  planId,
+  plan,
+  settings = DEFAULT_SETTINGS,
+  settingsPersisted = true,
+}: {
+  planId: string;
+  plan: PlanData;
+  /** B4: the sender's saved settings; defaults when rendered without them. */
+  settings?: UserSettings;
+  /** False when the user has no settings row yet → legacy `ca:` prefs migrate up once. */
+  settingsPersisted?: boolean;
+}) {
   const router = useRouter();
   const [stopOrder, setStopOrder] = useState<string[]>(() => buildStops(plan));
   const [activityVenues, setActivityVenues] = useState<Record<string, Venue>>(plan.selectedActivityVenues);
@@ -120,7 +149,10 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
   // distinguishes "not searched yet" from "searched, came up empty".
   const [venueSearched, setVenueSearched] = useState<Record<string, boolean>>({});
 
-  const [radius, setRadius] = useState("8000");
+  // B3/B4: the search radius (meters, as a string for the API) starts at the
+  // user's configured default. Initial-value only — mid-session slider moves
+  // are never reset by settings.
+  const [radius, setRadius] = useState(() => String(settings.defaultRadiusMi * 1609));
   // C3: each stop carries its own price level (null = any) — tacos can be $
   // while dinner is $$$.
   const [stopPrices, setStopPrices] = useState<Record<string, number | null>>({});
@@ -146,20 +178,58 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
     plan.pickupPoint?.lat ? { lat: plan.pickupPoint.lat, lng: plan.pickupPoint.lng } : null,
   );
   const [pinMode, setPinMode] = useState(false);
-  // Map wheel-zoom mode (A2). Persisted in localStorage; the Settings page will
-  // read/write the same key once it exists. Read post-mount to avoid hydration mismatch.
-  const [zoomMode, setZoomMode] = useState<"ctrl" | "plain">("ctrl");
+  // Map wheel-zoom mode (A2) — owned by the user's settings (B4); the
+  // in-planner toggle persists via PATCH /api/settings.
+  const [zoomMode, setZoomMode] = useState<MapZoomMode>(settings.mapZoomMode);
+  // E3: calendar export shape — also a setting. State lives up here (not in
+  // CalendarMenu) so the legacy migration below can update it.
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>(settings.calendarMode);
+
+  // One-time legacy migration (Task B): if the user has never saved settings
+  // (no row → settingsPersisted=false), lift any old `ca:` localStorage prefs
+  // up to the server so nobody's choices reset. Idempotent: a successful
+  // PATCH creates the settings row, so every later load sees
+  // settingsPersisted=true and skips this — once a row exists the server is
+  // the source of truth and stale localStorage can never clobber it.
   useEffect(() => {
+    if (settingsPersisted) return;
     void Promise.resolve().then(() => {
-      const stored = localStorage.getItem("ca:mapZoomMode");
-      if (stored === "plain") setZoomMode("plain");
+      let legacyZoom: string | null = null;
+      let legacyCal: string | null = null;
+      try {
+        legacyZoom = localStorage.getItem(MAP_ZOOM_MODE_KEY);
+        legacyCal = localStorage.getItem(CALENDAR_MODE_KEY);
+      } catch {}
+      const patch = legacySettingsPatch(settings, {
+        mapZoomMode: legacyZoom,
+        calendarMode: legacyCal,
+      });
+      if (!patch) return;
+      // Apply locally first — the preference holds this session even if the
+      // PATCH fails (it simply retries on the next planner load).
+      if (patch.mapZoomMode) setZoomMode(patch.mapZoomMode);
+      if (patch.calendarMode) setCalendarMode(patch.calendarMode);
+      patchSettings(patch);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  function changeZoomMode(mode: "ctrl" | "plain") {
+
+  function changeZoomMode(mode: MapZoomMode) {
     setZoomMode(mode);
+    // Keep mirroring the legacy key (the Settings page does too) so any
+    // not-yet-migrated tab stays consistent.
     try {
-      localStorage.setItem("ca:mapZoomMode", mode);
+      localStorage.setItem(MAP_ZOOM_MODE_KEY, mode);
     } catch {}
+    patchSettings({ mapZoomMode: mode });
+  }
+
+  function changeCalendarMode(mode: CalendarMode) {
+    setCalendarMode(mode);
+    try {
+      localStorage.setItem(CALENDAR_MODE_KEY, mode);
+    } catch {}
+    patchSettings({ calendarMode: mode });
   }
   // Mobile: let the map expand taller than its default drawer height (A1).
   const [mapExpanded, setMapExpanded] = useState(false);
@@ -776,8 +846,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
               </div>
               <input
                 type="range"
-                min={1}
-                max={25}
+                min={settings.radiusMinMi}
+                max={settings.radiusMaxMi}
                 value={radiusMi}
                 aria-label="Search range in miles"
                 onChange={(e) => setRadius(String(Math.round(Number(e.target.value) * 1609)))}
@@ -786,7 +856,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 className="w-full accent-[#ff7aaa]"
               />
               <p className="mt-0.5 text-[10px] text-[#c0a0b0]">
-                Searches up to 25 miles around your center.
+                Searches up to {settings.radiusMaxMi} miles around your center.
               </p>
               {usage && (
                 <p className="mt-1.5 text-[10px] font-black text-[#c0a0b0]">
@@ -1001,6 +1071,8 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                     selectedDate={plan.selectedDate}
                     planId={planId}
                     planLink={planLink}
+                    mode={calendarMode}
+                    onMode={changeCalendarMode}
                   />
                 )}
               </div>
@@ -1105,7 +1177,7 @@ export function SenderPlanningView({ planId, plan }: { planId: string; plan: Pla
                 {pinMode ? "📍 Drag pin to set search area" : "📍 Pick center on map"}
               </button>
 
-              {/* Zoom mode (A2) — synced to localStorage; Settings will own this later */}
+              {/* Zoom mode (A2) — a user setting (B4); this toggle persists via /api/settings */}
               <div className="hidden items-center gap-1 rounded-full border-2 border-[#ffd6e8] px-2.5 lg:flex">
                 <span className="text-[10px] font-black uppercase tracking-wide text-[#c0a0b0]">
                   🖱 Zoom
@@ -1216,9 +1288,9 @@ function keycap(n: number): string {
 }
 
 /**
- * E3: the ONE calendar control. The export shape comes from the
- * `ca:calendarMode` setting (localStorage until the Settings page exists,
- * read post-mount): "single" = one all-evening event, "per-stop" = one
+ * E3: the ONE calendar control. The export shape is the user's
+ * `calendarMode` setting (B4) — owned by the parent, persisted via
+ * PATCH /api/settings: "single" = one all-evening event, "per-stop" = one
  * event per stop. The .ics download handles both modes in one file; Google
  * Calendar web links are one event per click, so per-stop mode expands an
  * ordered list of pre-filled links.
@@ -1228,27 +1300,17 @@ function CalendarMenu({
   selectedDate,
   planId,
   planLink,
+  mode,
+  onMode,
 }: {
   stops: CalendarStop[];
   selectedDate: string | null;
   planId: string;
   planLink: string;
+  mode: CalendarMode;
+  onMode: (mode: CalendarMode) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<CalendarMode>("single");
-
-  useEffect(() => {
-    void Promise.resolve().then(() => {
-      setMode(parseCalendarMode(localStorage.getItem(CALENDAR_MODE_KEY)));
-    });
-  }, []);
-
-  function changeMode(m: CalendarMode) {
-    setMode(m);
-    try {
-      localStorage.setItem(CALENDAR_MODE_KEY, m);
-    } catch {}
-  }
 
   const gcalLinks = buildGCalLinks(stops, { mode, selectedDate, planLink });
 
@@ -1265,7 +1327,7 @@ function CalendarMenu({
 
       {open && (
         <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-2xl border-2 border-[#e7d9ff] bg-white p-3 shadow-[0_12px_28px_rgba(124,90,160,0.18)]">
-          {/* The setting — synced to localStorage; Settings page will own this later */}
+          {/* The setting (B4) — persists via /api/settings; /settings has the same toggle */}
           <div className="flex items-center gap-1">
             <span className="mr-1 text-[10px] font-black uppercase tracking-wide text-[#c0a0b0]">
               Export
@@ -1274,7 +1336,7 @@ function CalendarMenu({
               <button
                 key={m}
                 type="button"
-                onClick={() => changeMode(m)}
+                onClick={() => onMode(m)}
                 aria-pressed={mode === m}
                 title={m === "single" ? "One event for the whole date" : "One event per stop"}
                 className={`rounded-full px-2 py-0.5 text-[10px] font-black transition ${

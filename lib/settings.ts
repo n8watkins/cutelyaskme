@@ -42,6 +42,34 @@ export const DEFAULT_SETTINGS: UserSettings = {
   calendarMode: "single",
 };
 
+/**
+ * Task B one-time migration: before the Settings page existed, zoom +
+ * calendar prefs lived only in `ca:` localStorage keys. Given the server's
+ * settings and the raw legacy values, return the PATCH body that preserves
+ * the old prefs — or null when there's nothing to lift up. Invalid/absent
+ * legacy values and values already matching the server are ignored, so the
+ * result is safe to PATCH blindly.
+ */
+export function legacySettingsPatch(
+  server: Pick<UserSettings, "mapZoomMode" | "calendarMode">,
+  legacy: { mapZoomMode: string | null; calendarMode: string | null },
+): Partial<Pick<UserSettings, "mapZoomMode" | "calendarMode">> | null {
+  const patch: Partial<Pick<UserSettings, "mapZoomMode" | "calendarMode">> = {};
+  if (
+    (legacy.mapZoomMode === "ctrl" || legacy.mapZoomMode === "plain") &&
+    legacy.mapZoomMode !== server.mapZoomMode
+  ) {
+    patch.mapZoomMode = legacy.mapZoomMode;
+  }
+  if (
+    (legacy.calendarMode === "single" || legacy.calendarMode === "per-stop") &&
+    legacy.calendarMode !== server.calendarMode
+  ) {
+    patch.calendarMode = legacy.calendarMode;
+  }
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 function isFiniteNumber(x: unknown): x is number {

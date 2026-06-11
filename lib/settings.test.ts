@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_SETTINGS,
+  legacySettingsPatch,
   parseMapZoomMode,
   parseSettingsPatch,
   mergeSettings,
@@ -96,5 +97,41 @@ describe("mergeSettings", () => {
     const r = mergeSettings(DEFAULT_SETTINGS, { defaultRadiusMi: 7.4 });
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.defaultRadiusMi).toBe(7);
+  });
+});
+
+describe("legacySettingsPatch", () => {
+  it("lifts differing legacy values up", () => {
+    expect(
+      legacySettingsPatch(DEFAULT_SETTINGS, { mapZoomMode: "plain", calendarMode: "per-stop" }),
+    ).toEqual({ mapZoomMode: "plain", calendarMode: "per-stop" });
+  });
+
+  it("returns a partial patch when only one key differs", () => {
+    expect(
+      legacySettingsPatch(DEFAULT_SETTINGS, { mapZoomMode: "plain", calendarMode: null }),
+    ).toEqual({ mapZoomMode: "plain" });
+    expect(
+      legacySettingsPatch(DEFAULT_SETTINGS, { mapZoomMode: null, calendarMode: "per-stop" }),
+    ).toEqual({ calendarMode: "per-stop" });
+  });
+
+  it("returns null when legacy values are absent or match the server", () => {
+    expect(legacySettingsPatch(DEFAULT_SETTINGS, { mapZoomMode: null, calendarMode: null })).toBeNull();
+    expect(
+      legacySettingsPatch(DEFAULT_SETTINGS, { mapZoomMode: "ctrl", calendarMode: "single" }),
+    ).toBeNull();
+    expect(
+      legacySettingsPatch(
+        { mapZoomMode: "plain", calendarMode: "per-stop" },
+        { mapZoomMode: "plain", calendarMode: "per-stop" },
+      ),
+    ).toBeNull();
+  });
+
+  it("ignores garbage legacy values", () => {
+    expect(
+      legacySettingsPatch(DEFAULT_SETTINGS, { mapZoomMode: "scroll", calendarMode: "both" }),
+    ).toBeNull();
   });
 });
