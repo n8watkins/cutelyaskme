@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { createHash } from "crypto";
+import { signCloudinaryParams } from "@/lib/cloudinary";
 import { NextResponse } from "next/server";
 
 // Hands the client a short-lived signature so it can upload directly to
@@ -22,9 +22,7 @@ export async function GET() {
   const folder = "date-memories";
 
   // Sign the alphabetically-sorted params, then append the secret (Cloudinary spec).
-  const signature = createHash("sha1")
-    .update(`folder=${folder}&timestamp=${timestamp}${apiSecret}`)
-    .digest("hex");
+  const signature = signCloudinaryParams({ folder, timestamp }, apiSecret);
 
   return NextResponse.json({ cloudName, apiKey, timestamp, folder, signature });
 }

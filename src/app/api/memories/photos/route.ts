@@ -1,7 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
+import { destroyCloudinaryImage } from "@/lib/cloudinary";
 import { db } from "@/lib/db";
 import { dateMemories, datePlans } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { removedPublicIds } from "@/lib/photo-refs";
+import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 type PhotoRef = { url: string; publicId: string };
@@ -42,6 +44,17 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
   }
 
+  // Photo deletion lifecycle: anything in the caller's OWN stored row that is
+  // missing from the incoming list is being removed, so the Cloudinary asset
+  // should be destroyed too. Diffing against the stored row (never client
+  // input) guarantees we only destroy assets this user actually uploaded.
+  const [existing] = await db
+    .select({ photoRefs: dateMemories.photoRefs })
+    .from(dateMemories)
+    .where(and(eq(dateMemories.planId, planId), eq(dateMemories.authorId, userId)))
+    .limit(1);
+  const removed = removedPublicIds(existing?.photoRefs ?? null, photoRefs);
+
   const now = new Date().toISOString();
   const serialized = JSON.stringify(photoRefs);
 
@@ -61,6 +74,17 @@ export async function PUT(request: NextRequest) {
       target: [dateMemories.planId, dateMemories.authorId],
       set: { photoRefs: serialized, updatedAt: now },
     });
+
+  // Best-effort cleanup AFTER the refs update: a Cloudinary failure must not
+  // fail the PUT — a leaked asset is better than a stuck UI.
+  if (removed.length > 0) {
+    const results = await Promise.allSettled(removed.map((id) => destroyCloudinaryImage(id)));
+    results.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error(`Failed to destroy Cloudinary asset ${removed[i]}:`, r.reason);
+      }
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }
