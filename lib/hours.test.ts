@@ -1,21 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { yelpDayFromDate, slotMinutes, daySlots, formatDayHours, openBadge } from "./hours";
-import type { YelpOpenSlot } from "./hours";
+import { dayIndexFromDate, slotMinutes, daySlots, formatDayHours, openBadge } from "./hours";
+import type { OpenSlot } from "./hours";
 
 // Restaurant: Fri 5pm–11pm, Sat 5pm–1am (overnight)
-const slots: YelpOpenSlot[] = [
+const slots: OpenSlot[] = [
   { day: 4, start: "1700", end: "2300", is_overnight: false },
   { day: 5, start: "1700", end: "0100", is_overnight: true },
 ];
 
-describe("yelpDayFromDate", () => {
+describe("dayIndexFromDate", () => {
   it("maps JS weekdays to Yelp 0=Monday", () => {
-    expect(yelpDayFromDate("2026-06-15")).toBe(0); // a Monday
-    expect(yelpDayFromDate("2026-06-19")).toBe(4); // a Friday
-    expect(yelpDayFromDate("2026-06-21")).toBe(6); // a Sunday
+    expect(dayIndexFromDate("2026-06-15")).toBe(0); // a Monday
+    expect(dayIndexFromDate("2026-06-19")).toBe(4); // a Friday
+    expect(dayIndexFromDate("2026-06-21")).toBe(6); // a Sunday
   });
   it("returns null for garbage", () => {
-    expect(yelpDayFromDate("not-a-date")).toBeNull();
+    expect(dayIndexFromDate("not-a-date")).toBeNull();
   });
 });
 

@@ -1,16 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { mapPrice } from "./venues";
+import { mapPriceLevel } from "./venues";
 
-describe("mapPrice", () => {
-  it("maps Yelp price strings to 1-4", () => {
-    expect(mapPrice("$")).toBe(1);
-    expect(mapPrice("$$")).toBe(2);
-    expect(mapPrice("$$$")).toBe(3);
-    expect(mapPrice("$$$$")).toBe(4);
+describe("mapPriceLevel", () => {
+  it("maps Google priceLevel enums to 1-4", () => {
+    expect(mapPriceLevel("PRICE_LEVEL_FREE")).toBe(1);
+    expect(mapPriceLevel("PRICE_LEVEL_INEXPENSIVE")).toBe(1);
+    expect(mapPriceLevel("PRICE_LEVEL_MODERATE")).toBe(2);
+    expect(mapPriceLevel("PRICE_LEVEL_EXPENSIVE")).toBe(3);
+    expect(mapPriceLevel("PRICE_LEVEL_VERY_EXPENSIVE")).toBe(4);
   });
-  it("clamps and defaults", () => {
-    expect(mapPrice("$$$$$$")).toBe(4);
-    expect(mapPrice(undefined)).toBe(2);
-    expect(mapPrice("")).toBe(2);
+  it("defaults unknown or missing levels to 2", () => {
+    expect(mapPriceLevel(undefined)).toBe(2);
+    expect(mapPriceLevel("")).toBe(2);
+    expect(mapPriceLevel("PRICE_LEVEL_UNSPECIFIED")).toBe(2);
   });
 });

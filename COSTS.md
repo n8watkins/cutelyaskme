@@ -22,14 +22,18 @@ All pricing as of June 2026. This is a personal-scale app — estimates assume a
 - 3,000 emails/month, 100/day free
 - Sends invite + plan-confirmed emails
 
-### Yelp Fusion API — Venue search
-- 500 API calls/day free, no credit card required
-- Returns name, address, rating (1–5 stars), price level ($–$$$$), coordinates
+### Google Places API (New) — Venue search
+- Free tier is **per SKU, per month** (the old $200/mo credit was retired March 2025):
+  - Text Search (Pro fields: name, address, rating, price level, coords): 5,000/mo
+  - Place Details with reviews (Enterprise + Atmosphere): 1,000/mo
+  - Photo media: 10,000/mo
+- Requires a Google Cloud billing account (credit card on file) — set quota
+  caps in the console so it can never actually charge
 - Searches are explicit per-stop actions (zero calls on page load); results
   cached in the DB (details 7 days, 30 once a place is 👍-liked)
-- A daily usage meter lives in `/settings` ("Yelp: N calls today")
-- Review excerpts moved to a **paid tier** (the endpoint 404s on a free key) —
-  the app degrades gracefully and links out to Yelp instead
+- A daily usage meter lives in `/settings` ("Google Places: N calls today")
+- Review excerpts and hours come from a single details call; "powered by
+  Google" attribution shown wherever Places data renders
 
 ### Gemini 3.1 Flash Lite — itinerary notes, activity ideas, memory poems
 - 1,500 free requests/day, 15/minute
@@ -45,9 +49,13 @@ All pricing as of June 2026. This is a personal-scale app — estimates assume a
 - Public demo server (`router.project-osrm.org`), free, no key
 - Results cached 30 days in the DB; haversine fallback if unreachable
 
-### Map display + geocoding — Leaflet + OpenStreetMap + Nominatim
-- Leaflet: open-source JavaScript library, free forever
-- OpenStreetMap/CartoDB tiles: free for reasonable usage, no API key needed
+### Map display — Google Maps JavaScript API
+- 10,000 free map loads/month (Essentials SKU), then ~$7/1k
+- Browser key (`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`) restricted to this API +
+  site referrers; quota caps make overage impossible
+- Also satisfies Google's terms for showing Places data on a Google map
+
+### Geocoding — Nominatim + Overpass
 - Nominatim geocoding + Overpass natural-place search: free, server-side,
   cached, with a proper User-Agent
 
@@ -66,19 +74,15 @@ Every component in this app has a free tier that comfortably covers personal use
 
 | Key | Where to get | Cost |
 |---|---|---|
-| `YELP_API_KEY` | developer.yelp.com | Free |
+| `GOOGLE_PLACES_API_KEY` | console.cloud.google.com | Free (billing account required) |
 | `GEMINI_API_KEY` | Google AI Studio | Free |
 | `CLERK_*` keys | clerk.com | Free |
 | `RESEND_API_KEY` | resend.com | Free |
 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | turso.tech | Free |
 | `CLOUDINARY_*` keys | cloudinary.com | Free |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | console.cloud.google.com | Free (10k loads/mo) |
 | `VAPID_*` keys | `npx web-push generate-vapid-keys` | Free |
 
 The only real launch cost is the **cutelyask.me domain registration**
 (~$10–25/yr, not yet purchased).
 
----
-
-## If you ever wanted Google instead
-
-Google Maps Platform has a **$200/month recurring credit** that covers both the Maps JavaScript API (interactive map display) and Places API (venue search). At personal scale you'd never exceed $200/month, so it would also be free in practice — but requires a Google Cloud billing account with a credit card on file.

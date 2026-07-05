@@ -32,7 +32,8 @@ import {
   type LegMode,
   type RouteLeg,
 } from "@/lib/route-legs";
-import { yelpDayFromDate, formatDayHours, openBadge, type VenueDetails } from "@/lib/hours";
+import { dayIndexFromDate, formatDayHours, openBadge, type VenueDetails } from "@/lib/hours";
+import { forecastEmoji, type DayForecast } from "@/lib/weather";
 import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
 
 type Waypoint = { label: string; lat: number; lng: number };
@@ -245,7 +246,7 @@ export function SenderPlanningView({
   // C4/C5: per-venue hours + reviews, fetched on select (cached server-side).
   const [venueDetails, setVenueDetails] = useState<Record<string, VenueDetails | "loading" | "error">>({});
   // C7: today's outbound API call counts.
-  const [usage, setUsage] = useState<{ yelp: number; overpass: number; osrm: number } | null>(null);
+  const [usage, setUsage] = useState<{ places: number; overpass: number; osrm: number } | null>(null);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
@@ -345,13 +346,13 @@ export function SenderPlanningView({
       if (res.ok) {
         const data = (await res.json()) as { venues: Venue[] };
         const incoming = data.venues ?? [];
-        const isYelp = !isNatural(key);
-        const offset = append && isYelp ? (venueOffset[key] ?? 0) : 0;
+        const isPlaces = !isNatural(key);
+        const offset = append && isPlaces ? (venueOffset[key] ?? 0) : 0;
         setVenueResults((p) => ({
           ...p,
-          [key]: append && isYelp ? [...(p[key] ?? []), ...incoming] : incoming,
+          [key]: append && isPlaces ? [...(p[key] ?? []), ...incoming] : incoming,
         }));
-        setVenueHasMore((p) => ({ ...p, [key]: isYelp && incoming.length === PAGE_SIZE }));
+        setVenueHasMore((p) => ({ ...p, [key]: isPlaces && incoming.length === PAGE_SIZE }));
         setVenueOffset((p) => ({ ...p, [key]: offset + incoming.length }));
         setVenueSearched((p) => ({ ...p, [key]: true }));
       } else if (res.status === 401) {
@@ -473,21 +474,21 @@ export function SenderPlanningView({
     setSaved(false);
   }
 
-  function isYelpVenue(v: Venue): boolean {
+  function isPlacesVenue(v: Venue): boolean {
     return !v.source && !v.id.startsWith("osm-");
   }
 
   function loadUsage() {
     fetch("/api/usage")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { usage?: { yelp: number; overpass: number; osrm: number } } | null) => {
+      .then((d: { usage?: { places: number; overpass: number; osrm: number } } | null) => {
         if (d?.usage) setUsage(d.usage);
       })
       .catch(() => {});
   }
 
   async function loadDetails(venue: Venue) {
-    if (!isYelpVenue(venue) || venueDetails[venue.id]) return;
+    if (!isPlacesVenue(venue) || venueDetails[venue.id]) return;
     setVenueDetails((p) => ({ ...p, [venue.id]: "loading" }));
     try {
       const res = await fetch(`/api/places/${encodeURIComponent(venue.id)}`);
@@ -512,7 +513,7 @@ export function SenderPlanningView({
       });
     }
     setSaved(false);
-    // C4: selecting a Yelp venue pulls its hours + reviews (server-cached 7-30d).
+    // C4: selecting a Places venue pulls its hours + reviews (server-cached 7-30d).
     if (venue) void loadDetails(venue);
   }
 
@@ -725,6 +726,31 @@ export function SenderPlanningView({
 
   const hasAnyVenue = timeline.some((s) => s.venue !== null);
 
+  // Weather chip (NWS, free/US-only): forecast for the date at the map center.
+  // 404 = non-US or >7 days out — the chip simply stays hidden.
+  const [weather, setWeather] = useState<DayForecast | null>(null);
+  const weatherKey =
+    mapCenter && plan.selectedDate
+      ? `${mapCenter.lat.toFixed(2)},${mapCenter.lng.toFixed(2)}:${plan.selectedDate}`
+      : null;
+  useEffect(() => {
+    if (!weatherKey) return;
+    let cancelled = false;
+    const [coords, date] = weatherKey.split(":");
+    const [lat, lng] = coords.split(",");
+    fetch(`/api/weather?lat=${lat}&lng=${lng}&date=${date}`)
+      .then((r) => (r.ok ? (r.json() as Promise<DayForecast>) : null))
+      .then((d) => {
+        if (!cancelled) setWeather(d);
+      })
+      .catch(() => {
+        if (!cancelled) setWeather(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [weatherKey]);
+
   // Exact sunset/dusk for the date + map center (browser-local time).
   const sun = (() => {
     if (!mapCenter || !plan.selectedDate) return null;
@@ -783,6 +809,17 @@ export function SenderPlanningView({
               icon="👗"
               label="Her vibe"
               value={DRESS_VIBE_LABELS[plan.dressVibe] ?? plan.dressVibe}
+            />
+          )}
+          {weather && (
+            <BannerItem
+              icon={forecastEmoji(weather.shortForecast)}
+              label="Weather"
+              value={`${weather.tempF}° · ${weather.shortForecast}${
+                weather.precipChance != null && weather.precipChance >= 20
+                  ? ` (${weather.precipChance}% rain)`
+                  : ""
+              }`}
             />
           )}
         </div>
@@ -877,7 +914,7 @@ export function SenderPlanningView({
               </p>
               {usage && (
                 <p className="mt-1.5 text-[10px] font-black text-[#c0a0b0]">
-                  📊 API calls today — Yelp {usage.yelp} · OpenStreetMap {usage.overpass} · Routing {usage.osrm}
+                  📊 API calls today — Places {usage.places} · OpenStreetMap {usage.overpass} · Routing {usage.osrm}
                 </p>
               )}
             </div>
@@ -1021,7 +1058,7 @@ export function SenderPlanningView({
                     onLoadDetails={() => {
                       if (selected) void loadDetails(selected);
                     }}
-                    yelpDay={plan.selectedDate ? yelpDayFromDate(plan.selectedDate) : null}
+                    venueDay={plan.selectedDate ? dayIndexFromDate(plan.selectedDate) : null}
                     stopStart={tlEntry?.startMinutes ?? null}
                     stopEnd={tlEntry?.endMinutes ?? null}
                     isPicking={pickStopKey === key}
@@ -1497,7 +1534,7 @@ function StopCard({
   onSelect,
   details,
   onLoadDetails,
-  yelpDay,
+  venueDay,
   stopStart,
   stopEnd,
   isPicking,
@@ -1533,7 +1570,7 @@ function StopCard({
   onSelect: (v: Venue | null) => void;
   details: VenueDetails | "loading" | "error" | null;
   onLoadDetails: () => void;
-  yelpDay: number | null;
+  venueDay: number | null;
   stopStart: number | null;
   stopEnd: number | null;
   isPicking: boolean;
@@ -1545,13 +1582,13 @@ function StopCard({
 }) {
   const hasResults = results.length > 0;
   const customSelected = selected?.source === "custom" ? selected : null;
-  const yelpSelected =
+  const placesSelected =
     selected && !customSelected && !selected.id.startsWith("osm-") ? selected : null;
   const [showDetails, setShowDetails] = useState(false);
   const loadedDetails = details && details !== "loading" && details !== "error" ? details : null;
   const badge =
-    loadedDetails && yelpDay != null && stopStart != null && stopEnd != null
-      ? openBadge(loadedDetails.hours, yelpDay, stopStart, stopEnd)
+    loadedDetails && venueDay != null && stopStart != null && stopEnd != null
+      ? openBadge(loadedDetails.hours, venueDay, stopStart, stopEnd)
       : null;
 
   const dropPinButton = (
@@ -1630,7 +1667,7 @@ function StopCard({
         )}
       </div>
 
-      {/* C3: per-stop price (Yelp searches only) */}
+      {/* C3: per-stop price (Places searches only) */}
       {showPrice && (
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <span className="text-xs font-black text-[#c0a0b0]">💰 Price</span>
@@ -1675,16 +1712,16 @@ function StopCard({
         </div>
       </div>
 
-      {/* C4/C5: the chosen Yelp venue — hours badge + expandable reviews */}
-      {yelpSelected && (
+      {/* C4/C5: the chosen Places venue — hours badge + expandable reviews */}
+      {placesSelected && (
         <div className="mt-3 rounded-2xl border-2 border-[#5fd97f]/60 bg-white p-3">
           <div className="flex items-center gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#5fd97f]/15 text-lg">
               ✓
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-black text-[#3a2530]">{yelpSelected.name}</p>
-              <p className="truncate text-xs text-[#8a6a78]">{yelpSelected.address}</p>
+              <p className="truncate font-black text-[#3a2530]">{placesSelected.name}</p>
+              <p className="truncate text-xs text-[#8a6a78]">{placesSelected.address}</p>
             </div>
             <button
               type="button"
@@ -1731,10 +1768,10 @@ function StopCard({
                 <p className="text-xs text-[#c0a0b0]">Couldn&apos;t load details.</p>
               ) : (
                 <>
-                  {yelpDay != null && (
+                  {venueDay != null && (
                     <p className="text-xs text-[#8a6a78]">
                       <span className="font-black">🕰 That day:</span>{" "}
-                      {formatDayHours(details.hours, yelpDay)}
+                      {formatDayHours(details.hours, venueDay)}
                     </p>
                   )}
                   {details.reviews.length > 0 ? (
@@ -1749,8 +1786,7 @@ function StopCard({
                     ))
                   ) : (
                     <p className="text-xs text-[#c0a0b0]">
-                      Review excerpts aren&apos;t included in our Yelp plan yet — read them
-                      on Yelp below.
+                      No review excerpts for this spot yet — read them on Google below.
                     </p>
                   )}
                   {details.url && (
@@ -1760,8 +1796,11 @@ function StopCard({
                       rel="noopener noreferrer"
                       className="text-[11px] font-black text-[#7c5aa0] hover:underline"
                     >
-                      {details.reviews.length > 0 ? "Read more on Yelp →" : "Read reviews on Yelp →"}
+                      {details.reviews.length > 0 ? "Read more on Google →" : "Read reviews on Google →"}
                     </a>
+                  )}
+                  {details.reviews.length > 0 && (
+                    <p className="text-right text-[9px] text-[#c0a0b0]">reviews powered by Google</p>
                   )}
                 </>
               )}
@@ -1888,6 +1927,8 @@ function StopCard({
                   Load 5 more →
                 </button>
               )}
+              {/* Required attribution when Places data is shown without a Google map */}
+              <p className="text-right text-[9px] text-[#c0a0b0]">powered by Google</p>
             </>
           ) : !searched && onSearch ? (
             // C1: nothing is fetched until this is pressed.

@@ -4,28 +4,58 @@ import { db } from "@/lib/db";
 import { placeCache, venueVerdicts } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { trackApiUsage } from "@/lib/api-usage";
-import type { VenueDetails, YelpOpenSlot } from "@/lib/hours";
+import type { VenueDetails, OpenSlot } from "@/lib/hours";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-type YelpDetailsResponse = {
-  hours?: { open: YelpOpenSlot[]; is_open_now?: boolean }[];
-  url?: string;
-};
+// Enterprise + Atmosphere SKU (reviews). One call replaces Yelp's two,
+// but it draws from the smallest free tier (1,000/month) — keep the cache warm.
+const DETAILS_FIELD_MASK = [
+  "regularOpeningHours",
+  "currentOpeningHours.openNow",
+  "googleMapsUri",
+  "reviews",
+].join(",");
 
-type YelpReviewsResponse = {
+type GooglePeriodPoint = { day: number; hour: number; minute: number };
+
+type GoogleDetailsResponse = {
+  regularOpeningHours?: {
+    periods?: { open: GooglePeriodPoint; close?: GooglePeriodPoint }[];
+  };
+  currentOpeningHours?: { openNow?: boolean };
+  googleMapsUri?: string;
   reviews?: {
-    rating: number;
-    text: string;
-    time_created: string;
-    user?: { name?: string };
+    rating?: number;
+    text?: { text?: string };
+    authorAttribution?: { displayName?: string };
+    publishTime?: string;
   }[];
 };
 
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** Google periods (day 0=Sun, hour/minute ints) → our OpenSlot (day 0=Mon, "HHMM"). */
+function toOpenSlots(periods: { open: GooglePeriodPoint; close?: GooglePeriodPoint }[]): OpenSlot[] {
+  return periods
+    .filter((p) => p.close) // a missing close means "open 24/7" — no per-day slot to show
+    .map((p) => {
+      const day = (p.open.day + 6) % 7;
+      const closeDay = (p.close!.day + 6) % 7;
+      return {
+        day,
+        start: `${pad(p.open.hour)}${pad(p.open.minute)}`,
+        end: `${pad(p.close!.hour)}${pad(p.close!.minute)}`,
+        is_overnight: closeDay !== day,
+      };
+    });
+}
+
 /**
- * C4 + C5: business hours + 3 review excerpts for one Yelp venue, fetched
- * on-demand when a venue is selected. Cached 7 days — 30 when the requesting
- * user has 👍'd the place (you'll keep going back; its hours matter longer).
+ * C4 + C5: business hours + review excerpts for one Google Places venue,
+ * fetched on-demand when a venue is selected. Cached 7 days — 30 when the
+ * requesting user has 👍'd the place (you'll keep going back; its hours
+ * matter longer).
  */
 export async function GET(
   request: NextRequest,
@@ -34,15 +64,15 @@ export async function GET(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-  const apiKey = process.env.YELP_API_KEY;
-  if (!apiKey) return NextResponse.json({ message: "Yelp not configured" }, { status: 503 });
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return NextResponse.json({ message: "Places not configured" }, { status: 503 });
 
   const { id } = await params;
   if (!id || id.startsWith("osm-") || id.startsWith("custom-")) {
-    return NextResponse.json({ message: "Not a Yelp venue" }, { status: 400 });
+    return NextResponse.json({ message: "Not a Places venue" }, { status: 400 });
   }
 
-  const cacheKey = `yelp-detail:${id}`;
+  const cacheKey = `gp-detail:${id}`;
   const now = new Date().toISOString();
 
   try {
@@ -56,42 +86,39 @@ export async function GET(
     }
   } catch {}
 
-  // Two Yelp calls (details + reviews) — count them both.
-  void trackApiUsage("yelp", 2);
+  void trackApiUsage("places");
 
   let detailsRes: Response;
-  let reviewsRes: Response;
   try {
-    [detailsRes, reviewsRes] = await Promise.all([
-      fetch(`https://api.yelp.com/v3/businesses/${encodeURIComponent(id)}`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      }),
-      fetch(`https://api.yelp.com/v3/businesses/${encodeURIComponent(id)}/reviews?limit=3&sort_by=yelp_sort`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-      }),
-    ]);
+    detailsRes = await fetch(
+      `https://places.googleapis.com/v1/places/${encodeURIComponent(id)}`,
+      {
+        headers: {
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": DETAILS_FIELD_MASK,
+        },
+      },
+    );
   } catch {
-    return NextResponse.json({ message: "Yelp unreachable" }, { status: 502 });
+    return NextResponse.json({ message: "Places unreachable" }, { status: 502 });
   }
 
   if (!detailsRes.ok) {
+    // Legacy Yelp IDs stored in old plans land here — degrade gracefully.
     return NextResponse.json({ message: "Venue not found" }, { status: 404 });
   }
 
-  const details = (await detailsRes.json()) as YelpDetailsResponse;
-  const reviews = reviewsRes.ok
-    ? ((await reviewsRes.json()) as YelpReviewsResponse)
-    : { reviews: [] };
+  const details = (await detailsRes.json()) as GoogleDetailsResponse;
 
   const payload: VenueDetails = {
-    hours: details.hours?.[0]?.open ?? [],
-    isOpenNow: details.hours?.[0]?.is_open_now ?? null,
-    url: details.url,
-    reviews: (reviews.reviews ?? []).map((r) => ({
-      rating: r.rating,
-      text: r.text,
-      author: r.user?.name ?? "Yelp user",
-      date: r.time_created?.slice(0, 10) ?? "",
+    hours: toOpenSlots(details.regularOpeningHours?.periods ?? []),
+    isOpenNow: details.currentOpeningHours?.openNow ?? null,
+    url: details.googleMapsUri,
+    reviews: (details.reviews ?? []).slice(0, 3).map((r) => ({
+      rating: r.rating ?? 0,
+      text: r.text?.text ?? "",
+      author: r.authorAttribution?.displayName ?? "Google user",
+      date: r.publishTime?.slice(0, 10) ?? "",
     })),
   };
 

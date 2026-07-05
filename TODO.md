@@ -30,9 +30,17 @@ _Last updated: June 11, 2026._
 - [ ] Trim stop-flow dead code sweep / component split of
       `SenderPlanningView.tsx` (~1600 lines) if it keeps growing — no
       functional issue today.
-- [ ] Yelp review excerpts (C5) light up automatically if the Yelp plan is
-      ever upgraded — code is wired and degrades gracefully. Nothing to do
-      unless upgrading.
+
+## 🗺️ Google consolidation — queued next
+
+- [ ] Routes API replaces the OSRM demo server for travel legs (same server
+      key, Essentials SKU only — no traffic-aware/waypoint-optimize triggers).
+- [ ] "Navigate" deep links (google.com/maps/dir/…) on the itinerary +
+      calendar exports — no API, free.
+- [ ] Static Maps API route snapshot in invite / plan-confirmed emails
+      (10k/mo free). Needs its own key: email images send no referrer, so
+      protect it with URL signing (signing secret) instead of a referrer
+      restriction, API-restricted to Static Maps.
 
 ## 💡 Future / thinking only (WP-I — do not build unprompted)
 
@@ -52,14 +60,14 @@ Highlights — full detail lives in `docs/PLANNER_V2.md` + `docs/HANDOFF.md`:
 
 - **Planner UX (WP-A/B/C/D/E):** map-first layout, configurable wheel-zoom,
   click-to-pick + custom dropped-pin venues, saved home/pickup addresses,
-  on-demand per-stop Yelp searches (zero calls on page load) with per-stop
+  on-demand per-stop venue searches (zero calls on page load) with per-stop
   price + distance-from-previous sorting, business hours + open-during-date
   badges, Overpass natural-place fixes (UA, mirrors, no-fail-caching), sun
   strip + sunset-aware reordering, OSRM travel legs with per-leg drive/walk
   toggle, deterministic itineraries (Gemini only writes notes/tips), single
   calendar control (one event vs. per-stop, user setting).
 - **Settings (WP-H):** `/settings` + `user_settings` table — radius
-  default/bounds, zoom mode, calendar mode, Yelp usage meter, address book.
+  default/bounds, zoom mode, calendar mode, Places usage meter, address book.
 - **Post-date lifecycle (WP-F):** ratings/verdicts/memories gate on the date
   actually being over (client + server), read-only reflection view for past
   dates, dashboard "How did your date go?" modal, cancel-a-date with gentle
@@ -83,8 +91,9 @@ Highlights — full detail lives in `docs/PLANNER_V2.md` + `docs/HANDOFF.md`:
 - **Yelp account/preferences import:** not possible — no consumer OAuth or
   saved-places endpoint (verified June 2026). Plan B shipped: own the signal
   via swipe verdicts.
-- **Yelp review excerpts:** moved to a paid tier (Reviews endpoint 404s on the
-  free key). Wired + degrades gracefully.
+- **Yelp review excerpts:** were paywalled on Yelp's free tier; resolved by
+  migrating venue search to Google Places API (New) in July 2026 — reviews
+  now come free within the Enterprise+Atmosphere SKU's 1,000 calls/month.
 - **Photo storage:** Cloudinary chosen over Vercel Blob / Cloudflare R2
   (free credits + built-in optimization). Signed direct uploads; refs in
   `date_memories.photo_refs`; assets destroyed on removal.

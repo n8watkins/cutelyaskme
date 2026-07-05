@@ -15,7 +15,7 @@ recipient picks *what kind* of date — not specific venues.
 
 **Sender flow** (`/plan/[id]` → `SenderPlanningView`)
 The sender sees what she chose, then:
-- picks the real **venue** for each stop (Yelp for businesses on explicit
+- picks the real **venue** for each stop (Google Places for businesses on explicit
   per-stop searches, OpenStreetMap for parks / viewpoints / stargazing, or a
   hand-dropped **custom pin**), with hours/open-during-date badges and
   per-stop price filters,
@@ -24,7 +24,7 @@ The sender sees what she chose, then:
 - sees a live **timeline** with **OSRM travel legs** (per-leg drive/walk
   toggle) and a single **Add to calendar** control (Google Calendar or `.ics`,
   one event or one-per-stop),
-- views every stop on an interactive **Leaflet map** (click-to-set search
+- views every stop on an interactive **Google map** (click-to-set search
   center, configurable wheel-zoom),
 - **notifies** the recipient (share the plan, or keep it a surprise).
 
@@ -44,10 +44,10 @@ gracefully. Per-user defaults live at `/settings`.
 | Database | Turso (libSQL/SQLite) + Drizzle ORM |
 | Email | Resend |
 | AI | Gemini 3.1 Flash Lite — activity ideas, itinerary notes/tips, memory poems |
-| Venues | Yelp Fusion (businesses) · Overpass/OpenStreetMap (natural places) |
+| Venues | Google Places API (New) (businesses) · Overpass/OpenStreetMap (natural places) |
 | Routing | OSRM public server (travel times, cached) |
 | Geocoding | Nominatim (OpenStreetMap) |
-| Map | Leaflet + CartoDB Positron tiles |
+| Map | Google Maps JavaScript API |
 | Photos | Cloudinary (signed direct uploads) |
 | Notifications | web-push (VAPID) |
 | Tests | Vitest (`npm test`) over the pure `lib/*` helpers |
@@ -69,7 +69,7 @@ npm run dev                  # http://localhost:3000
 |---|---|
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | clerk.com |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | turso.tech |
-| `YELP_API_KEY` | developer.yelp.com |
+| `GOOGLE_PLACES_API_KEY` | console.cloud.google.com |
 | `GEMINI_API_KEY` | Google AI Studio |
 | `RESEND_API_KEY`, `EMAIL_FROM` | resend.com |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | cloudinary.com (memory photos) |

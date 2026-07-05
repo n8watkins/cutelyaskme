@@ -6,16 +6,16 @@ import {
   MAP_ZOOM_MODE_KEY,
   RADIUS_LIMIT_MIN_MI,
   RADIUS_LIMIT_MAX_MI,
-  YELP_FREE_TIER_DAILY_CALLS,
+  PLACES_DAILY_CALL_BUDGET,
   type MapZoomMode,
   type UserSettings,
 } from "@/lib/settings";
 
-type Usage = { yelp: number; overpass: number; osrm: number };
+type Usage = { places: number; overpass: number; osrm: number };
 
 /**
  * B4: the interactive part of /settings — search defaults, map zoom mode,
- * calendar export mode, and the C7 Yelp usage meter. Every change PATCHes
+ * calendar export mode, and the C7 Places usage meter. Every change PATCHes
  * /api/settings immediately; mode changes also mirror into the legacy
  * localStorage keys so the planner stays in sync until Task B reads the DB.
  */
@@ -160,7 +160,7 @@ export function SettingsView({ initial }: { initial: UserSettings }) {
               />
             </label>
             <p className="pb-1 text-[10px] text-[#c0a0b0]">
-              Slider bounds. Yelp caps searches at 25 mi.
+              Slider bounds for venue search radius (max 25 mi).
             </p>
           </div>
           {boundsError && <p className="mt-1 text-xs text-red-500">{boundsError}</p>}
@@ -233,13 +233,13 @@ export function SettingsView({ initial }: { initial: UserSettings }) {
         </div>
       </section>
 
-      <YelpUsageMeter />
+      <PlacesUsageMeter />
     </div>
   );
 }
 
-/** C7: "Yelp: N calls today" + free-tier reference, read from /api/usage. */
-function YelpUsageMeter() {
+/** C7: "Google Places: N calls today" + budget reference, read from /api/usage. */
+function PlacesUsageMeter() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [failed, setFailed] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -261,7 +261,7 @@ function YelpUsageMeter() {
     };
   }, [refreshKey]);
 
-  const pct = usage ? Math.min(100, (usage.yelp / YELP_FREE_TIER_DAILY_CALLS) * 100) : 0;
+  const pct = usage ? Math.min(100, (usage.places / PLACES_DAILY_CALL_BUDGET) * 100) : 0;
 
   return (
     <section className="mb-8">
@@ -271,7 +271,7 @@ function YelpUsageMeter() {
       <div className="rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-sm font-black text-[#3a2530]">
-            {usage ? `Yelp: ${usage.yelp} ${usage.yelp === 1 ? "call" : "calls"} today` : failed ? "Yelp: usage unavailable" : "Yelp: loading…"}
+            {usage ? `Google Places: ${usage.places} ${usage.places === 1 ? "call" : "calls"} today` : failed ? "Google Places: usage unavailable" : "Google Places: loading…"}
           </span>
           <button
             type="button"
@@ -288,7 +288,7 @@ function YelpUsageMeter() {
           />
         </div>
         <p className="mt-1.5 text-[10px] text-[#c0a0b0]">
-          Yelp&apos;s free tier allows ~{YELP_FREE_TIER_DAILY_CALLS} calls/day.
+          Staying under ~{PLACES_DAILY_CALL_BUDGET} calls/day keeps Google Places free.
           {usage && ` Also today: OpenStreetMap ${usage.overpass} · Routing ${usage.osrm}.`}
         </p>
       </div>

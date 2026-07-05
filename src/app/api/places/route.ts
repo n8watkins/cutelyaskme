@@ -3,22 +3,58 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { placeCache } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
-import { mapPrice, type Venue } from "@/lib/venues";
+import { mapPriceLevel, type Venue } from "@/lib/venues";
 import { trackApiUsage } from "@/lib/api-usage";
 
-type YelpBusiness = {
+const PLACES_BASE = "https://places.googleapis.com/v1";
+
+// Pro-tier fields only — adding Enterprise fields here would bump the whole
+// search into a pricier SKU with a much smaller free tier.
+const SEARCH_FIELD_MASK = [
+  "places.id",
+  "places.displayName",
+  "places.formattedAddress",
+  "places.rating",
+  "places.priceLevel",
+  "places.location",
+  "places.photos",
+].join(",");
+
+const GOOGLE_PRICE_LEVELS = [
+  "PRICE_LEVEL_INEXPENSIVE",
+  "PRICE_LEVEL_MODERATE",
+  "PRICE_LEVEL_EXPENSIVE",
+  "PRICE_LEVEL_VERY_EXPENSIVE",
+] as const;
+
+type GooglePlace = {
   id: string;
-  name: string;
-  location: { display_address: string[] };
-  rating: number;
-  price?: string;
-  coordinates: { latitude: number; longitude: number };
-  image_url?: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  rating?: number;
+  priceLevel?: string;
+  location?: { latitude: number; longitude: number };
+  photos?: { name: string }[];
 };
 
-type YelpSearchResponse = {
-  businesses?: YelpBusiness[];
+type SearchTextResponse = {
+  places?: GooglePlace[];
 };
+
+/** Resolve a photo resource name to a public googleusercontent URL (server-side, key never reaches the client). */
+async function resolvePhotoUri(photoName: string, apiKey: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(
+      `${PLACES_BASE}/${photoName}/media?maxWidthPx=600&skipHttpRedirect=true`,
+      { headers: { "X-Goog-Api-Key": apiKey } },
+    );
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { photoUri?: string };
+    return data.photoUri || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
@@ -26,7 +62,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ venues: [] }, { status: 401 });
   }
 
-  const apiKey = process.env.YELP_API_KEY;
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ venues: [] });
   }
@@ -37,15 +73,15 @@ export async function GET(request: NextRequest) {
   const radius = Math.min(parseInt(searchParams.get("radius") ?? "8000", 10), 40000);
   const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10));
   const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") ?? "5", 10)), 10);
-  // Optional per-stop price level (C3): Yelp's price param, "1".."4".
+  // Optional per-stop price level (C3): 1-4, mapped to Google priceLevels.
   const priceRaw = parseInt(searchParams.get("price") ?? "0", 10);
-  const price = priceRaw >= 1 && priceRaw <= 4 ? String(priceRaw) : null;
+  const price = priceRaw >= 1 && priceRaw <= 4 ? priceRaw : null;
 
   if (!q || !location) {
     return NextResponse.json({ venues: [] });
   }
 
-  const cacheKey = `yelp:${q.toLowerCase()}:${location.toLowerCase()}:r${radius}:o${offset}:l${limit}:p${price ?? "any"}`;
+  const cacheKey = `gp:${q.toLowerCase()}:${location.toLowerCase()}:r${radius}:o${offset}:l${limit}:p${price ?? "any"}`;
   const now = new Date().toISOString();
 
   try {
@@ -63,35 +99,54 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const url = new URL("https://api.yelp.com/v3/businesses/search");
-    url.searchParams.set("term", q);
-    url.searchParams.set("location", location);
-    url.searchParams.set("limit", String(limit));
-    url.searchParams.set("offset", String(offset));
-    url.searchParams.set("sort_by", "rating");
-    url.searchParams.set("radius", String(radius));
-    if (price) url.searchParams.set("price", price);
+    // Google has no offset pagination; over-fetch to offset+limit (max 20)
+    // and slice. One search request bills the same regardless of pageSize.
+    const pageSize = Math.min(offset + limit, 20);
+    const body: Record<string, unknown> = {
+      textQuery: `${q} near ${location}`,
+      pageSize,
+      rankPreference: "RELEVANCE",
+    };
+    if (price) {
+      // Include everything at or below the requested level — matches how the
+      // Yelp price param was used as a ceiling on the stop's budget.
+      body.priceLevels = GOOGLE_PRICE_LEVELS.slice(0, price);
+    }
 
-    void trackApiUsage("yelp"); // outbound call (cache hits return above)
-    const response = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    void trackApiUsage("places"); // outbound call (cache hits return above)
+    const response = await fetch(`${PLACES_BASE}/places:searchText`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": SEARCH_FIELD_MASK,
+      },
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
       return NextResponse.json({ venues: [] });
     }
 
-    const data = (await response.json()) as YelpSearchResponse;
-    const venues: Venue[] = (data.businesses ?? []).map((b) => ({
-      id: b.id,
-      name: b.name,
-      address: b.location.display_address.join(", "),
-      rating: b.rating ?? 0,
-      priceLevel: mapPrice(b.price),
-      lat: b.coordinates.latitude,
-      lng: b.coordinates.longitude,
-      imageUrl: b.image_url || undefined,
-    }));
+    const data = (await response.json()) as SearchTextResponse;
+    const page = (data.places ?? []).slice(offset, offset + limit);
+
+    const venues: Venue[] = await Promise.all(
+      page.map(async (p) => ({
+        id: p.id,
+        name: p.displayName?.text ?? "",
+        address: p.formattedAddress ?? "",
+        rating: p.rating ?? 0,
+        priceLevel: mapPriceLevel(p.priceLevel),
+        lat: p.location?.latitude ?? 0,
+        lng: p.location?.longitude ?? 0,
+        imageUrl: p.photos?.[0]?.name
+          ? await resolvePhotoUri(p.photos[0].name, apiKey)
+          : undefined,
+      })),
+    );
+    const photoCalls = page.filter((p) => p.photos?.[0]?.name).length;
+    if (photoCalls) void trackApiUsage("places", photoCalls);
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 

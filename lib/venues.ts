@@ -7,17 +7,23 @@ export type Venue = {
   lat: number;
   lng: number;
   imageUrl?: string;
-  /** "custom" = a hand-dropped map pin (A5); absent = Yelp/OSM result */
+  /** "custom" = a hand-dropped map pin (A5); absent = Google Places/OSM result */
   source?: "custom";
 };
 
 export const PRICE_LABELS: Record<number, string> = { 1: "$", 2: "$$", 3: "$$$", 4: "$$$$" };
 
-// Map a Yelp "$" / "$$" price string to a 1–4 level.
-export function mapPrice(price: string | undefined): 1 | 2 | 3 | 4 {
-  if (!price) return 2;
-  const len = price.replace(/[^$]/g, "").length;
-  return Math.min(Math.max(len, 1), 4) as 1 | 2 | 3 | 4;
+// Map a Google Places priceLevel enum to a 1–4 level.
+const PRICE_LEVEL_MAP: Record<string, 1 | 2 | 3 | 4> = {
+  PRICE_LEVEL_FREE: 1,
+  PRICE_LEVEL_INEXPENSIVE: 1,
+  PRICE_LEVEL_MODERATE: 2,
+  PRICE_LEVEL_EXPENSIVE: 3,
+  PRICE_LEVEL_VERY_EXPENSIVE: 4,
+};
+
+export function mapPriceLevel(priceLevel: string | undefined): 1 | 2 | 3 | 4 {
+  return (priceLevel && PRICE_LEVEL_MAP[priceLevel]) || 2;
 }
 
 export const ACTIVITY_ICONS: Partial<Record<string, string>> = {
@@ -49,7 +55,7 @@ export const ACTIVITY_PLACE_QUERY: Partial<Record<string, string>> = {
   "Tea stop": "tea room",
 };
 
-// Activities served by Overpass (OpenStreetMap) instead of Yelp
+// Activities served by Overpass (OpenStreetMap) instead of Google Places
 export const NATURAL_PLACE_ACTIVITIES: Record<string, string> = {
   "Park picnic": "park",
   "Sunset view": "viewpoint",
