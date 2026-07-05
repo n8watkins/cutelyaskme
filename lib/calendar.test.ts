@@ -84,6 +84,26 @@ describe("buildItineraryText", () => {
     );
     expect(text).not.toContain("↓");
   });
+
+  it("appends a route navigation link when venues carry coords", () => {
+    const text = buildItineraryText(
+      [
+        { startMinutes: 1140, icon: "☕", label: "Coffee", venue: { name: "BB", lat: 1, lng: 2 } },
+        { startMinutes: 1200, icon: "🌅", label: "Sunset", venue: { name: "Pier", lat: 3, lng: 4 } },
+      ],
+      "https://x/plan/1",
+    );
+    expect(text).toContain("Navigate the route: https://www.google.com/maps/dir/?api=1");
+    expect(text).toContain(encodeURIComponent("BB, 1,2").replace(/%20/g, "+"));
+  });
+
+  it("skips the navigation link when venues have no coords (older plans)", () => {
+    const text = buildItineraryText(
+      [{ startMinutes: 1140, icon: "☕", label: "Coffee", venue: { name: "BB" } }],
+      "https://x/plan/1",
+    );
+    expect(text).not.toContain("Navigate");
+  });
 });
 
 const stops: CalendarStop[] = [
@@ -93,7 +113,7 @@ const stops: CalendarStop[] = [
     endMinutes: 1200,
     icon: "☕",
     label: "Coffee",
-    venue: { name: "Blue Bottle", address: "1 Bean St" },
+    venue: { name: "Blue Bottle", address: "1 Bean St", lat: 37.7955, lng: -122.4005 },
     travelIn: "🚗 12 min · 4.3 mi",
   },
   {
@@ -110,8 +130,9 @@ const stops: CalendarStop[] = [
     endMinutes: 1320,
     icon: "🌅",
     label: "Sunset",
-    venue: { name: "Pier 7", address: "Pier 7, SF" },
+    venue: { name: "Pier 7", address: "Pier 7, SF", lat: 37.8006, lng: -122.3982 },
     travelIn: "🚶 8 min · 0.4 mi",
+    legMode: "walk",
   },
 ];
 
@@ -164,6 +185,25 @@ describe("buildGCalLinks", () => {
     const bare = stops.map((s) => ({ ...s, venue: null }));
     expect(buildGCalLinks(bare, { mode: "single", selectedDate: null, planLink: "x" })).toEqual([]);
   });
+
+  it("per-stop mode: each event description carries its own navigation link", () => {
+    const links = buildGCalLinks(stops, {
+      mode: "per-stop",
+      selectedDate: "2026-06-15",
+      planLink: "https://x/plan/1",
+    });
+    // decoding the details param reveals the embedded (still URL-encoded) nav link
+    const first = decodeURIComponent(links[0].url);
+    const second = decodeURIComponent(links[1].url);
+    // first stop: from current location, driving
+    expect(first).toContain("Navigate to this stop:");
+    expect(first).toContain("destination=Blue+Bottle%2C+37.7955%2C-122.4005");
+    expect(first.split("Navigate to this stop:")[1]).not.toContain("origin=");
+    // second stop: leg from the previous venue, honoring the walk toggle
+    expect(second).toContain("origin=Blue+Bottle%2C+37.7955%2C-122.4005");
+    expect(second).toContain("destination=Pier+7%2C+37.8006%2C-122.3982");
+    expect(second).toContain("travelmode=walking");
+  });
 });
 
 describe("buildICS", () => {
@@ -194,5 +234,13 @@ describe("buildICS", () => {
   it("escapes commas in ICS fields", () => {
     const ics = buildICS(stops, { ...opts, mode: "per-stop" });
     expect(ics).toContain("LOCATION:Pier 7\\, SF");
+  });
+
+  it("per-stop mode: descriptions include an escaped per-stop navigation link", () => {
+    const ics = buildICS(stops, { ...opts, mode: "per-stop" });
+    expect(ics).toContain("Navigate to this stop:");
+    // the URL's commas must be ICS-escaped inside DESCRIPTION
+    expect(ics).toContain("travelmode=walking");
+    expect(ics).toContain("origin=Blue+Bottle%2C+37.7955%2C-122.4005");
   });
 });
