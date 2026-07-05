@@ -1,6 +1,7 @@
-// D3: pure travel-leg helpers shared by the OSRM API route and the planner
-// timeline (tested in route-legs.test.ts). All network work stays in
-// src/app/api/route/route.ts — this module is coord math + formatting only.
+// D3: pure travel-leg helpers shared by the Google Routes API route and the
+// planner timeline (tested in route-legs.test.ts). All network work stays in
+// src/app/api/route/route.ts - this module is coord math, response mapping,
+// and formatting only.
 
 import { haversineMiles, formatMiles, type LatLng } from "./geo";
 
@@ -33,17 +34,17 @@ export function roundCoord(n: number): number {
   return Math.round(n * 1e4) / 1e4;
 }
 
-/** OSRM path segment: "lng,lat;lng,lat;…" (lon first!), rounded to 4 decimals. */
-export function osrmCoordPath(points: LatLng[]): string {
+/** Coord path "lng,lat;lng,lat;…" (lon first!), rounded to 4 decimals. */
+export function coordPath(points: LatLng[]): string {
   return points.map((p) => `${roundCoord(p.lng)},${roundCoord(p.lat)}`).join(";");
 }
 
 /** place_cache key for a full waypoint set. */
 export function routeCacheKey(points: LatLng[]): string {
-  return `osrm:${osrmCoordPath(points)}`;
+  return `routes:${coordPath(points)}`;
 }
 
-/** OSRM unreachable → haversine × 1.3 at 28 mph (drive) / 3 mph (walk), flagged. */
+/** Routes API unreachable → haversine × 1.3 at 28 mph (drive) / 3 mph (walk), flagged. */
 export function fallbackLeg(a: LatLng, b: LatLng, mode: LegMode = "drive"): LegInfo {
   const miles = haversineMiles(a, b) * ROAD_FACTOR;
   return {
@@ -57,12 +58,27 @@ export function isWalkable(driveDistanceMeters: number): boolean {
   return driveDistanceMeters < WALK_THRESHOLD_METERS;
 }
 
-/**
- * The public OSRM demo server routes every profile with car data, so a
- * "walking" leg that isn't slower than driving is bogus — estimate it instead.
- */
-export function plausibleWalk(drive: LegInfo, walk: LegInfo, a: LatLng, b: LatLng): LegInfo {
-  return walk.durationSec > drive.durationSec ? walk : fallbackLeg(a, b, "walk");
+/** One route in a computeRoutes response under the Essentials field mask. */
+export type ComputeRoutesRoute = {
+  duration?: string;
+  distanceMeters?: number;
+};
+
+/** Protobuf Duration JSON ("123s", "123.45s") → rounded seconds; null if malformed. */
+export function parseDurationSec(duration: string | undefined): number | null {
+  if (typeof duration !== "string") return null;
+  const match = /^(\d+(?:\.\d+)?)s$/.exec(duration);
+  return match ? Math.round(Number(match[1])) : null;
+}
+
+/** computeRoutes route → routed LegInfo; null when the response is unusable. */
+export function legInfoFromRoute(route: ComputeRoutesRoute | undefined): LegInfo | null {
+  const durationSec = parseDurationSec(route?.duration);
+  if (durationSec === null) return null;
+  // Proto3 JSON omits zero values, so a missing distance on a parsed route is 0.
+  const distance = route?.distanceMeters ?? 0;
+  if (typeof distance !== "number" || !Number.isFinite(distance) || distance < 0) return null;
+  return { distanceMeters: Math.round(distance), durationSec, estimate: false };
 }
 
 /** The numbers to show/use for a leg given the user's chosen mode. */
