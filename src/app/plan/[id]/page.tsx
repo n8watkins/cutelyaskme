@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import type { Venue } from "@/lib/venues";
 import { RatingWidget } from "@/components/RatingWidget";
+import { RouteNavLinks, type RouteNavStop } from "@/components/RouteNavLinks";
 import { VenueVerdicts, type VerdictStop, type VerdictStatus } from "@/components/VenueVerdicts";
 import { MemoryKeepsake } from "@/components/MemoryKeepsake";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
@@ -114,6 +115,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
   const startPoint = safeParse<{ label: string; lat: number; lng: number } | null>(plan.startPoint, null);
   const pickupPoint = safeParse<{ label: string; lat: number; lng: number } | null>(plan.pickupPoint, null);
+  const legModes = safeParse<Record<string, "drive" | "walk">>(plan.legModes, {});
 
   if (isSender) {
     const invite = plan.inviteId
@@ -241,7 +243,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
             selectedActivityVenues: activityVenues,
             startPoint,
             pickupPoint,
-            legModes: safeParse<Record<string, "drive" | "walk">>(plan.legModes, {}),
+            legModes,
           }}
         />
         <div className="mx-auto max-w-lg px-4 pb-12">
@@ -274,6 +276,26 @@ export default async function PlanPage({ params }: PlanPageProps) {
       </main>
     );
   }
+
+  // Her route for the night: pickup → each activity venue (in order) → dinner.
+  // The sender's start point stays off her view. Same stop order as the
+  // planner's buildStops: activities first, entree last.
+  const navStops: RouteNavStop[] = [
+    ...(pickupPoint && pickupPoint.lat
+      ? [{ id: "pickup", name: pickupPoint.label, lat: pickupPoint.lat, lng: pickupPoint.lng }]
+      : []),
+    ...activities
+      .filter((a) => activityVenues[a])
+      .map((a) => ({
+        id: a,
+        name: activityVenues[a].name,
+        lat: activityVenues[a].lat,
+        lng: activityVenues[a].lng,
+      })),
+    ...(entreeVenue
+      ? [{ id: "__entree__", name: entreeVenue.name, lat: entreeVenue.lat, lng: entreeVenue.lng }]
+      : []),
+  ];
 
   let senderName = "someone special";
   try {
@@ -310,6 +332,8 @@ export default async function PlanPage({ params }: PlanPageProps) {
       </div>
 
       <ItinerarySection itinerary={itinerary} />
+
+      {!dateOver && <RouteNavLinks stops={navStops} legModes={legModes} />}
 
       {userId && dateOver && (
         <div className="mt-8">
