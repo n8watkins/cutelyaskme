@@ -33,7 +33,7 @@ _Last updated: June 11, 2026._
 
 ## 🗺️ Google consolidation — queued next
 
-- [ ] Routes API replaces the OSRM demo server for travel legs (same server
+- [x] Routes API replaces the OSRM demo server for travel legs (same server
       key, Essentials SKU only — no traffic-aware/waypoint-optimize triggers).
 - [ ] "Navigate" deep links (google.com/maps/dir/…) on the itinerary +
       calendar exports — no API, free.
@@ -63,7 +63,7 @@ Highlights — full detail lives in `docs/PLANNER_V2.md` + `docs/HANDOFF.md`:
   on-demand per-stop venue searches (zero calls on page load) with per-stop
   price + distance-from-previous sorting, business hours + open-during-date
   badges, Overpass natural-place fixes (UA, mirrors, no-fail-caching), sun
-  strip + sunset-aware reordering, OSRM travel legs with per-leg drive/walk
+  strip + sunset-aware reordering, routed travel legs with per-leg drive/walk
   toggle, deterministic itineraries (Gemini only writes notes/tips), single
   calendar control (one event vs. per-stop, user setting).
 - **Settings (WP-H):** `/settings` + `user_settings` table — radius

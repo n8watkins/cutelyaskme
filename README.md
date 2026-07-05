@@ -21,7 +21,7 @@ The sender sees what she chose, then:
   per-stop price filters,
 - reorders stops (with **sunset-aware** suggestions and a pinned sun strip)
   and sets a **duration** for each,
-- sees a live **timeline** with **OSRM travel legs** (per-leg drive/walk
+- sees a live **timeline** with **Google Routes travel legs** (per-leg drive/walk
   toggle) and a single **Add to calendar** control (Google Calendar or `.ics`,
   one event or one-per-stop),
 - views every stop on an interactive **Google map** (click-to-set search
@@ -45,7 +45,7 @@ gracefully. Per-user defaults live at `/settings`.
 | Email | Resend |
 | AI | Gemini 3.1 Flash Lite — activity ideas, itinerary notes/tips, memory poems |
 | Venues | Google Places API (New) (businesses) · Overpass/OpenStreetMap (natural places) |
-| Routing | OSRM public server (travel times, cached) |
+| Routing | Google Routes API (travel times, cached) |
 | Geocoding | Nominatim (OpenStreetMap) |
 | Map | Google Maps JavaScript API |
 | Photos | Cloudinary (signed direct uploads) |
