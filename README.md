@@ -70,6 +70,8 @@ npm run dev                  # http://localhost:3000
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | clerk.com |
 | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | turso.tech |
 | `GOOGLE_PLACES_API_KEY` | console.cloud.google.com |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` | console.cloud.google.com (browser Maps key + optional Map ID) |
+| `STATIC_MAPS_SIGNING_SECRET` | console.cloud.google.com (Maps URL signing secret - signs the static map images embedded in emails) |
 | `GEMINI_API_KEY` | Google AI Studio |
 | `RESEND_API_KEY`, `EMAIL_FROM` | resend.com |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | cloudinary.com (memory photos) |
@@ -78,6 +80,8 @@ npm run dev                  # http://localhost:3000
 
 The app degrades gracefully when a key is missing: no `GEMINI_API_KEY` skips
 AI itineraries/ideas; no `RESEND_API_KEY` skips emails.
+No `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` skips maps and static route snapshots.
+No `STATIC_MAPS_SIGNING_SECRET` skips only the map images inside emails.
 
 ### Database schema
 

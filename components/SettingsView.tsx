@@ -11,7 +11,7 @@ import {
   type UserSettings,
 } from "@/lib/settings";
 
-type Usage = { places: number; overpass: number; osrm: number };
+type Usage = { places: number; overpass: number; osrm: number; "static-maps": number };
 
 /**
  * B4: the interactive part of /settings — search defaults, map zoom mode,
@@ -289,7 +289,7 @@ function PlacesUsageMeter() {
         </div>
         <p className="mt-1.5 text-[10px] text-[#c0a0b0]">
           Staying under ~{PLACES_DAILY_CALL_BUDGET} calls/day keeps Google Places free.
-          {usage && ` Also today: OpenStreetMap ${usage.overpass} · Routing ${usage.osrm}.`}
+          {usage && ` Also today: OpenStreetMap ${usage.overpass} · Routing ${usage.osrm} · Map snapshots ${usage["static-maps"]}.`}
         </p>
       </div>
     </section>
