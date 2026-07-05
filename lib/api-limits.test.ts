@@ -19,7 +19,6 @@ describe("API_LIMITS registry", () => {
       "static-maps",
       "maps-js-loads",
       "overpass",
-      "osrm",
       "nws",
     ]) {
       expect(TRACKED_SERVICES).toContain(service);
@@ -54,7 +53,7 @@ describe("API_LIMITS registry", () => {
   });
 
   it("labels uncapped services as free", () => {
-    for (const service of ["overpass", "osrm", "nws"]) {
+    for (const service of ["overpass", "nws"]) {
       const l = getApiLimit(service)!;
       expect(l.monthlyCap).toBeNull();
       expect(l.label.toLowerCase()).toContain("free");

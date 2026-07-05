@@ -29,7 +29,6 @@ export const API_LIMITS: ApiLimit[] = [
   { service: "static-maps", label: "Static maps", shortLabel: "Static", monthlyCap: 10000, dailyBudget: 320 },
   { service: "maps-js-loads", label: "Map loads (Maps JS)", shortLabel: "Maps", monthlyCap: 10000, dailyBudget: 320 },
   { service: "overpass", label: "OpenStreetMap places (free, uncapped)", shortLabel: "OSM", monthlyCap: null, dailyBudget: null },
-  { service: "osrm", label: "OSRM routing (free, uncapped)", shortLabel: "Routing", monthlyCap: null, dailyBudget: null },
   { service: "nws", label: "Weather (NWS, free, uncapped)", shortLabel: "Weather", monthlyCap: null, dailyBudget: null },
 ];
 

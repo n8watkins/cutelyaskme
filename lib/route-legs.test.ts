@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   roundCoord,
-  osrmCoordPath,
+  coordPath,
   routeCacheKey,
   fallbackLeg,
   isWalkable,
-  plausibleWalk,
+  parseDurationSec,
+  legInfoFromRoute,
   legInfoForMode,
   formatLegDuration,
   formatLeg,
@@ -24,15 +25,15 @@ describe("roundCoord", () => {
   });
 });
 
-describe("osrmCoordPath / routeCacheKey", () => {
+describe("coordPath / routeCacheKey", () => {
   it("emits lon,lat pairs joined by semicolons", () => {
-    expect(osrmCoordPath([LA, SM])).toBe("-118.2428,34.0537;-118.4987,34.0084");
+    expect(coordPath([LA, SM])).toBe("-118.2428,34.0537;-118.4987,34.0084");
   });
 
   it("collapses nearby coords onto the same cache key", () => {
     const jittered = { lat: 34.05370004, lng: -118.24280002 };
     expect(routeCacheKey([jittered, SM])).toBe(routeCacheKey([LA, SM]));
-    expect(routeCacheKey([LA, SM])).toMatch(/^osrm:/);
+    expect(routeCacheKey([LA, SM])).toMatch(/^routes:/);
   });
 
   it("different waypoint order is a different key", () => {
@@ -69,19 +70,52 @@ describe("isWalkable", () => {
   });
 });
 
-describe("plausibleWalk", () => {
-  const drive: LegInfo = { distanceMeters: 900, durationSec: 240, estimate: false };
-
-  it("keeps a walk that is slower than driving", () => {
-    const walk: LegInfo = { distanceMeters: 800, durationSec: 700, estimate: false };
-    expect(plausibleWalk(drive, walk, LA, SM)).toBe(walk);
+describe("parseDurationSec", () => {
+  it("parses whole and fractional protobuf Duration strings", () => {
+    expect(parseDurationSec("165s")).toBe(165);
+    expect(parseDurationSec("165.499s")).toBe(165);
+    expect(parseDurationSec("165.5s")).toBe(166);
+    expect(parseDurationSec("0s")).toBe(0);
   });
 
-  it("replaces a walk as fast as driving (demo server car data) with an estimate", () => {
-    const bogus: LegInfo = { distanceMeters: 900, durationSec: 240, estimate: false };
-    const result = plausibleWalk(drive, bogus, LA, SM);
-    expect(result.estimate).toBe(true);
-    expect(result.durationSec).toBeGreaterThan(drive.durationSec);
+  it("rejects malformed or missing values", () => {
+    expect(parseDurationSec(undefined)).toBeNull();
+    expect(parseDurationSec("")).toBeNull();
+    expect(parseDurationSec("165")).toBeNull();
+    expect(parseDurationSec("s")).toBeNull();
+    expect(parseDurationSec("-30s")).toBeNull();
+    expect(parseDurationSec("abcs")).toBeNull();
+  });
+});
+
+describe("legInfoFromRoute", () => {
+  it("maps a computeRoutes route to a routed (non-estimate) LegInfo", () => {
+    expect(legInfoFromRoute({ duration: "720s", distanceMeters: 4321 })).toEqual({
+      distanceMeters: 4321,
+      durationSec: 720,
+      estimate: false,
+    });
+  });
+
+  it("rounds fractional distances", () => {
+    expect(legInfoFromRoute({ duration: "60s", distanceMeters: 99.6 })?.distanceMeters).toBe(100);
+  });
+
+  it("treats a missing distance as 0 (proto3 JSON omits zero values)", () => {
+    expect(legInfoFromRoute({ duration: "0s" })).toEqual({
+      distanceMeters: 0,
+      durationSec: 0,
+      estimate: false,
+    });
+  });
+
+  it("returns null for unusable responses", () => {
+    expect(legInfoFromRoute(undefined)).toBeNull();
+    expect(legInfoFromRoute({})).toBeNull();
+    expect(legInfoFromRoute({ distanceMeters: 500 })).toBeNull();
+    expect(legInfoFromRoute({ duration: "bogus", distanceMeters: 500 })).toBeNull();
+    expect(legInfoFromRoute({ duration: "60s", distanceMeters: -5 })).toBeNull();
+    expect(legInfoFromRoute({ duration: "60s", distanceMeters: NaN })).toBeNull();
   });
 });
 

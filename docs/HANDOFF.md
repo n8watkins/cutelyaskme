@@ -100,11 +100,14 @@ reuse, don't reinvent.
   `ca:mapZoomMode`/`ca:calendarMode` migrate up once when no row exists — the
   row's existence is the migration flag; don't add another flag. Per-plan
   flags (`ca:reviewPrompted:<planId>`) stay in localStorage.
-- **OSRM (Batch 6):** public demo server, no key. Its `foot` profile serves
-  car-speed data, so `/api/route` runs walks through `plausibleWalk`
-  (`lib/route-legs.ts`) and substitutes a 3 mph estimate when implausible —
-  don't "fix" that. Cache key `osrm:<rounded coords>` in `place_cache` (30 d);
-  never cache a failed fetch. Usage tracked as service `osrm`.
+- **Routing (Batch 6, migrated to Google Routes API):** `/api/route` calls
+  `computeRoutes` once per leg (DRIVE, plus WALK on legs under 0.8 mi) with a
+  field mask of only `routes.duration` + `routes.distanceMeters` to stay on
+  the Essentials SKU - never enable traffic-aware routing, waypoint
+  optimization, or location modifiers. Same key as Places
+  (`GOOGLE_PLACES_API_KEY`). Cache key `routes:<rounded coords>` in
+  `place_cache` (30 d); never cache a failed fetch. Usage tracked as service
+  `routes`.
 - **Leg modes:** `date_plans.leg_modes` (TEXT JSON, migration applied) maps
   leg key `"fromId→toId"` → `"drive" | "walk"`; node ids are `"start"`,
   `"pickup"`, and stop keys (incl. `__entree__`). In `SenderPlanningView`,
@@ -145,9 +148,9 @@ reuse, don't reinvent.
 | `lib/calendar.ts` | `buildGCalLink`, `buildItineraryText`, `icsEscape` (tested) |
 | `lib/datetime.ts` / `lib/sun.ts` / `lib/geo.ts` / `lib/hours.ts` | tested pure helpers (time parsing, sun warnings, haversine, Yelp hours/badges) |
 | `lib/itinerary.ts` | Deterministic timeline + Gemini notes/tips with validation (tested; used by plan PATCH + create) |
-| `lib/route-legs.ts` | OSRM leg types, cache keys, fallback estimates, `formatLeg` (tested) |
+| `lib/route-legs.ts` | travel-leg types, cache keys, Routes API response mapping, fallback estimates, `formatLeg` (tested) |
 | `lib/schedule.ts` | `projectedStarts` + `suggestOrder` sunset-aware reordering (tested) |
-| `src/app/api/route/route.ts` | OSRM travel times (driving + short-leg walking), `place_cache`d |
+| `src/app/api/route/route.ts` | Google Routes travel times (driving + short-leg walking), `place_cache`d |
 | `src/app/api/plans/[id]/route.ts` | PATCH: saves venues/waypoints/order/legModes, regenerates itinerary |
 | `src/app/api/places/route.ts` (+ `[id]/route.ts`) | Yelp search (+ details/hours/reviews), `place_cache`d |
 | `src/app/api/natural-places/route.ts` | Overpass natural spots (UA + mirrors + no-fail-caching) |

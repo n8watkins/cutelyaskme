@@ -3,7 +3,7 @@
 //
 // dateEnd = selected date + the last stop's end time, derived from the saved
 // deterministic timeline (E1): last entry's start time + that stop's duration.
-// Travel legs are client-side only (OSRM results aren't persisted), so callers
+// Travel legs are client-side only (routing results aren't persisted), so callers
 // that have them can pass `travelMinutes`; server-side they simply count as 0
 // — same approximation `projectedStarts` makes for un-routed legs.
 //
@@ -29,7 +29,7 @@ export type DateEndInput = {
   selectedActivities: string[];
   /** The saved itinerary (its timeline carries the deterministic times). */
   itinerary: ItineraryJson | null;
-  /** Travel minutes INTO each stop, when known (client-side OSRM legs). */
+  /** Travel minutes INTO each stop, when known (client-side routed legs). */
   travelMinutes?: Record<string, number>;
 };
 

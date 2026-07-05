@@ -45,9 +45,12 @@ All pricing as of June 2026. This is a personal-scale app — estimates assume a
 - Signed direct uploads from the browser; assets are destroyed when removed
   from a gallery, so storage doesn't accumulate orphans
 
-### OSRM — travel times between stops
-- Public demo server (`router.project-osrm.org`), free, no key
-- Results cached 30 days in the DB; haversine fallback if unreachable
+### Google Routes API — travel times between stops
+- `computeRoutes` on the **Essentials SKU**: 10,000 free calls/month.
+- The field mask requests only `routes.duration` + `routes.distanceMeters`, and traffic-aware routing, waypoint optimization, and location modifiers are never enabled - any of those would move calls to a pricier SKU.
+- One call per drive leg; legs under 0.8 mi add one walk-mode call.
+- Uses the same server key as Places (`GOOGLE_PLACES_API_KEY`, Routes API enabled on the project).
+- Results cached 30 days in the DB; haversine fallback if unreachable.
 
 ### Map display — Google Maps JavaScript API
 - 10,000 free map loads/month (Essentials SKU), then ~$7/1k
