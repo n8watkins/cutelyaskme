@@ -715,7 +715,7 @@ export function SenderPlanningView({
   );
 
   // Named nav stops per route node id ("start", "pickup", stop keys) for the
-  // Google Maps deep links — same inputs and conditions as routeNodes.
+  // Google Maps deep links - same inputs and conditions as routeNodes.
   const navStopById = useMemo(() => {
     const m: Record<string, NavStop> = {};
     if (startPoint?.lat) m.start = { name: startPoint.label, lat: startPoint.lat, lng: startPoint.lng };
