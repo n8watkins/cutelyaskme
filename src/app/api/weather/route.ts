@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { placeCache } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { pickDayForecast, type DayForecast, type NwsPeriod } from "@/lib/weather";
+import { trackApiUsage } from "@/lib/api-usage";
+import { sanitizePlanId } from "@/lib/api-limits";
 
 // NWS asks for an identifying User-Agent (app + contact) instead of an API key.
 const NWS_UA = "cutelyaskme (https://cutelyaskme.vercel.app; nathancwatkins23@gmail.com)";
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest) {
   const lat = parseFloat(searchParams.get("lat") ?? "");
   const lng = parseFloat(searchParams.get("lng") ?? "");
   const date = searchParams.get("date") ?? "";
+  const planId = sanitizePlanId(searchParams.get("plan"));
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ message: "Bad request" }, { status: 400 });
   }
@@ -46,6 +49,8 @@ export async function GET(request: NextRequest) {
 
   let forecast: DayForecast | null = null;
   try {
+    // NWS is free and uncapped; counted anyway so the dashboard sees everything.
+    void trackApiUsage("nws", 1, planId);
     const pointsRes = await fetch(
       `https://api.weather.gov/points/${lat.toFixed(4)},${lng.toFixed(4)}`,
       { headers: { "User-Agent": NWS_UA } },
@@ -55,6 +60,7 @@ export async function GET(request: NextRequest) {
     const forecastUrl = points.properties?.forecast;
     if (!forecastUrl) return NextResponse.json({ message: "No forecast" }, { status: 404 });
 
+    void trackApiUsage("nws", 1, planId);
     const forecastRes = await fetch(forecastUrl, { headers: { "User-Agent": NWS_UA } });
     if (!forecastRes.ok) return NextResponse.json({ message: "No forecast" }, { status: 404 });
     const data = (await forecastRes.json()) as { properties?: { periods?: NwsPeriod[] } };

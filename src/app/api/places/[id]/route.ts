@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { placeCache, venueVerdicts } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { trackApiUsage } from "@/lib/api-usage";
+import { sanitizePlanId } from "@/lib/api-limits";
 import type { VenueDetails, OpenSlot } from "@/lib/hours";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -86,7 +87,8 @@ export async function GET(
     }
   } catch {}
 
-  void trackApiUsage("places");
+  // The scarcest SKU (1,000/month free) — attributed to the plan when known.
+  void trackApiUsage("places-details", 1, sanitizePlanId(request.nextUrl.searchParams.get("plan")));
 
   let detailsRes: Response;
   try {
