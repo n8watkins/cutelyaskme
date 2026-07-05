@@ -1,0 +1,81 @@
+import { auth } from "@clerk/nextjs/server";
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { placeCache } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { pickDayForecast, type DayForecast, type NwsPeriod } from "@/lib/weather";
+
+// NWS asks for an identifying User-Agent (app + contact) instead of an API key.
+const NWS_UA = "cutelyaskme (https://cutelyaskme.vercel.app; nathancwatkins23@gmail.com)";
+const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * Forecast for the date at the plan's map center — free NWS data, US-only.
+ * Returns 404 whenever a forecast isn't available (non-US, >7 days out,
+ * NWS down); callers just hide the weather chip.
+ */
+export async function GET(request: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = request.nextUrl;
+  const lat = parseFloat(searchParams.get("lat") ?? "");
+  const lng = parseFloat(searchParams.get("lng") ?? "");
+  const date = searchParams.get("date") ?? "";
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return NextResponse.json({ message: "Bad request" }, { status: 400 });
+  }
+
+  // ~1km cache buckets — a date happens in one city, no need for precision.
+  const cacheKey = `nws:${lat.toFixed(2)},${lng.toFixed(2)}:${date}`;
+  const now = new Date().toISOString();
+
+  try {
+    const [cached] = await db
+      .select()
+      .from(placeCache)
+      .where(eq(placeCache.cacheKey, cacheKey))
+      .limit(1);
+    if (cached && cached.expiresAt > now) {
+      const hit = JSON.parse(cached.results) as DayForecast | null;
+      return hit
+        ? NextResponse.json(hit)
+        : NextResponse.json({ message: "No forecast" }, { status: 404 });
+    }
+  } catch {}
+
+  let forecast: DayForecast | null = null;
+  try {
+    const pointsRes = await fetch(
+      `https://api.weather.gov/points/${lat.toFixed(4)},${lng.toFixed(4)}`,
+      { headers: { "User-Agent": NWS_UA } },
+    );
+    if (!pointsRes.ok) return NextResponse.json({ message: "No forecast" }, { status: 404 });
+    const points = (await pointsRes.json()) as { properties?: { forecast?: string } };
+    const forecastUrl = points.properties?.forecast;
+    if (!forecastUrl) return NextResponse.json({ message: "No forecast" }, { status: 404 });
+
+    const forecastRes = await fetch(forecastUrl, { headers: { "User-Agent": NWS_UA } });
+    if (!forecastRes.ok) return NextResponse.json({ message: "No forecast" }, { status: 404 });
+    const data = (await forecastRes.json()) as { properties?: { periods?: NwsPeriod[] } };
+    forecast = pickDayForecast(data.properties?.periods ?? [], date);
+  } catch {
+    return NextResponse.json({ message: "Weather unreachable" }, { status: 502 });
+  }
+
+  // Cache hits and misses alike (a miss usually means the date is still >7
+  // days out — no point re-asking NWS every page view). Misses expire sooner.
+  const expiresAt = new Date(Date.now() + (forecast ? 3 : 1) * HOUR_MS).toISOString();
+  await db
+    .insert(placeCache)
+    .values({ id: crypto.randomUUID(), cacheKey, results: JSON.stringify(forecast), expiresAt })
+    .onConflictDoUpdate({
+      target: placeCache.cacheKey,
+      set: { results: JSON.stringify(forecast), expiresAt },
+    })
+    .catch(() => null);
+
+  return forecast
+    ? NextResponse.json(forecast)
+    : NextResponse.json({ message: "No forecast" }, { status: 404 });
+}
