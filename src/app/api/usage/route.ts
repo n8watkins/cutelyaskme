@@ -7,6 +7,6 @@ export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-  const usage = await getUsageToday(["places", "overpass", "osrm"]);
+  const usage = await getUsageToday(["places", "overpass", "routes"]);
   return NextResponse.json({ usage });
 }

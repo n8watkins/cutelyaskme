@@ -246,7 +246,7 @@ export function SenderPlanningView({
   // C4/C5: per-venue hours + reviews, fetched on select (cached server-side).
   const [venueDetails, setVenueDetails] = useState<Record<string, VenueDetails | "loading" | "error">>({});
   // C7: today's outbound API call counts.
-  const [usage, setUsage] = useState<{ places: number; overpass: number; osrm: number } | null>(null);
+  const [usage, setUsage] = useState<{ places: number; overpass: number; routes: number } | null>(null);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
@@ -481,7 +481,7 @@ export function SenderPlanningView({
   function loadUsage() {
     fetch("/api/usage")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { usage?: { places: number; overpass: number; osrm: number } } | null) => {
+      .then((d: { usage?: { places: number; overpass: number; routes: number } } | null) => {
         if (d?.usage) setUsage(d.usage);
       })
       .catch(() => {});
@@ -914,7 +914,7 @@ export function SenderPlanningView({
               </p>
               {usage && (
                 <p className="mt-1.5 text-[10px] font-black text-[#c0a0b0]">
-                  📊 API calls today — Places {usage.places} · OpenStreetMap {usage.overpass} · Routing {usage.osrm}
+                  📊 API calls today — Places {usage.places} · OpenStreetMap {usage.overpass} · Routing {usage.routes}
                 </p>
               )}
             </div>
@@ -1453,7 +1453,7 @@ function CalendarMenu({
  * D3: travel between consecutive timeline points — "🚗 12 min · 4.3 mi".
  * Legs under 0.8 mi also carry a walking option and render a drive/walk
  * toggle; the pick persists on the plan (legModes). "~" marks a haversine
- * estimate (OSRM unreachable).
+ * estimate (Routes API unreachable).
  */
 function TravelChip({
   legKey,
