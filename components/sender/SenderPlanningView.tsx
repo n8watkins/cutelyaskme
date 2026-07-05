@@ -32,6 +32,7 @@ import {
   type LegMode,
   type RouteLeg,
 } from "@/lib/route-legs";
+import { buildLegNavUrl, buildRouteNavUrl, navTravelMode, type NavStop } from "@/lib/nav-links";
 import { dayIndexFromDate, formatDayHours, openBadge, type VenueDetails } from "@/lib/hours";
 import { forecastEmoji, type DayForecast } from "@/lib/weather";
 import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
@@ -713,16 +714,31 @@ export function SenderPlanningView({
     [startPoint, pickupPoint],
   );
 
-  const routeVenues = mapStops.filter(Boolean) as Venue[];
+  // Named nav stops per route node id ("start", "pickup", stop keys) for the
+  // Google Maps deep links — same inputs and conditions as routeNodes.
+  const navStopById = useMemo(() => {
+    const m: Record<string, NavStop> = {};
+    if (startPoint?.lat) m.start = { name: startPoint.label, lat: startPoint.lat, lng: startPoint.lng };
+    if (pickupPoint?.lat) m.pickup = { name: pickupPoint.label, lat: pickupPoint.lat, lng: pickupPoint.lng };
+    for (const key of stopOrder) {
+      const v = key === ENTREE_KEY ? entreeVenue : (activityVenues[key] ?? null);
+      if (v) m[key] = { name: v.name, lat: v.lat, lng: v.lng };
+    }
+    return m;
+  }, [startPoint, pickupPoint, stopOrder, activityVenues, entreeVenue]);
+
   // Route goes: your place → pick up your date → each chosen venue.
-  const routeCoords = [
-    ...waypoints.map((w) => `${w.lat},${w.lng}`),
-    ...routeVenues.map((v) => `${v.lat},${v.lng}`),
-  ];
-  const routeUrl =
-    routeCoords.length >= 2
-      ? `https://www.google.com/maps/dir/${routeCoords.join("/")}`
-      : null;
+  const routeUrl = buildRouteNavUrl(routeNodes.map((n) => navStopById[n.id]).filter(Boolean));
+
+  /** Google Maps deep link for the leg into a stop (null until routed). */
+  function legNavUrl(destKey: string): string | null {
+    const t = chosenLeg(destKey);
+    if (!t) return null;
+    const fromId = t.legKey.split("→")[0];
+    const from = navStopById[fromId];
+    const to = navStopById[destKey];
+    return from && to ? buildLegNavUrl(from, to, navTravelMode(t.mode)) : null;
+  }
 
   const hasAnyVenue = timeline.some((s) => s.venue !== null);
 
@@ -785,6 +801,7 @@ export function SenderPlanningView({
     return {
       ...stop,
       travelIn: t ? `${t.mode === "walk" ? "🚶" : "🚗"} ${formatLeg(t.info)}` : null,
+      legMode: t?.mode ?? null,
     };
   });
 
@@ -1108,7 +1125,7 @@ export function SenderPlanningView({
                 rel="noopener noreferrer"
                 className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border-2 border-[#c7a6ff] py-3 font-black text-[#7c5aa0] transition hover:bg-[#f5f0ff]"
               >
-                🗺️ Get directions for full route
+                🧭 Navigate the whole route
               </a>
             )}
           </section>
@@ -1163,6 +1180,7 @@ export function SenderPlanningView({
                           mode={travelIn.mode}
                           leg={travelIn.leg}
                           onMode={pickLegMode}
+                          navUrl={legNavUrl(stop.key)}
                         />
                       )}
                       <TimelineRow
@@ -1460,21 +1478,24 @@ function TravelChip({
   mode,
   leg,
   onMode,
+  navUrl,
 }: {
   legKey: string;
   mode: LegMode;
   leg: RouteLeg;
   onMode: (legKey: string, mode: LegMode) => void;
+  navUrl: string | null;
 }) {
   const chosen = legInfoForMode(leg, mode);
   const estTitle = chosen.estimate ? "Straight-line estimate — live routing unavailable" : undefined;
 
   if (!leg.walk) {
     return (
-      <div className="ml-12 flex items-center" title={estTitle}>
+      <div className="ml-12 flex flex-wrap items-center gap-1.5" title={estTitle}>
         <span className="rounded-full bg-[#fff7fb] px-2.5 py-0.5 text-[11px] font-black text-[#8a6a78]">
           🚗 {formatLeg(leg.drive)}
         </span>
+        {navUrl && <NavPill href={navUrl} />}
       </div>
     );
   }
@@ -1501,7 +1522,23 @@ function TravelChip({
         · {chosen.estimate ? "~" : ""}
         {formatMiles(chosen.distanceMeters / METERS_PER_MILE)}
       </span>
+      {navUrl && <NavPill href={navUrl} />}
     </div>
+  );
+}
+
+/** Small pill link opening turn-by-turn Google Maps navigation for one leg. */
+function NavPill({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Open this leg in Google Maps"
+      className="rounded-full border border-[#ffd6e8] px-2.5 py-0.5 text-[11px] font-black text-[#8a6a78] transition hover:bg-[#fff7fb]"
+    >
+      🧭 Navigate
+    </a>
   );
 }
 
