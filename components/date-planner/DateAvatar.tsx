@@ -33,6 +33,7 @@ export function DateAvatar({ step, avatarSrc }: DateAvatarProps) {
       </div>
       <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full border-2 border-[#3a2530] bg-[#fff3d6] text-2xl shadow-[0_12px_24px_rgba(58,37,48,0.14)]">
         {avatarSrc
+          // eslint-disable-next-line @next/next/no-img-element -- data-URL avatar, next/image can't optimize it
           ? <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
           : <span aria-hidden>🙂</span>
         }
