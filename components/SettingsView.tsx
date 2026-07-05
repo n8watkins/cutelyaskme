@@ -6,12 +6,27 @@ import {
   MAP_ZOOM_MODE_KEY,
   RADIUS_LIMIT_MIN_MI,
   RADIUS_LIMIT_MAX_MI,
-  PLACES_DAILY_CALL_BUDGET,
   type MapZoomMode,
   type UserSettings,
 } from "@/lib/settings";
 
-type Usage = { places: number; overpass: number; osrm: number };
+// Shapes returned by GET /api/usage (per-service meters + per-plan breakdown).
+type UsageEntry = {
+  service: string;
+  label: string;
+  shortLabel: string;
+  monthlyCap: number | null;
+  dailyBudget: number | null;
+  today: number;
+  monthToDate: number;
+};
+type PlanUsage = {
+  planId: string;
+  label: string;
+  services: Record<string, number>;
+  total: number;
+};
+type UsageResponse = { usage: UsageEntry[]; plans: PlanUsage[] };
 
 /**
  * B4: the interactive part of /settings — search defaults, map zoom mode,
@@ -233,24 +248,28 @@ export function SettingsView({ initial }: { initial: UserSettings }) {
         </div>
       </section>
 
-      <PlacesUsageMeter />
+      <ApiUsageDashboard />
     </div>
   );
 }
 
-/** C7: "Google Places: N calls today" + budget reference, read from /api/usage. */
-function PlacesUsageMeter() {
-  const [usage, setUsage] = useState<Usage | null>(null);
+/**
+ * C7: the full API usage dashboard — one meter per service showing
+ * month-to-date against its real monthly free cap plus today's count,
+ * and a per-plan breakdown of attributed calls. Reads GET /api/usage.
+ */
+function ApiUsageDashboard() {
+  const [data, setData] = useState<UsageResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     fetch("/api/usage")
-      .then((res) => (res.ok ? (res.json() as Promise<{ usage: Usage }>) : null))
-      .then((data) => {
+      .then((res) => (res.ok ? (res.json() as Promise<UsageResponse>) : null))
+      .then((d) => {
         if (cancelled) return;
-        if (data?.usage) setUsage(data.usage);
+        if (d?.usage) setData(d);
         else setFailed(true);
       })
       .catch(() => {
@@ -261,7 +280,9 @@ function PlacesUsageMeter() {
     };
   }, [refreshKey]);
 
-  const pct = usage ? Math.min(100, (usage.places / PLACES_DAILY_CALL_BUDGET) * 100) : 0;
+  // Only services a plan actually used become table columns.
+  const planColumns =
+    data?.usage.filter((u) => data.plans.some((p) => (p.services[u.service] ?? 0) > 0)) ?? [];
 
   return (
     <section className="mb-8">
@@ -269,9 +290,9 @@ function PlacesUsageMeter() {
         📊 API usage
       </h2>
       <div className="rounded-[20px] border-2 border-[#ffd6e8] bg-white p-4">
-        <div className="mb-1 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-black text-[#3a2530]">
-            {usage ? `Google Places: ${usage.places} ${usage.places === 1 ? "call" : "calls"} today` : failed ? "Google Places: usage unavailable" : "Google Places: loading…"}
+            {data ? "This month vs each free cap" : failed ? "Usage unavailable" : "Loading usage…"}
           </span>
           <button
             type="button"
@@ -281,17 +302,86 @@ function PlacesUsageMeter() {
             ↻ Refresh
           </button>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-[#fff0f6]">
-          <div
-            className="h-full rounded-full bg-[#ff7aaa] transition-all"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <p className="mt-1.5 text-[10px] text-[#c0a0b0]">
-          Staying under ~{PLACES_DAILY_CALL_BUDGET} calls/day keeps Google Places free.
-          {usage && ` Also today: OpenStreetMap ${usage.overpass} · Routing ${usage.osrm}.`}
-        </p>
+
+        {data?.usage.map((u) => <UsageMeterRow key={u.service} entry={u} />)}
+
+        {data && (
+          <p className="mt-2 text-[10px] text-[#c0a0b0]">
+            Caps are each Google SKU&apos;s monthly free tier; the soft daily budgets keep the
+            month on pace.
+          </p>
+        )}
+
+        {data && data.plans.length > 0 && (
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs font-black text-[#8a6a78]">💌 Calls per date plan (this month)</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px]">
+                <thead>
+                  <tr className="text-left text-[9px] uppercase tracking-wider text-[#c0a0b0]">
+                    <th className="py-1 pr-2 font-black">Plan</th>
+                    {planColumns.map((c) => (
+                      <th key={c.service} className="py-1 pr-2 text-right font-black">
+                        {c.shortLabel}
+                      </th>
+                    ))}
+                    <th className="py-1 text-right font-black">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.plans.map((p) => (
+                    <tr key={p.planId} className="border-t border-[#fff0f6]">
+                      <td className="py-1 pr-2 font-black text-[#3a2530]">{p.label}</td>
+                      {planColumns.map((c) => (
+                        <td key={c.service} className="py-1 pr-2 text-right text-[#8a6a78]">
+                          {p.services[c.service] ?? 0}
+                        </td>
+                      ))}
+                      <td className="py-1 text-right font-black text-[#ff7aaa]">{p.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </section>
+  );
+}
+
+/** One service's meter: month-to-date vs its cap, today's count, pace warning. */
+function UsageMeterRow({ entry }: { entry: UsageEntry }) {
+  const frac =
+    entry.monthlyCap !== null ? Math.min(1, entry.monthToDate / entry.monthlyCap) : null;
+  const nearCap = frac !== null && frac >= 0.8;
+  const overPace = entry.dailyBudget !== null && entry.today > entry.dailyBudget;
+
+  return (
+    <div className="border-b border-[#fff0f6] py-2 last:border-b-0">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-black text-[#3a2530]">{entry.label}</span>
+        <span className="whitespace-nowrap text-[10px] font-black text-[#8a6a78]">
+          {entry.monthlyCap !== null
+            ? `${entry.monthToDate.toLocaleString()} / ${entry.monthlyCap.toLocaleString()} mo`
+            : `${entry.monthToDate.toLocaleString()} mo`}
+          {" · "}
+          {entry.today} today
+        </span>
+      </div>
+      {frac !== null && (
+        <div className="mt-1 h-2 overflow-hidden rounded-full bg-[#fff0f6]">
+          <div
+            className={`h-full rounded-full transition-all ${nearCap ? "bg-[#d32323]" : "bg-[#ff7aaa]"}`}
+            style={{ width: `${frac * 100}%` }}
+          />
+        </div>
+      )}
+      {overPace && (
+        <p className="mt-0.5 text-[10px] font-black text-[#d32323]">
+          ⚠ Over the ~{entry.dailyBudget}/day soft budget.
+        </p>
+      )}
+    </div>
   );
 }

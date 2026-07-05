@@ -19,13 +19,6 @@ export function parseMapZoomMode(raw: string | null): MapZoomMode {
 export const RADIUS_LIMIT_MIN_MI = 1;
 export const RADIUS_LIMIT_MAX_MI = 25;
 
-/**
- * C7: soft daily budget for Google Places calls (shown for reference).
- * The real limit is per-SKU and monthly (details w/ reviews: 1,000/mo free),
- * so ~30/day keeps every SKU comfortably inside its free tier.
- */
-export const PLACES_DAILY_CALL_BUDGET = 30;
-
 export type UserSettings = {
   /** Planner slider's initial value, in miles. Always within [radiusMinMi, radiusMaxMi]. */
   defaultRadiusMi: number;

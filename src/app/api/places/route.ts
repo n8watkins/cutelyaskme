@@ -5,6 +5,7 @@ import { placeCache } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { mapPriceLevel, type Venue } from "@/lib/venues";
 import { trackApiUsage } from "@/lib/api-usage";
+import { sanitizePlanId } from "@/lib/api-limits";
 
 const PLACES_BASE = "https://places.googleapis.com/v1";
 
@@ -76,6 +77,8 @@ export async function GET(request: NextRequest) {
   // Optional per-stop price level (C3): 1-4, mapped to Google priceLevels.
   const priceRaw = parseInt(searchParams.get("price") ?? "0", 10);
   const price = priceRaw >= 1 && priceRaw <= 4 ? priceRaw : null;
+  // Attribute this search to the date plan being built (usage analytics).
+  const planId = sanitizePlanId(searchParams.get("plan"));
 
   if (!q || !location) {
     return NextResponse.json({ venues: [] });
@@ -113,7 +116,7 @@ export async function GET(request: NextRequest) {
       body.priceLevels = GOOGLE_PRICE_LEVELS.slice(0, price);
     }
 
-    void trackApiUsage("places"); // outbound call (cache hits return above)
+    void trackApiUsage("places-search", 1, planId); // outbound call (cache hits return above)
     const response = await fetch(`${PLACES_BASE}/places:searchText`, {
       method: "POST",
       headers: {
@@ -146,7 +149,7 @@ export async function GET(request: NextRequest) {
       })),
     );
     const photoCalls = page.filter((p) => p.photos?.[0]?.name).length;
-    if (photoCalls) void trackApiUsage("places", photoCalls);
+    if (photoCalls) void trackApiUsage("places-photos", photoCalls, planId);
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 

@@ -173,11 +173,15 @@ export const rateLimits = sqliteTable("rate_limits", {
   resetAt: integer("reset_at").notNull(), // ms epoch
 });
 
-// Daily outbound API call counts (C7) — key = "service:YYYY-MM-DD" (UTC).
+// Daily outbound API call counts (C7). Unattributed calls live in one row per
+// service+day (key = "service:YYYY-MM-DD", UTC); calls made while planning a
+// specific date get their own row per plan (key = "service:YYYY-MM-DD:planId",
+// plan_id set). A service's daily total is therefore SUM(count) over its rows.
 export const apiUsage = sqliteTable("api_usage", {
   key: text("key").primaryKey(),
   service: text("service").notNull(),
   day: text("day").notNull(),
+  planId: text("plan_id"),
   count: integer("count").notNull().default(0),
 });
 
