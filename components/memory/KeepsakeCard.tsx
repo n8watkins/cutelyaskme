@@ -39,6 +39,7 @@ export function KeepsakeCard({
   poem,
   notes,
   photos,
+  mapUrl,
   initialTrackId,
   canPickTrack,
   canShare,
@@ -51,6 +52,8 @@ export function KeepsakeCard({
   poem: string | null;
   notes: string | null;
   photos: PhotoRef[];
+  /** Soft static route map of the night (null = no key or no located stops). */
+  mapUrl: string | null;
   /** A MUSIC_TRACKS id (already resolved/validated server-side). */
   initialTrackId: string;
   /** True when the viewer authored this memory — shows the track picker. */
@@ -270,6 +273,26 @@ export function KeepsakeCard({
                 <p className="whitespace-pre-line text-center text-sm leading-relaxed text-[#8a6a78]">
                   {notes}
                 </p>
+              </div>
+            )}
+
+            {/* A soft map of the route - the night's stops, kept like a ticket stub. */}
+            {mapUrl && (
+              <div className="mt-8">
+                <p className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.2em] text-[#c0a0b0]">
+                  Where the night took us
+                </p>
+                <div className="overflow-hidden rounded-[22px] border-2 border-[#ffd6e8] bg-[#fff0f6]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={mapUrl}
+                    alt="A little map of where we went"
+                    width={600}
+                    height={300}
+                    loading="lazy"
+                    className="h-auto w-full"
+                  />
+                </div>
               </div>
             )}
 

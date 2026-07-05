@@ -132,6 +132,7 @@ export function SendInviteForm() {
           aria-label="Upload your photo"
         >
           {avatarSrc
+            // eslint-disable-next-line @next/next/no-img-element -- data-URL avatar, next/image can't optimize it
             ? <img src={avatarSrc} alt="Your avatar" className="h-full w-full object-cover" />
             : <span>🙂</span>
           }

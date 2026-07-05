@@ -1,8 +1,20 @@
 import { Resend } from "resend";
+import { numberedStopMarkers, signedStaticMapUrl } from "@/lib/static-map";
+import { trackApiUsage } from "@/lib/api-usage";
 
 function getResend() {
   if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY not set");
   return new Resend(process.env.RESEND_API_KEY);
+}
+
+// Email clients send no referrer, so only a SIGNED static map URL loads there
+// (the browser key's referrer restrictions reject referrer-less requests).
+// signedStaticMapUrl returns null when STATIC_MAPS_SIGNING_SECRET or the maps
+// key is missing - the email then simply ships without the picture.
+function staticMapImgHtml(url: string | null, alt: string): string {
+  if (!url) return "";
+  void trackApiUsage("static-maps");
+  return `<img src="${url.replace(/&/g, "&amp;")}" alt="${alt}" width="600" style="display:block;width:100%;max-width:480px;height:auto;border-radius:16px;margin:16px 0;border:2px solid #ffd6e8;" />`;
 }
 
 // NOTE: this domain must be verified in Resend (Domains → add cutelyask.me →
@@ -63,10 +75,23 @@ export async function sendSpotReadyEmail({
   selectedDateLabel: string | null;
   selectedTimeLabel: string | null;
   planId: string;
-  venues: { name: string; address: string }[];
+  venues: { name: string; address: string; lat?: number; lng?: number }[];
 }) {
   const planLink = `${SITE_URL}/plan/${planId}`;
   const when = [selectedDateLabel, selectedTimeLabel].filter(Boolean).join(" at ");
+
+  // Share mode gets a snapshot of the spots (numbered to match the list
+  // order); surprise mode stays a surprise. Empty string when unsigned.
+  const stopPoints = venues
+    .filter((v) => typeof v.lat === "number" && typeof v.lng === "number")
+    .map((v) => ({ lat: v.lat as number, lng: v.lng as number }));
+  const mapHtml =
+    mode === "share" && stopPoints.length > 0
+      ? staticMapImgHtml(
+          signedStaticMapUrl({ markers: numberedStopMarkers(stopPoints), path: stopPoints }),
+          "Map of your date spots",
+        )
+      : "";
 
   const subject =
     mode === "share"
@@ -94,6 +119,7 @@ export async function sendSpotReadyEmail({
           <strong>${senderName}</strong> just picked the spots for your date${when ? ` on <strong>${when}</strong>` : ""}. Here's where you're going:
         </p>
         ${venueListHtml}
+        ${mapHtml}
         <a href="${planLink}" style="display:inline-block;margin:20px 0;padding:14px 28px;background:#ff7aaa;color:white;text-decoration:none;border-radius:999px;font-weight:bold;font-size:15px;">
           See the full plan ✨
         </a>`
@@ -157,13 +183,25 @@ export async function sendInviteEmail({
   recipientEmail,
   senderName,
   token,
+  location,
 }: {
   recipientName: string;
   recipientEmail: string;
   senderName: string;
   token: string;
+  /** Free-text date city ("Austin, TX") - teased as a soft map when present. */
+  location?: string | null;
 }) {
   const link = `${SITE_URL}/invite/${token}`;
+
+  // No venues exist yet at invite time, so the teaser is just the city -
+  // Static Maps geocodes the address string itself, no markers needed.
+  const mapHtml = location
+    ? staticMapImgHtml(
+        signedStaticMapUrl({ center: location, zoom: 12, style: "soft" }),
+        `A map of ${location}`,
+      )
+    : "";
 
   const { error: sendError } = await getResend().emails.send({
     from: FROM,
@@ -176,6 +214,7 @@ export async function sendInviteEmail({
           <strong>${senderName}</strong> wants to plan a date night with you.
           Click below to see the invite and pick what sounds good.
         </p>
+        ${mapHtml}
         <a href="${link}" style="display: inline-block; margin: 24px 0; padding: 14px 28px; background: #ff7aaa; color: white; text-decoration: none; border-radius: 999px; font-weight: bold; font-size: 16px;">
           Open my invite ✨
         </a>

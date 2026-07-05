@@ -37,6 +37,7 @@ export function PersonCursor({ message, avatarSrc }: { message: string | null; a
       ) : null}
       <div className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border-2 border-[#3a2530] bg-[#fff3d6] text-xl shadow-[0_10px_20px_rgba(58,37,48,0.16)]">
         {avatarSrc
+          // eslint-disable-next-line @next/next/no-img-element -- data-URL avatar, next/image can't optimize it
           ? <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
           : <span>🙂</span>
         }

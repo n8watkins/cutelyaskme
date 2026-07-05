@@ -14,6 +14,9 @@ import { parsePhotoRefs, pickMemoryForViewer } from "@/lib/memory-display";
 import { findSharedMemory } from "@/lib/memory-share";
 import { resolveMusicTrack } from "@/lib/memory-music";
 import { KeepsakeCard } from "@/components/memory/KeepsakeCard";
+import type { Venue } from "@/lib/venues";
+import { browserStaticMapUrl, numberedStopMarkers } from "@/lib/static-map";
+import { trackApiUsage } from "@/lib/api-usage";
 
 // Display serif for the poem centerpiece + title.
 const playfair = Playfair_Display({
@@ -100,6 +103,30 @@ export default async function MemoryPage({
   }
 
   const itinerary = safeParse<ItineraryJson | null>(plan.itinerary, null);
+
+  // A soft route map of where the night went - stops in evening order, drawn
+  // in the keepsake's muted palette. Null (section skipped) when the browser
+  // key env is missing or the plan has no located venues.
+  const activities = safeParse<string[]>(plan.selectedActivities, []);
+  const activityVenues = safeParse<Record<string, Venue>>(plan.selectedActivityVenues, {});
+  const entreeVenue = safeParse<Venue | null>(plan.selectedEntreeVenue ?? null, null);
+  const stopPoints = [
+    ...activities
+      .filter((a) => activityVenues[a])
+      .map((a) => ({ lat: activityVenues[a].lat, lng: activityVenues[a].lng })),
+    ...(entreeVenue ? [{ lat: entreeVenue.lat, lng: entreeVenue.lng }] : []),
+  ];
+  const mapUrl =
+    stopPoints.length > 0
+      ? browserStaticMapUrl({
+          markers: numberedStopMarkers(stopPoints),
+          path: stopPoints,
+          style: "soft",
+        })
+      : null;
+  // Render-count proxy - the viewer's browser fetches the image from Google.
+  if (mapUrl) void trackApiUsage("static-maps");
+
   const track = resolveMusicTrack(memory.musicTrack);
   // Author-only controls (track picker, share toggle) — never shown on the
   // share-link path or to the partner viewing this author's memory.
@@ -114,6 +141,7 @@ export default async function MemoryPage({
         poem={memory.poem}
         notes={memory.notes}
         photos={parsePhotoRefs(memory.photoRefs)}
+        mapUrl={mapUrl}
         initialTrackId={track.id}
         canPickTrack={isAuthor}
         canShare={isAuthor}

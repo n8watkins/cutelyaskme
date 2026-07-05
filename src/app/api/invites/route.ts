@@ -76,6 +76,7 @@ export async function POST(request: NextRequest) {
       recipientEmail: recipientEmail.trim().toLowerCase(),
       senderName,
       token,
+      location: locationValue,
     });
   } catch {
     // Non-blocking — invite is created, email is best-effort

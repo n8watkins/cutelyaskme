@@ -69,8 +69,8 @@ export async function POST(
       "Someone special";
   } catch {}
 
-  // Build venue list for share mode
-  let venues: { name: string; address: string }[] = [];
+  // Build venue list for share mode (lat/lng feeds the email's static map)
+  let venues: { name: string; address: string; lat?: number; lng?: number }[] = [];
   if (mode === "share") {
     try {
       const activityVenues = JSON.parse(plan.selectedActivityVenues) as Record<string, Venue>;
@@ -78,9 +78,10 @@ export async function POST(
         ? (JSON.parse(plan.selectedEntreeVenue) as Venue)
         : null;
       const activities = JSON.parse(plan.selectedActivities) as string[];
+      const toStop = (v: Venue) => ({ name: v.name, address: v.address, lat: v.lat, lng: v.lng });
       venues = [
-        ...activities.map((a) => activityVenues[a]).filter(Boolean).map((v) => ({ name: v.name, address: v.address })),
-        ...(entreeVenue ? [{ name: entreeVenue.name, address: entreeVenue.address }] : []),
+        ...activities.map((a) => activityVenues[a]).filter(Boolean).map(toStop),
+        ...(entreeVenue ? [toStop(entreeVenue)] : []),
       ];
     } catch {}
   }
