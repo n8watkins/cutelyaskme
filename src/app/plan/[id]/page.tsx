@@ -10,9 +10,10 @@ import { VenueVerdicts, type VerdictStop, type VerdictStatus } from "@/component
 import { MemoryKeepsake } from "@/components/MemoryKeepsake";
 import { SenderPlanningView } from "@/components/sender/SenderPlanningView";
 import { CancelDateButton } from "@/components/sender/CancelDateButton";
-import { DateMap } from "@/components/sender/DateMap";
 import { isDateOver } from "@/lib/date-end";
 import { getUserSettingsState } from "@/lib/user-settings";
+import { browserStaticMapUrl, numberedStopMarkers } from "@/lib/static-map";
+import { trackApiUsage } from "@/lib/api-usage";
 
 type PlanPageProps = {
   params: Promise<{ id: string }>;
@@ -155,20 +156,29 @@ export default async function PlanPage({ params }: PlanPageProps) {
       );
     }
 
-    // B4/Task B: the sender's saved settings drive the planner's radius
-    // slider (default + bounds), map zoom mode, and calendar export mode.
-    // `persisted` is false when no settings row exists yet — the client then
-    // migrates any legacy `ca:` localStorage prefs up exactly once.
-    const { settings, persisted } = await getUserSettingsState(plan.senderId);
-
     // F2: a past date is a memory, not a draft — render the read-only
     // reflection view instead of the planner. No editing, no regeneration.
     if (dateOver) {
-      const mapWaypoints = [
-        ...(startPoint ? [{ id: "start", label: startPoint.label, lat: startPoint.lat, lng: startPoint.lng, kind: "start" as const }] : []),
-        ...(pickupPoint ? [{ id: "pickup", label: pickupPoint.label, lat: pickupPoint.lat, lng: pickupPoint.lng, kind: "pickup" as const }] : []),
+      // A finished date gets a static route snapshot instead of an interactive
+      // map: numbered pins for the stops, small pins for start/pickup, and a
+      // line tracing the night in order. Null (no image) when the browser key
+      // env is missing.
+      const stopPoints = verdictStops.map((s) => ({ lat: s.venue.lat, lng: s.venue.lng }));
+      const waypointMarkers = [
+        ...(startPoint ? [{ lat: startPoint.lat, lng: startPoint.lng, size: "small" as const, color: "#3a2530" }] : []),
+        ...(pickupPoint ? [{ lat: pickupPoint.lat, lng: pickupPoint.lng, size: "small" as const, color: "#ff7aaa" }] : []),
       ];
-      const mapStops = verdictStops.map((s) => s.venue);
+      const routePoints = [...waypointMarkers.map(({ lat, lng }) => ({ lat, lng })), ...stopPoints];
+      const mapUrl =
+        routePoints.length > 0
+          ? browserStaticMapUrl({
+              markers: [...waypointMarkers, ...numberedStopMarkers(stopPoints)],
+              path: routePoints,
+            })
+          : null;
+      // Render-count proxy: the browser fetches the tile from Google directly,
+      // so counting here is the closest server-side signal we have.
+      if (mapUrl) void trackApiUsage("static-maps");
 
       return (
         <main className="mx-auto max-w-lg px-4 py-10">
@@ -191,9 +201,17 @@ export default async function PlanPage({ params }: PlanPageProps) {
             </dl>
           </div>
 
-          {(mapStops.length > 0 || mapWaypoints.length > 0) && (
-            <div className="mb-6 h-[300px]">
-              <DateMap stops={mapStops} waypoints={mapWaypoints} wheelZoomMode={settings.mapZoomMode} />
+          {mapUrl && (
+            <div className="mb-6 overflow-hidden rounded-[20px] border-2 border-[#ffd6e8] bg-white shadow-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={mapUrl}
+                alt="Map of where the night took you"
+                width={600}
+                height={300}
+                loading="lazy"
+                className="h-auto w-full"
+              />
             </div>
           )}
 
@@ -220,6 +238,12 @@ export default async function PlanPage({ params }: PlanPageProps) {
         </main>
       );
     }
+
+    // B4/Task B: the sender's saved settings drive the planner's radius
+    // slider (default + bounds), map zoom mode, and calendar export mode.
+    // `persisted` is false when no settings row exists yet — the client then
+    // migrates any legacy `ca:` localStorage prefs up exactly once.
+    const { settings, persisted } = await getUserSettingsState(plan.senderId);
 
     return (
       <>
