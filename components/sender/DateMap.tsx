@@ -28,6 +28,23 @@ type DateMapProps = {
 
 const STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
 
+/** Count one Maps JS load toward the maps-js-loads quota. Fire-and-forget —
+ * sendBeacon survives quick navigations; fetch keepalive is the fallback. */
+function reportMapLoad() {
+  const body = JSON.stringify({ service: "maps-js-loads" });
+  try {
+    if (navigator.sendBeacon("/api/usage", new Blob([body], { type: "application/json" }))) {
+      return;
+    }
+  } catch {}
+  void fetch("/api/usage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => {});
+}
+
 type Marker = google.maps.marker.AdvancedMarkerElement;
 
 export function DateMap({
@@ -308,6 +325,7 @@ export function DateMap({
 
       mapRef.current = map;
       markerLibRef.current = marker;
+      reportMapLoad();
       renderStops(stops);
       renderCandidates(candidates ?? [], selectedId);
       renderWaypoints(waypoints ?? []);

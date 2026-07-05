@@ -245,8 +245,8 @@ export function SenderPlanningView({
   const [pickStopKey, setPickStopKey] = useState<string | null>(null);
   // C4/C5: per-venue hours + reviews, fetched on select (cached server-side).
   const [venueDetails, setVenueDetails] = useState<Record<string, VenueDetails | "loading" | "error">>({});
-  // C7: today's outbound API call counts.
-  const [usage, setUsage] = useState<{ places: number; overpass: number; osrm: number } | null>(null);
+  // C7: today's outbound API call counts by service (places-search, osrm, …).
+  const [usage, setUsage] = useState<Record<string, number> | null>(null);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
@@ -332,14 +332,14 @@ export function SenderPlanningView({
       let url: string;
       if (isNatural(key)) {
         const type = NATURAL_PLACE_ACTIVITIES[key] ?? "park";
-        url = `/api/natural-places?activity=${encodeURIComponent(type)}&location=${encodeURIComponent(loc)}&radius=${radiusVal}`;
+        url = `/api/natural-places?activity=${encodeURIComponent(type)}&location=${encodeURIComponent(loc)}&radius=${radiusVal}&plan=${encodeURIComponent(planId)}`;
       } else {
         const offset = append ? (venueOffset[key] ?? 0) : 0;
         const q = key === ENTREE_KEY
           ? `${plan.selectedEntree ?? ""} restaurant`
           : (ACTIVITY_PLACE_QUERY[key] ?? key);
         const price = priceOverride !== undefined ? priceOverride : (stopPrices[key] ?? null);
-        url = `/api/places?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&radius=${radiusVal}&offset=${offset}&limit=${PAGE_SIZE}${price ? `&price=${price}` : ""}`;
+        url = `/api/places?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&radius=${radiusVal}&offset=${offset}&limit=${PAGE_SIZE}${price ? `&price=${price}` : ""}&plan=${encodeURIComponent(planId)}`;
       }
 
       const res = await fetch(url);
@@ -481,8 +481,10 @@ export function SenderPlanningView({
   function loadUsage() {
     fetch("/api/usage")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { usage?: { places: number; overpass: number; osrm: number } } | null) => {
-        if (d?.usage) setUsage(d.usage);
+      .then((d: { usage?: { service: string; today: number }[] } | null) => {
+        if (d?.usage) {
+          setUsage(Object.fromEntries(d.usage.map((u) => [u.service, u.today])));
+        }
       })
       .catch(() => {});
   }
@@ -491,7 +493,7 @@ export function SenderPlanningView({
     if (!isPlacesVenue(venue) || venueDetails[venue.id]) return;
     setVenueDetails((p) => ({ ...p, [venue.id]: "loading" }));
     try {
-      const res = await fetch(`/api/places/${encodeURIComponent(venue.id)}`);
+      const res = await fetch(`/api/places/${encodeURIComponent(venue.id)}?plan=${encodeURIComponent(planId)}`);
       if (!res.ok) throw new Error();
       const data = (await res.json()) as VenueDetails;
       setVenueDetails((p) => ({ ...p, [venue.id]: data }));
@@ -738,7 +740,7 @@ export function SenderPlanningView({
     let cancelled = false;
     const [coords, date] = weatherKey.split(":");
     const [lat, lng] = coords.split(",");
-    fetch(`/api/weather?lat=${lat}&lng=${lng}&date=${date}`)
+    fetch(`/api/weather?lat=${lat}&lng=${lng}&date=${date}&plan=${encodeURIComponent(planId)}`)
       .then((r) => (r.ok ? (r.json() as Promise<DayForecast>) : null))
       .then((d) => {
         if (!cancelled) setWeather(d);
@@ -749,7 +751,7 @@ export function SenderPlanningView({
     return () => {
       cancelled = true;
     };
-  }, [weatherKey]);
+  }, [weatherKey, planId]);
 
   // Exact sunset/dusk for the date + map center (browser-local time).
   const sun = (() => {
@@ -914,7 +916,9 @@ export function SenderPlanningView({
               </p>
               {usage && (
                 <p className="mt-1.5 text-[10px] font-black text-[#c0a0b0]">
-                  📊 API calls today — Places {usage.places} · OpenStreetMap {usage.overpass} · Routing {usage.osrm}
+                  📊 API calls today — Places{" "}
+                  {(usage["places-search"] ?? 0) + (usage["places-details"] ?? 0) + (usage["places-photos"] ?? 0)}{" "}
+                  · OpenStreetMap {usage["overpass"] ?? 0} · Routing {usage["osrm"] ?? 0}
                 </p>
               )}
             </div>
