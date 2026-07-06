@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LocationAutocomplete } from "@/components/LocationAutocomplete";
 
 export type AddressKind = "home" | "pickup" | "custom";
 
@@ -157,14 +158,18 @@ export function SavedAddresses({ initial }: { initial: SavedAddress[] }) {
             className="mb-2 w-full rounded-xl border-2 border-[#e7d9ff] bg-white px-3 py-2 text-sm font-black text-[#3a2530] placeholder:font-normal placeholder:text-[#c0a0b0] outline-none focus:border-[#c7a6ff]"
           />
           <div className="flex gap-2">
-            <input
+            <LocationAutocomplete
               value={address}
-              onChange={(e) => {
-                setAddress(e.target.value);
+              onChange={(text) => {
+                setAddress(text);
                 setCoords(null);
               }}
+              onSelect={(geo) => {
+                setAddress(geo.label);
+                setCoords({ lat: geo.lat, lng: geo.lng });
+              }}
               placeholder="Address, city, or zip"
-              className="flex-1 rounded-xl border-2 border-[#e7d9ff] bg-white px-3 py-2 text-sm text-[#3a2530] placeholder:text-[#c0a0b0] outline-none focus:border-[#c7a6ff]"
+              inputClassName="rounded-xl border-2 border-[#e7d9ff] bg-white px-3 py-2 text-sm text-[#3a2530] placeholder:text-[#c0a0b0] outline-none focus:border-[#c7a6ff]"
             />
             <button
               type="button"

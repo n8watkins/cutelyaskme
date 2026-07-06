@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { LocationAutocomplete } from "@/components/LocationAutocomplete";
 
 type Stage = "form" | "sent";
 
@@ -183,12 +184,12 @@ export function SendInviteForm() {
         <label className="block text-sm font-black text-[#8a6a78]">
           Where are you thinking?
         </label>
-        <input
-          type="text"
+        <LocationAutocomplete
           value={location}
-          onChange={(e) => setLocation(e.target.value)}
+          onChange={setLocation}
+          onSelect={(geo) => setLocation(geo.label)}
           placeholder="Brooklyn, NY"
-          className="w-full rounded-2xl border-2 border-[#ffd6e8] bg-white px-4 py-3 font-black text-[#3a2530] placeholder:font-normal placeholder:text-[#c0a0b0] focus:border-[#ff7aaa] focus:outline-none"
+          inputClassName="rounded-2xl border-2 border-[#ffd6e8] bg-white px-4 py-3 font-black text-[#3a2530] placeholder:font-normal placeholder:text-[#c0a0b0] focus:border-[#ff7aaa] focus:outline-none"
         />
       </div>
       {error && <p className="text-center text-sm text-red-500">{error}</p>}

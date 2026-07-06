@@ -36,6 +36,7 @@ import { buildLegNavUrl, buildRouteNavUrl, navTravelMode, type NavStop } from "@
 import { dayIndexFromDate, formatDayHours, openBadge, type VenueDetails } from "@/lib/hours";
 import { forecastEmoji, type DayForecast } from "@/lib/weather";
 import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
+import { LocationAutocomplete } from "@/components/LocationAutocomplete";
 
 type Waypoint = { label: string; lat: number; lng: number };
 // Why a venue search failed: expired session vs. anything else.
@@ -890,13 +891,18 @@ export function SenderPlanningView({
                 Search near
               </p>
               <div className="flex gap-2">
-                <input
-                  type="text"
+                <LocationAutocomplete
                   value={locationDraft}
-                  onChange={(e) => setLocationDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") void applyLocation(); }}
+                  onChange={setLocationDraft}
+                  onSelect={(geo) => {
+                    setLocationDraft(geo.label);
+                    setSearchLocation(geo.label);
+                    clearResults();
+                    setMapCenter({ lat: geo.lat, lng: geo.lng });
+                  }}
+                  onSubmitText={() => void applyLocation()}
                   placeholder="City, neighborhood, or zip code"
-                  className="flex-1 rounded-2xl border-2 border-[#ffd6e8] px-3 py-2 text-sm font-black text-[#3a2530] placeholder:font-normal placeholder:text-[#c0a0b0] outline-none focus:border-[#ff7aaa]"
+                  inputClassName="rounded-2xl border-2 border-[#ffd6e8] px-3 py-2 text-sm font-black text-[#3a2530] placeholder:font-normal placeholder:text-[#c0a0b0] outline-none focus:border-[#ff7aaa]"
                 />
                 <button
                   type="button"
@@ -2195,18 +2201,19 @@ function WaypointPicker({
   return (
     <div className="rounded-xl border-2 border-[#ffd6e8] p-2">
       <div className="flex gap-2">
-        <input
+        <LocationAutocomplete
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (text.trim()) void geocodeAndSet(text.trim(), text.trim());
-              setText("");
-            }
+          onChange={setText}
+          onSelect={(geo) => {
+            onChange({ label: geo.label, lat: geo.lat, lng: geo.lng });
+            setText("");
+          }}
+          onSubmitText={() => {
+            if (text.trim()) void geocodeAndSet(text.trim(), text.trim());
+            setText("");
           }}
           placeholder={`${icon} ${labelText} address`}
-          className="min-w-0 flex-1 rounded-lg border-2 border-[#ffd6e8] bg-white px-2.5 py-1.5 text-sm text-[#3a2530] placeholder:text-[#c0a0b0] outline-none focus:border-[#ff7aaa]"
+          inputClassName="rounded-lg border-2 border-[#ffd6e8] bg-white px-2.5 py-1.5 text-sm text-[#3a2530] placeholder:text-[#c0a0b0] outline-none focus:border-[#ff7aaa]"
         />
         <button
           type="button"
