@@ -26,7 +26,7 @@ All pricing as of June 2026. This is a personal-scale app — estimates assume a
 - Free tier is **per SKU, per month** (the old $200/mo credit was retired March 2025):
   - Text Search (Pro fields: name, address, rating, price level, coords): 5,000/mo
   - Place Details with reviews (Enterprise + Atmosphere): 1,000/mo
-  - Photo media: 10,000/mo
+  - Photo media: 1,000/mo ($7/1k after) - one photo per venue per search page, watch this one
 - Requires a Google Cloud billing account (credit card on file) — set quota
   caps in the console so it can never actually charge
 - Searches are explicit per-stop actions (zero calls on page load); results

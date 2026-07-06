@@ -24,7 +24,7 @@ export type ApiLimit = {
 export const API_LIMITS: ApiLimit[] = [
   { service: "places-search", label: "Places text search", shortLabel: "Search", monthlyCap: 5000, dailyBudget: 160 },
   { service: "places-details", label: "Places details", shortLabel: "Details", monthlyCap: 1000, dailyBudget: 30 },
-  { service: "places-photos", label: "Places photos", shortLabel: "Photos", monthlyCap: 10000, dailyBudget: 320 },
+  { service: "places-photos", label: "Places photos", shortLabel: "Photos", monthlyCap: 1000, dailyBudget: 30 },
   { service: "routes", label: "Routes (Google)", shortLabel: "Routes", monthlyCap: 10000, dailyBudget: 320 },
   { service: "static-maps", label: "Static maps", shortLabel: "Static", monthlyCap: 10000, dailyBudget: 320 },
   { service: "maps-js-loads", label: "Map loads (Maps JS)", shortLabel: "Maps", monthlyCap: 10000, dailyBudget: 320 },
