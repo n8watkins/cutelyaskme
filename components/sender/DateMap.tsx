@@ -47,6 +47,29 @@ function reportMapLoad() {
 
 type Marker = google.maps.marker.AdvancedMarkerElement;
 
+/** fitBounds with one point dives to street level — pull back once it settles. */
+function clampZoom(map: google.maps.Map, max: number) {
+  google.maps.event.addListenerOnce(map, "idle", () => {
+    const z = map.getZoom();
+    if (z !== undefined && z > max) map.setZoom(max);
+  });
+}
+
+/** Glide to a zoom level one step at a time instead of snapping. */
+function smoothZoomTo(map: google.maps.Map, target: number, stepMs = 160): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const step = () => {
+    const z = map.getZoom();
+    if (z === undefined || z === target) return;
+    map.setZoom(z + (z < target ? 1 : -1));
+    timer = setTimeout(step, stepMs);
+  };
+  step();
+  return () => {
+    if (timer) clearTimeout(timer);
+  };
+}
+
 export function DateMap({
   stops,
   pinMode,
@@ -162,6 +185,7 @@ export function DateMap({
     const bounds = new google.maps.LatLngBounds();
     filled.forEach((v) => bounds.extend({ lat: v.lat, lng: v.lng }));
     map.fitBounds(bounds, 70);
+    clampZoom(map, 16); // one stop → fitBounds dives to street level; keep context
   }, [openInfo]);
 
   const renderCandidates = useCallback((cands: Venue[], selId: string | null | undefined) => {
@@ -175,16 +199,29 @@ export function DateMap({
     cands.forEach((v) => {
       const isSel = v.id === selId;
       const size = isSel ? 20 : 14;
+      // Dot + always-visible name chip, so you can tell which dot is which
+      // without clicking every pin.
       const marker = new markerLib.AdvancedMarkerElement({
         map,
         position: { lat: v.lat, lng: v.lng },
-        zIndex: 10, // below the numbered stop pins
-        content: circleMarkerContent(`<div style="
-          width:${size}px;height:${size}px;border-radius:50%;
-          background:#d32323;border:2.5px solid white;
-          box-shadow:0 2px 7px rgba(0,0,0,0.35);
-          ${isSel ? "outline:2px solid #d32323;outline-offset:2px;" : ""}
-        "></div>`),
+        zIndex: isSel ? 30 : 10, // below the numbered stop pins
+        content: circleMarkerContent(`<div style="display:grid;justify-items:center;gap:3px">
+          <div style="
+            width:${size}px;height:${size}px;border-radius:50%;
+            background:#d32323;border:2.5px solid white;
+            box-shadow:0 2px 7px rgba(0,0,0,0.35);
+            ${isSel ? "outline:2px solid #d32323;outline-offset:2px;" : ""}
+          "></div>
+          <span style="
+            max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+            background:${isSel ? "#d32323" : "rgba(255,255,255,0.92)"};
+            color:${isSel ? "white" : "#3a2530"};
+            border:1px solid ${isSel ? "#d32323" : "#ffd6e8"};
+            border-radius:8px;padding:1px 6px;
+            font-family:Arial,sans-serif;font-size:10px;font-weight:900;
+            box-shadow:0 1px 4px rgba(0,0,0,0.15);
+          ">${esc(v.name)}</span>
+        </div>`),
       });
       marker.addListener("click", () => {
         openInfo(marker, infoHtml(esc(v.name), esc(v.address), "tap pin to pick"));
@@ -290,13 +327,26 @@ export function DateMap({
       const { maps, marker } = await loadGoogleMaps();
       if (cancelled || !containerRef.current || mapRef.current) return;
 
-      // Initial view (A4): search center → first waypoint → neutral US overview.
+      // Initial view (A4): search center → first waypoint → the user's own
+      // location (browser geolocation) → neutral US overview.
       const wp = waypoints?.[0];
       const initial = viewCenter
         ? { center: viewCenter, zoom: 13 }
         : wp
           ? { center: { lat: wp.lat, lng: wp.lng }, zoom: 12 }
           : { center: { lat: 39.5, lng: -98.35 }, zoom: 4 };
+      if (!viewCenter && !wp && typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            // Don't fight a zip/city entry that landed while we waited.
+            if (cancelled || !mapRef.current || mapRef.current.getZoom() !== 4) return;
+            mapRef.current.panTo({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            smoothZoomTo(mapRef.current, 11);
+          },
+          () => {}, // denied/unavailable → stay on the US overview
+          { maximumAge: 600000, timeout: 5000 },
+        );
+      }
 
       const map = new maps.Map(containerRef.current, {
         ...initial,
@@ -356,12 +406,12 @@ export function DateMap({
     renderWaypoints(waypoints ?? []);
   }, [waypoints, renderWaypoints]);
 
-  // Fly to location when zip/city changes
+  // Fly to location when zip/city changes — pan, then ease the zoom in steps
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !viewCenter) return;
     map.panTo(viewCenter);
-    map.setZoom(13);
+    return smoothZoomTo(map, 13);
   }, [viewCenter]);
 
   // Manage pin mode overlays
