@@ -1,8 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { placeCache } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { cacheGet, cacheSet } from "@/lib/place-cache";
 import { mapPriceLevel, type Venue } from "@/lib/venues";
 import { trackApiUsage } from "@/lib/api-usage";
 import { sanitizePlanId } from "@/lib/api-limits";
@@ -42,21 +40,6 @@ type SearchTextResponse = {
   places?: GooglePlace[];
 };
 
-/** Resolve a photo resource name to a public googleusercontent URL (server-side, key never reaches the client). */
-async function resolvePhotoUri(photoName: string, apiKey: string): Promise<string | undefined> {
-  try {
-    const res = await fetch(
-      `${PLACES_BASE}/${photoName}/media?maxWidthPx=600&skipHttpRedirect=true`,
-      { headers: { "X-Goog-Api-Key": apiKey } },
-    );
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { photoUri?: string };
-    return data.photoUri || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
@@ -77,6 +60,11 @@ export async function GET(request: NextRequest) {
   // Optional per-stop price level (C3): 1-4, mapped to Google priceLevels.
   const priceRaw = parseInt(searchParams.get("price") ?? "0", 10);
   const price = priceRaw >= 1 && priceRaw <= 4 ? priceRaw : null;
+  // Bias circle: the map's search center, so "coffee" near a dragged pin
+  // means that pin, not whatever Google geocodes the location text to.
+  const lat = parseFloat(searchParams.get("lat") ?? "");
+  const lng = parseFloat(searchParams.get("lng") ?? "");
+  const bias = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
   // Attribute this search to the date plan being built (usage analytics).
   const planId = sanitizePlanId(searchParams.get("plan"));
 
@@ -84,35 +72,39 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ venues: [] });
   }
 
-  const cacheKey = `gp:${q.toLowerCase()}:${location.toLowerCase()}:r${radius}:o${offset}:l${limit}:p${price ?? "any"}`;
-  const now = new Date().toISOString();
+  // One Google call fetches the full 20-result pool per query; offset/limit
+  // slice the CACHED pool, so "Load 5 more" never re-bills a search or its
+  // photo lookups. Past the pool there simply isn't more (hasMore: false).
+  const POOL_SIZE = 20;
+  const biasKey = bias ? `${bias.lat.toFixed(3)},${bias.lng.toFixed(3)}` : "none";
+  const cacheKey = `gp:${q.toLowerCase()}:${location.toLowerCase()}:r${radius}:b${biasKey}:p${price ?? "any"}`;
 
-  try {
-    const [cached] = await db
-      .select()
-      .from(placeCache)
-      .where(eq(placeCache.cacheKey, cacheKey))
-      .limit(1);
+  const page = (pool: Venue[]) =>
+    NextResponse.json({
+      venues: pool.slice(offset, offset + limit),
+      hasMore: offset + limit < pool.length,
+    });
 
-    if (cached && cached.expiresAt > now) {
-      return NextResponse.json({ venues: JSON.parse(cached.results) as Venue[] });
-    }
-  } catch {
-    // Cache miss — fall through to fetch
+  const cached = await cacheGet<Venue[]>(cacheKey);
+  if (cached !== undefined) {
+    return page(cached);
   }
 
   try {
-    // Google has no offset pagination; over-fetch to offset+limit (max 20)
-    // and slice. One search request bills the same regardless of pageSize.
-    const pageSize = Math.min(offset + limit, 20);
     const body: Record<string, unknown> = {
       textQuery: `${q} near ${location}`,
-      pageSize,
+      pageSize: POOL_SIZE,
       rankPreference: "RELEVANCE",
     };
+    if (bias) {
+      body.locationBias = {
+        circle: { center: { latitude: bias.lat, longitude: bias.lng }, radius },
+      };
+    }
     if (price) {
-      // Include everything at or below the requested level — matches how the
-      // Yelp price param was used as a ceiling on the stop's budget.
+      // Everything at or below the requested ceiling. Known Google limitation
+      // (verified live): PRICE_LEVEL_FREE is rejected as a filter value, so
+      // free venues only appear in unfiltered searches.
       body.priceLevels = GOOGLE_PRICE_LEVELS.slice(0, price);
     }
 
@@ -128,42 +120,34 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      return NextResponse.json({ venues: [] });
+      return NextResponse.json({ venues: [], hasMore: false });
     }
 
     const data = (await response.json()) as SearchTextResponse;
-    const page = (data.places ?? []).slice(offset, offset + limit);
+    const places = data.places ?? [];
 
-    const venues: Venue[] = await Promise.all(
-      page.map(async (p) => ({
-        id: p.id,
-        name: p.displayName?.text ?? "",
-        address: p.formattedAddress ?? "",
-        rating: p.rating ?? 0,
-        priceLevel: mapPriceLevel(p.priceLevel),
-        lat: p.location?.latitude ?? 0,
-        lng: p.location?.longitude ?? 0,
-        imageUrl: p.photos?.[0]?.name
-          ? await resolvePhotoUri(p.photos[0].name, apiKey)
-          : undefined,
-      })),
-    );
-    const photoCalls = page.filter((p) => p.photos?.[0]?.name).length;
-    if (photoCalls) void trackApiUsage("places-photos", photoCalls, planId);
+    // Photos go through /api/photo (on-demand proxy) so GetPhotoMedia is
+    // only billed for images a browser actually renders.
+    const pool: Venue[] = places.map((p) => ({
+      id: p.id,
+      name: p.displayName?.text ?? "",
+      address: p.formattedAddress ?? "",
+      rating: p.rating ?? 0,
+      priceLevel: mapPriceLevel(p.priceLevel),
+      lat: p.location?.latitude ?? 0,
+      lng: p.location?.longitude ?? 0,
+      imageUrl: p.photos?.[0]?.name
+        ? `/api/photo?name=${encodeURIComponent(p.photos[0].name)}`
+        : undefined,
+    }));
+    // Yelp searches were rating-sorted; Google only ranks by relevance, so
+    // restore best-first ordering within the pool.
+    pool.sort((a, b) => b.rating - a.rating);
 
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await cacheSet(cacheKey, pool, 24 * 60 * 60 * 1000);
 
-    await db
-      .insert(placeCache)
-      .values({ id: crypto.randomUUID(), cacheKey, results: JSON.stringify(venues), expiresAt })
-      .onConflictDoUpdate({
-        target: placeCache.cacheKey,
-        set: { results: JSON.stringify(venues), expiresAt },
-      })
-      .catch(() => null);
-
-    return NextResponse.json({ venues });
+    return page(pool);
   } catch {
-    return NextResponse.json({ venues: [] });
+    return NextResponse.json({ venues: [], hasMore: false });
   }
 }

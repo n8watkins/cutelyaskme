@@ -7,7 +7,7 @@ import { getUsageSummary, getUsageByPlan, trackApiUsage } from "@/lib/api-usage"
 import {
   API_LIMITS,
   TRACKED_SERVICES,
-  CLIENT_TRACKED_SERVICES,
+  parseClientService,
   sanitizePlanId,
 } from "@/lib/api-limits";
 
@@ -31,16 +31,18 @@ export type PlanUsage = {
 
 /**
  * C7: outbound API usage for the planner and the Settings dashboard —
- * per-service today + month-to-date counts with cap metadata, plus a
- * month-to-date per-plan breakdown.
+ * per-service today + month-to-date counts with cap metadata. The per-plan
+ * breakdown is opt-in (`?plans=1`, used by Settings only): it aggregates the
+ * whole month and the planner meter doesn't need it after every search.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
+  const wantPlans = request.nextUrl.searchParams.get("plans") === "1";
   const [summary, planRows] = await Promise.all([
     getUsageSummary(TRACKED_SERVICES),
-    getUsageByPlan(),
+    wantPlans ? getUsageByPlan() : Promise.resolve([]),
   ]);
 
   const usage: UsageEntry[] = API_LIMITS.map((l) => ({
@@ -66,7 +68,10 @@ export async function GET() {
     byPlan.set(row.planId, entry);
   }
 
-  // Label the caller's own plans with their date; other plans keep the short id.
+  // Only the caller's own plans are returned — usage rows exist for every
+  // user's plans, and leaking other senders' activity (even as counts) is a
+  // privacy hole.
+  let plans: PlanUsage[] = [];
   if (byPlan.size > 0) {
     try {
       const rows = await db
@@ -82,12 +87,13 @@ export async function GET() {
         const entry = byPlan.get(r.id);
         if (entry && r.senderId === userId) {
           entry.label = r.dateLabel ?? r.date ?? entry.label;
+          plans.push(entry);
         }
       }
     } catch {}
   }
 
-  const plans = [...byPlan.values()].sort((a, b) => b.total - a.total);
+  plans = plans.sort((a, b) => b.total - a.total);
   return NextResponse.json({ usage, plans });
 }
 
@@ -103,8 +109,8 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as
     | { service?: string; planId?: string }
     | null;
-  const service = body?.service;
-  if (!service || !CLIENT_TRACKED_SERVICES.has(service)) {
+  const service = parseClientService(body?.service);
+  if (!service) {
     return NextResponse.json({ message: "Unknown service" }, { status: 400 });
   }
 

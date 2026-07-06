@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { htmlEscape as esc } from "@/lib/html";
-import { loadGoogleMaps, mapsConfigured, circleMarkerContent, infoHtml, MAP_ID } from "@/lib/google-maps";
+import { loadGoogleMaps, mapsConfigured, circleMarkerContent, infoHtml, reportMapLoad, MAP_ID } from "@/lib/google-maps";
 
 export type HistoryPoint = {
   id: string;
@@ -44,6 +43,7 @@ export function HistoryMap({ points }: { points: HistoryPoint[] }) {
         clickableIcons: false,
       });
       mapRef.current = map;
+      reportMapLoad(); // this init is a billed Maps JS load like any other
 
       if (points.length === 0) return;
 
@@ -60,7 +60,7 @@ export function HistoryMap({ points }: { points: HistoryPoint[] }) {
           ),
         });
         m.addListener("click", () => {
-          info.setContent(infoHtml(`${esc(p.activity)} · ${esc(p.name)}`, esc(p.dateLabel ?? "")));
+          info.setContent(infoHtml(`${p.activity} · ${p.name}`, p.dateLabel ?? ""));
           info.open({ map, anchor: m });
         });
         bounds.extend({ lat: p.lat, lng: p.lng });

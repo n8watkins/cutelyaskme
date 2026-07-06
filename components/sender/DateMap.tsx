@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Venue } from "@/lib/venues";
 import { htmlEscape as esc } from "@/lib/html";
-import { loadGoogleMaps, mapsConfigured, circleMarkerContent, infoHtml, MAP_ID } from "@/lib/google-maps";
+import { loadGoogleMaps, mapsConfigured, circleMarkerContent, infoHtml, reportMapLoad, gestureFor, MAP_ID } from "@/lib/google-maps";
 
 type DateMapProps = {
   stops: (Venue | null)[];
@@ -26,24 +26,7 @@ type DateMapProps = {
   onMapPick?: (lat: number, lng: number) => void;
 };
 
-const STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
-
-/** Count one Maps JS load toward the maps-js-loads quota. Fire-and-forget —
- * sendBeacon survives quick navigations; fetch keepalive is the fallback. */
-function reportMapLoad() {
-  const body = JSON.stringify({ service: "maps-js-loads" });
-  try {
-    if (navigator.sendBeacon("/api/usage", new Blob([body], { type: "application/json" }))) {
-      return;
-    }
-  } catch {}
-  void fetch("/api/usage", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-    keepalive: true,
-  }).catch(() => {});
-}
+import { STOP_COLORS } from "@/lib/palette";
 
 type Marker = google.maps.marker.AdvancedMarkerElement;
 
@@ -102,6 +85,13 @@ export function DateMap({
     onCandidateSelectRef.current = onCandidateSelect;
   }, [onCandidateSelect]);
 
+  // Latest viewCenter, so the async init and geolocation fallback never act
+  // on a stale capture (the prop can change while the Maps script loads).
+  const viewCenterRef = useRef(viewCenter);
+  useEffect(() => {
+    viewCenterRef.current = viewCenter;
+  }, [viewCenter]);
+
   // Map-click behavior (A5): pick mode wins, then pin-mode click-to-set-center.
   const onMapPickRef = useRef(onMapPick);
   const pickActiveRef = useRef(!!pickLabel);
@@ -119,9 +109,7 @@ export function DateMap({
   // Wheel-zoom mode (A2): Google's gestureHandling matches the two modes exactly —
   // "cooperative" shows its own "use Ctrl + scroll" hint, so no custom overlay needed.
   useEffect(() => {
-    mapRef.current?.setOptions({
-      gestureHandling: (wheelZoomMode ?? "ctrl") === "plain" ? "greedy" : "cooperative",
-    });
+    mapRef.current?.setOptions({ gestureHandling: gestureFor(wheelZoomMode) });
   }, [wheelZoomMode]);
 
   const openInfo = useCallback((marker: Marker, html: string) => {
@@ -164,7 +152,7 @@ export function DateMap({
           box-shadow:0 4px 12px rgba(0,0,0,0.18);border:2.5px solid white;
         ">${i + 1}</div>`),
       });
-      marker.addListener("click", () => openInfo(marker, infoHtml(esc(venue.name), esc(venue.address))));
+      marker.addListener("click", () => openInfo(marker, infoHtml(venue.name, venue.address)));
       stopMarkersRef.current.push(marker);
     });
 
@@ -224,7 +212,7 @@ export function DateMap({
         </div>`),
       });
       marker.addListener("click", () => {
-        openInfo(marker, infoHtml(esc(v.name), esc(v.address), "tap pin to pick"));
+        openInfo(marker, infoHtml(v.name, v.address, "tap pin to pick"));
         onCandidateSelectRef.current?.(v);
       });
       candidateMarkersRef.current.push(marker);
@@ -253,7 +241,7 @@ export function DateMap({
         ">${emoji}</div>`),
       });
       marker.addListener("click", () =>
-        openInfo(marker, infoHtml(`${w.kind === "start" ? "Start" : "Pickup"} · ${esc(w.label)}`)),
+        openInfo(marker, infoHtml(`${w.kind === "start" ? "Start" : "Pickup"} · ${w.label}`)),
       );
       waypointMarkersRef.current.push(marker);
     });
@@ -330,18 +318,25 @@ export function DateMap({
       // Initial view (A4): search center → first waypoint → the user's own
       // location (browser geolocation) → neutral US overview.
       const wp = waypoints?.[0];
-      const initial = viewCenter
-        ? { center: viewCenter, zoom: 13 }
+      const vc = viewCenterRef.current; // not the mount-time capture
+      const initial = vc
+        ? { center: vc, zoom: 13 }
         : wp
           ? { center: { lat: wp.lat, lng: wp.lng }, zoom: 12 }
           : { center: { lat: 39.5, lng: -98.35 }, zoom: 4 };
-      if (!viewCenter && !wp && typeof navigator !== "undefined" && navigator.geolocation) {
+      if (!vc && !wp && typeof navigator !== "undefined" && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            // Don't fight a zip/city entry that landed while we waited.
-            if (cancelled || !mapRef.current || mapRef.current.getZoom() !== 4) return;
-            mapRef.current.panTo({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            // Don't fight a search center that landed while we waited.
+            if (cancelled || !mapRef.current || viewCenterRef.current) return;
+            if (mapRef.current.getZoom() !== 4) return;
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            mapRef.current.panTo({ lat, lng });
             smoothZoomTo(mapRef.current, 11);
+            // Tell the app — this reverse-geocodes into the search area, so
+            // weather/search/sunset all agree with what the map shows.
+            onCenterChangeRef.current?.(lat, lng);
           },
           () => {}, // denied/unavailable → stay on the US overview
           { maximumAge: 600000, timeout: 5000 },
@@ -351,7 +346,7 @@ export function DateMap({
       const map = new maps.Map(containerRef.current, {
         ...initial,
         mapId: MAP_ID,
-        gestureHandling: (wheelZoomMode ?? "ctrl") === "plain" ? "greedy" : "cooperative",
+        gestureHandling: gestureFor(wheelZoomMode),
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,

@@ -1,9 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { placeCache } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { cacheGet, cacheSet } from "@/lib/place-cache";
 import { trackApiUsage } from "@/lib/api-usage";
+import { sanitizePlanId } from "@/lib/api-limits";
 import {
   fallbackLeg,
   isWalkable,
@@ -39,11 +38,16 @@ function waypoint(p: LatLng) {
 }
 
 /** One computeRoutes call for a single leg; null on any failure (never cached). */
-async function fetchRoutesLeg(mode: LegMode, from: LatLng, to: LatLng): Promise<LegInfo | null> {
+async function fetchRoutesLeg(
+  mode: LegMode,
+  from: LatLng,
+  to: LatLng,
+  planId: string | null,
+): Promise<LegInfo | null> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return null;
   try {
-    void trackApiUsage("routes"); // outbound call (cache hits return before this)
+    void trackApiUsage("routes", 1, planId); // outbound call (cache hits return before this)
     const res = await fetch(ROUTES_URL, {
       method: "POST",
       headers: {
@@ -72,7 +76,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as { points?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as
+    | { points?: unknown; planId?: string }
+    | null;
+  const planId = sanitizePlanId(body?.planId ?? null);
   const raw = Array.isArray(body?.points) ? body.points : [];
   const points: LatLng[] = [];
   for (const p of raw) {
@@ -90,52 +97,35 @@ export async function POST(request: NextRequest) {
   }
 
   const cacheKey = routeCacheKey(points);
-  const now = new Date().toISOString();
 
-  try {
-    const [cached] = await db
-      .select()
-      .from(placeCache)
-      .where(eq(placeCache.cacheKey, cacheKey))
-      .limit(1);
-    if (cached && cached.expiresAt > now) {
-      return NextResponse.json({ legs: JSON.parse(cached.results) as RouteLeg[] });
-    }
-  } catch {
-    // Cache miss - fall through to fetch
+  const cached = await cacheGet<RouteLeg[]>(cacheKey);
+  if (cached !== undefined) {
+    return NextResponse.json({ legs: cached });
   }
 
-  const drives = await Promise.all(
-    points.slice(0, -1).map((from, i) => fetchRoutesLeg("drive", from, points[i + 1])),
-  );
-  const routed = drives.every((d) => d !== null);
-
-  const legs: RouteLeg[] = points.slice(0, -1).map((from, i) => ({
-    drive: drives[i] ?? fallbackLeg(from, points[i + 1], "drive"),
-    walk: null,
-  }));
-
-  // Short hops also get a walking option (one WALK-mode call per such leg).
-  await Promise.all(
-    legs.map(async (leg, i) => {
-      if (!isWalkable(leg.drive.distanceMeters)) return;
-      const walk = drives[i] ? await fetchRoutesLeg("walk", points[i], points[i + 1]) : null;
-      leg.walk = walk ?? fallbackLeg(points[i], points[i + 1], "walk");
+  // Each leg chains drive → (maybe) walk independently, so a slow drive call
+  // on one leg never delays another leg's walk lookup.
+  let routed = true;
+  const legs: RouteLeg[] = await Promise.all(
+    points.slice(0, -1).map(async (from, i): Promise<RouteLeg> => {
+      const to = points[i + 1];
+      const drive = await fetchRoutesLeg("drive", from, to, planId);
+      if (!drive) routed = false;
+      const leg: RouteLeg = { drive: drive ?? fallbackLeg(from, to, "drive"), walk: null };
+      // Short hops also get a walking option (one WALK-mode call per such leg).
+      if (isWalkable(leg.drive.distanceMeters)) {
+        const walk = drive ? await fetchRoutesLeg("walk", from, to, planId) : null;
+        if (!walk) routed = false; // a haversine walk estimate is a fallback too
+        leg.walk = walk ?? fallbackLeg(from, to, "walk");
+      }
+      return leg;
     }),
   );
 
-  // Only cache fully routed results - never lock in a 30-day fallback for an
-  // unreachable API.
+  // Only cache fully routed results - never lock in a 30-day fallback (drive
+  // OR walk) for an unreachable API.
   if (routed) {
-    const expiresAt = new Date(Date.now() + CACHE_TTL_MS).toISOString();
-    await db
-      .insert(placeCache)
-      .values({ id: crypto.randomUUID(), cacheKey, results: JSON.stringify(legs), expiresAt })
-      .onConflictDoUpdate({
-        target: placeCache.cacheKey,
-        set: { results: JSON.stringify(legs), expiresAt },
-      })
-      .catch(() => null);
+    await cacheSet(cacheKey, legs, CACHE_TTL_MS);
   }
 
   return NextResponse.json({ legs });

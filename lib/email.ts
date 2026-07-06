@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { htmlEscape } from "@/lib/html";
 import { numberedStopMarkers, signedStaticMapUrl } from "@/lib/static-map";
 import { trackApiUsage } from "@/lib/api-usage";
 
@@ -14,7 +15,7 @@ function getResend() {
 function staticMapImgHtml(url: string | null, alt: string): string {
   if (!url) return "";
   void trackApiUsage("static-maps");
-  return `<img src="${url.replace(/&/g, "&amp;")}" alt="${alt}" width="600" style="display:block;width:100%;max-width:480px;height:auto;border-radius:16px;margin:16px 0;border:2px solid #ffd6e8;" />`;
+  return `<img src="${url.replace(/&/g, "&amp;")}" alt="${htmlEscape(alt)}" width="600" style="display:block;width:100%;max-width:480px;height:auto;border-radius:16px;margin:16px 0;border:2px solid #ffd6e8;" />`;
 }
 
 // NOTE: this domain must be verified in Resend (Domains → add cutelyask.me →

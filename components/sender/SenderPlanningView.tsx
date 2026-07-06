@@ -31,6 +31,8 @@ import {
   type LegInfo,
   type LegMode,
   type RouteLeg,
+  legKey,
+  legKeyFromId,
 } from "@/lib/route-legs";
 import { buildLegNavUrl, buildRouteNavUrl, navTravelMode, type NavStop } from "@/lib/nav-links";
 import { dayIndexFromDate, formatDayHours, openBadge, type VenueDetails } from "@/lib/hours";
@@ -341,12 +343,15 @@ export function SenderPlanningView({
           ? `${plan.selectedEntree ?? ""} restaurant`
           : (ACTIVITY_PLACE_QUERY[key] ?? key);
         const price = priceOverride !== undefined ? priceOverride : (stopPrices[key] ?? null);
-        url = `/api/places?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&radius=${radiusVal}&offset=${offset}&limit=${PAGE_SIZE}${price ? `&price=${price}` : ""}&plan=${encodeURIComponent(planId)}`;
+        // Bias the text search to the map's actual search center — otherwise
+        // an ambiguous location label ("Silver Lake") can land in the wrong state.
+        const biasParam = mapCenter ? `&lat=${mapCenter.lat}&lng=${mapCenter.lng}` : "";
+        url = `/api/places?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}&radius=${radiusVal}&offset=${offset}&limit=${PAGE_SIZE}${price ? `&price=${price}` : ""}${biasParam}&plan=${encodeURIComponent(planId)}`;
       }
 
       const res = await fetch(url);
       if (res.ok) {
-        const data = (await res.json()) as { venues: Venue[] };
+        const data = (await res.json()) as { venues: Venue[]; hasMore?: boolean };
         const incoming = data.venues ?? [];
         const isPlaces = !isNatural(key);
         const offset = append && isPlaces ? (venueOffset[key] ?? 0) : 0;
@@ -354,7 +359,11 @@ export function SenderPlanningView({
           ...p,
           [key]: append && isPlaces ? [...(p[key] ?? []), ...incoming] : incoming,
         }));
-        setVenueHasMore((p) => ({ ...p, [key]: isPlaces && incoming.length === PAGE_SIZE }));
+        // The server knows the pool size; trust its hasMore over page-fullness.
+        setVenueHasMore((p) => ({
+          ...p,
+          [key]: isPlaces && (data.hasMore ?? incoming.length === PAGE_SIZE),
+        }));
         setVenueOffset((p) => ({ ...p, [key]: offset + incoming.length }));
         setVenueSearched((p) => ({ ...p, [key]: true }));
       } else if (res.status === 401) {
@@ -578,7 +587,7 @@ export function SenderPlanningView({
     fetch("/api/route", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ points: routeNodes.map(({ lat, lng }) => ({ lat, lng })) }),
+      body: JSON.stringify({ points: routeNodes.map(({ lat, lng }) => ({ lat, lng })), planId }),
     })
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { legs?: RouteLeg[] } | null) => {
@@ -603,7 +612,7 @@ export function SenderPlanningView({
     if (!travelLegs) return m;
     for (let i = 1; i < routeNodes.length; i++) {
       m[routeNodes[i].id] = {
-        legKey: `${routeNodes[i - 1].id}→${routeNodes[i].id}`,
+        legKey: legKey(routeNodes[i - 1].id, routeNodes[i].id),
         leg: travelLegs[i - 1],
       };
     }
@@ -737,7 +746,7 @@ export function SenderPlanningView({
   function legNavUrl(destKey: string): string | null {
     const t = chosenLeg(destKey);
     if (!t) return null;
-    const fromId = t.legKey.split("→")[0];
+    const fromId = legKeyFromId(t.legKey);
     const from = navStopById[fromId];
     const to = navStopById[destKey];
     return from && to ? buildLegNavUrl(from, to, navTravelMode(t.mode)) : null;

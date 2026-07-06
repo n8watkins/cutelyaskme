@@ -1,8 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { placeCache } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { cacheGet, cacheSet } from "@/lib/place-cache";
 import { trackApiUsage } from "@/lib/api-usage";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -28,17 +26,10 @@ export async function GET(request: NextRequest) {
   if (!id) return NextResponse.json({ message: "Bad request" }, { status: 400 });
 
   const cacheKey = `gp-geo:${id}`;
-  const now = new Date().toISOString();
-  try {
-    const [cached] = await db
-      .select()
-      .from(placeCache)
-      .where(eq(placeCache.cacheKey, cacheKey))
-      .limit(1);
-    if (cached && cached.expiresAt > now) {
-      return NextResponse.json(JSON.parse(cached.results) as PlaceGeo);
-    }
-  } catch {}
+  const cached = await cacheGet<PlaceGeo>(cacheKey);
+  if (cached !== undefined) {
+    return NextResponse.json(cached);
+  }
 
   void trackApiUsage("places-autocomplete");
   let payload: PlaceGeo;
@@ -64,21 +55,15 @@ export async function GET(request: NextRequest) {
     payload = {
       lat: data.location.latitude,
       lng: data.location.longitude,
-      label: data.displayName?.text || data.formattedAddress || "",
+      // formattedAddress first: the label feeds venue text searches, and a
+      // bare displayName ("Silver Lake") is ambiguous across states.
+      label: data.formattedAddress || data.displayName?.text || "",
     };
   } catch {
     return NextResponse.json({ message: "Unreachable" }, { status: 502 });
   }
 
-  const expiresAt = new Date(Date.now() + 30 * DAY_MS).toISOString();
-  await db
-    .insert(placeCache)
-    .values({ id: crypto.randomUUID(), cacheKey, results: JSON.stringify(payload), expiresAt })
-    .onConflictDoUpdate({
-      target: placeCache.cacheKey,
-      set: { results: JSON.stringify(payload), expiresAt },
-    })
-    .catch(() => null);
+  await cacheSet(cacheKey, payload, 30 * DAY_MS);
 
   return NextResponse.json(payload);
 }

@@ -31,7 +31,9 @@ function roundCoord(n: number): number {
  */
 export function navStopValue(stop: NavStop): string {
   const coords = `${roundCoord(stop.lat)},${roundCoord(stop.lng)}`;
-  const name = stop.name?.trim();
+  // "|" is the waypoint separator in the dir API — a venue name containing it
+  // ("Bar | Kitchen") would split into two bogus waypoints.
+  const name = stop.name?.replace(/\|/g, " ").replace(/\s+/g, " ").trim();
   return name ? `${name}, ${coords}` : coords;
 }
 

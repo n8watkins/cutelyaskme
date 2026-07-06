@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { placeCache, venueVerdicts } from "@/lib/db/schema";
+import { venueVerdicts } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
+import { cacheGet, cacheSet } from "@/lib/place-cache";
 import { trackApiUsage } from "@/lib/api-usage";
 import { sanitizePlanId } from "@/lib/api-limits";
 import type { VenueDetails, OpenSlot } from "@/lib/hours";
@@ -44,8 +45,18 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 /** Google periods (day 0=Sun, hour/minute ints) → our OpenSlot (day 0=Mon, "HHMM"). */
 function toOpenSlots(periods: { open: GooglePeriodPoint; close?: GooglePeriodPoint }[]): OpenSlot[] {
+  // Always-open venues are one close-less period — without this expansion
+  // they'd map to hours: [] and render as "Closed", the opposite of reality.
+  if (periods.length === 1 && !periods[0].close) {
+    return Array.from({ length: 7 }, (_, day) => ({
+      day,
+      start: "0000",
+      end: "2400",
+      is_overnight: false,
+    }));
+  }
   return periods
-    .filter((p) => p.close) // a missing close means "open 24/7" — no per-day slot to show
+    .filter((p) => p.close)
     .map((p) => {
       const day = (p.open.day + 6) % 7;
       const closeDay = (p.close!.day + 6) % 7;
@@ -81,18 +92,15 @@ export async function GET(
 
   // v2: cache shape gained website/phone — new prefix so stale entries miss.
   const cacheKey = `gp-detail2:${id}`;
-  const now = new Date().toISOString();
 
-  try {
-    const [cached] = await db
-      .select()
-      .from(placeCache)
-      .where(eq(placeCache.cacheKey, cacheKey))
-      .limit(1);
-    if (cached && cached.expiresAt > now) {
-      return NextResponse.json(JSON.parse(cached.results) as VenueDetails);
-    }
-  } catch {}
+  const hit = await cacheGet<VenueDetails | null>(cacheKey);
+  if (hit !== undefined) {
+    // Negative cache: legacy Yelp ids from pre-migration plans can never
+    // resolve — without this they'd re-bill the 1,000/month details SKU
+    // on every open.
+    if (hit === null) return NextResponse.json({ message: "Venue not found" }, { status: 404 });
+    return NextResponse.json(hit);
+  }
 
   // The scarcest SKU (1,000/month free) — attributed to the plan when known.
   void trackApiUsage("places-details", 1, sanitizePlanId(request.nextUrl.searchParams.get("plan")));
@@ -113,7 +121,11 @@ export async function GET(
   }
 
   if (!detailsRes.ok) {
-    // Legacy Yelp IDs stored in old plans land here — degrade gracefully.
+    // Legacy Yelp IDs stored in old plans land here — cache the miss for a
+    // week so re-opening the plan doesn't re-bill a guaranteed failure.
+    if (detailsRes.status === 404 || detailsRes.status === 400) {
+      await cacheSet(cacheKey, null, 7 * DAY_MS);
+    }
     return NextResponse.json({ message: "Venue not found" }, { status: 404 });
   }
 
@@ -150,15 +162,7 @@ export async function GET(
     liked = !!verdict;
   } catch {}
 
-  const expiresAt = new Date(Date.now() + (liked ? 30 : 7) * DAY_MS).toISOString();
-  await db
-    .insert(placeCache)
-    .values({ id: crypto.randomUUID(), cacheKey, results: JSON.stringify(payload), expiresAt })
-    .onConflictDoUpdate({
-      target: placeCache.cacheKey,
-      set: { results: JSON.stringify(payload), expiresAt },
-    })
-    .catch(() => null);
+  await cacheSet(cacheKey, payload, (liked ? 30 : 7) * DAY_MS);
 
   return NextResponse.json(payload);
 }
