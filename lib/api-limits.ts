@@ -1,9 +1,11 @@
 /**
  * Registry of every outbound service we count in `api_usage`, with its human
  * labels and real free-tier limits. Google Maps Platform bills per SKU with a
- * per-SKU monthly free cap (March 2025 pricing); the daily budget is a soft
- * pace marker (~cap/31) so a month can't be burned in a weekend. Services
- * with `monthlyCap: null` (NWS, Overpass, OSRM) are free and uncapped.
+ * per-SKU monthly free cap (March 2025 pricing); `dailyCap` mirrors the
+ * per-day quota limits actually enforced in the Cloud Console (set July
+ * 2026) - hitting one means Google rejects further calls until midnight PT,
+ * and the app degrades gracefully. Services with `monthlyCap: null` (NWS,
+ * Overpass) are free and uncapped.
  *
  * Service names are the shared contract used by every trackApiUsage call:
  * places-search, places-details, places-photos, routes, static-maps,
@@ -17,18 +19,18 @@ export type ApiLimit = {
   shortLabel: string;
   /** Monthly free-tier cap in calls; null = free, uncapped service. */
   monthlyCap: number | null;
-  /** Daily soft budget keeping the month on pace; null for uncapped services. */
+  /** Per-day quota cap enforced in the Cloud Console; null for uncapped services. */
   dailyBudget: number | null;
 };
 
 export const API_LIMITS = [
-  { service: "places-search", label: "Places text search", shortLabel: "Search", monthlyCap: 5000, dailyBudget: 160 },
+  { service: "places-search", label: "Places text search", shortLabel: "Search", monthlyCap: 5000, dailyBudget: 150 },
   { service: "places-details", label: "Places details", shortLabel: "Details", monthlyCap: 1000, dailyBudget: 30 },
   { service: "places-photos", label: "Places photos", shortLabel: "Photos", monthlyCap: 1000, dailyBudget: 30 },
-  { service: "places-autocomplete", label: "Location autocomplete", shortLabel: "Auto", monthlyCap: 10000, dailyBudget: 320 },
-  { service: "routes", label: "Routes (Google)", shortLabel: "Routes", monthlyCap: 10000, dailyBudget: 320 },
-  { service: "static-maps", label: "Static maps", shortLabel: "Static", monthlyCap: 10000, dailyBudget: 320 },
-  { service: "maps-js-loads", label: "Map loads (Maps JS)", shortLabel: "Maps", monthlyCap: 10000, dailyBudget: 320 },
+  { service: "places-autocomplete", label: "Location autocomplete", shortLabel: "Auto", monthlyCap: 10000, dailyBudget: 300 },
+  { service: "routes", label: "Routes (Google)", shortLabel: "Routes", monthlyCap: 10000, dailyBudget: 300 },
+  { service: "static-maps", label: "Static maps", shortLabel: "Static", monthlyCap: 10000, dailyBudget: 400 },
+  { service: "maps-js-loads", label: "Map loads (Maps JS)", shortLabel: "Maps", monthlyCap: 10000, dailyBudget: 300 },
   { service: "overpass", label: "OpenStreetMap places (free, uncapped)", shortLabel: "OSM", monthlyCap: null, dailyBudget: null },
   { service: "nws", label: "Weather (NWS, free, uncapped)", shortLabel: "Weather", monthlyCap: null, dailyBudget: null },
 ] as const satisfies readonly ApiLimit[];

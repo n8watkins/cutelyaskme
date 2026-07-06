@@ -295,8 +295,8 @@ function ApiUsageDashboard() {
 
         {data && (
           <p className="mt-2 text-[10px] text-[#c0a0b0]">
-            Caps are each Google SKU&apos;s monthly free tier; the soft daily budgets keep the
-            month on pace.
+            Monthly caps are each Google SKU&apos;s free tier; daily caps are the hard
+            quota limits enforced in the Cloud Console.
           </p>
         )}
 
@@ -343,7 +343,7 @@ function UsageMeterRow({ entry }: { entry: UsageEntry }) {
   const frac =
     capFraction(entry.monthToDate, entry.monthlyCap);
   const nearCap = frac !== null && frac >= 0.8;
-  const overPace = entry.dailyBudget !== null && entry.today > entry.dailyBudget;
+  const overPace = entry.dailyBudget !== null && entry.today >= entry.dailyBudget;
 
   return (
     <div className="border-b border-[#fff0f6] py-2 last:border-b-0">
@@ -354,7 +354,9 @@ function UsageMeterRow({ entry }: { entry: UsageEntry }) {
             ? `${entry.monthToDate.toLocaleString()} / ${entry.monthlyCap.toLocaleString()} mo`
             : `${entry.monthToDate.toLocaleString()} mo`}
           {" · "}
-          {entry.today} today
+          {entry.dailyBudget !== null
+            ? `${entry.today} / ${entry.dailyBudget} today`
+            : `${entry.today} today`}
         </span>
       </div>
       {frac !== null && (
@@ -367,7 +369,7 @@ function UsageMeterRow({ entry }: { entry: UsageEntry }) {
       )}
       {overPace && (
         <p className="mt-0.5 text-[10px] font-black text-[#d32323]">
-          ⚠ Over the ~{entry.dailyBudget}/day soft budget.
+          ⚠ At/over the {entry.dailyBudget}/day quota cap — Google rejects further calls today.
         </p>
       )}
     </div>
