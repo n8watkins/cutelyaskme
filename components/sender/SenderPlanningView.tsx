@@ -1830,6 +1830,28 @@ function StopCard({
                       No review excerpts for this spot yet — read them on Google below.
                     </p>
                   )}
+                  {(details.website || details.phone) && (
+                    <div className="flex flex-wrap gap-2">
+                      {details.website && (
+                        <a
+                          href={details.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-full border-2 border-[#ffd6e8] px-3 py-1 text-[11px] font-black text-[#7c3653] transition hover:bg-[#fff7fb]"
+                        >
+                          🌐 Website / tickets
+                        </a>
+                      )}
+                      {details.phone && (
+                        <a
+                          href={`tel:${details.phone.replace(/[^\d+]/g, "")}`}
+                          className="rounded-full border-2 border-[#ffd6e8] px-3 py-1 text-[11px] font-black text-[#7c3653] transition hover:bg-[#fff7fb]"
+                        >
+                          📞 {details.phone}
+                        </a>
+                      )}
+                    </div>
+                  )}
                   {details.url && (
                     <a
                       href={details.url}

@@ -11,10 +11,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Enterprise + Atmosphere SKU (reviews). One call replaces Yelp's two,
 // but it draws from the smallest free tier (1,000/month) — keep the cache warm.
+// websiteUri/nationalPhoneNumber are cheaper-tier fields — the reviews field
+// already puts this call on the top SKU, so they ride along at no extra cost.
 const DETAILS_FIELD_MASK = [
   "regularOpeningHours",
   "currentOpeningHours.openNow",
   "googleMapsUri",
+  "websiteUri",
+  "nationalPhoneNumber",
   "reviews",
 ].join(",");
 
@@ -26,6 +30,8 @@ type GoogleDetailsResponse = {
   };
   currentOpeningHours?: { openNow?: boolean };
   googleMapsUri?: string;
+  websiteUri?: string;
+  nationalPhoneNumber?: string;
   reviews?: {
     rating?: number;
     text?: { text?: string };
@@ -73,7 +79,8 @@ export async function GET(
     return NextResponse.json({ message: "Not a Places venue" }, { status: 400 });
   }
 
-  const cacheKey = `gp-detail:${id}`;
+  // v2: cache shape gained website/phone — new prefix so stale entries miss.
+  const cacheKey = `gp-detail2:${id}`;
   const now = new Date().toISOString();
 
   try {
@@ -116,6 +123,8 @@ export async function GET(
     hours: toOpenSlots(details.regularOpeningHours?.periods ?? []),
     isOpenNow: details.currentOpeningHours?.openNow ?? null,
     url: details.googleMapsUri,
+    website: details.websiteUri,
+    phone: details.nationalPhoneNumber,
     reviews: (details.reviews ?? []).slice(0, 3).map((r) => ({
       rating: r.rating ?? 0,
       text: r.text?.text ?? "",

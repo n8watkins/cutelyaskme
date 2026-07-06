@@ -14,6 +14,9 @@ export type VenueDetails = {
   hours: OpenSlot[];
   isOpenNow: boolean | null;
   url?: string;
+  /** The venue's own site — menus, tickets, reservations. */
+  website?: string;
+  phone?: string;
   reviews: { rating: number; text: string; author: string; date: string }[];
 };
 
