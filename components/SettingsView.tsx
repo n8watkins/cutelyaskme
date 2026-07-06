@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CALENDAR_MODE_KEY, type CalendarMode } from "@/lib/calendar";
+import { capFraction } from "@/lib/api-limits";
 import {
   MAP_ZOOM_MODE_KEY,
   RADIUS_LIMIT_MIN_MI,
@@ -10,22 +11,9 @@ import {
   type UserSettings,
 } from "@/lib/settings";
 
-// Shapes returned by GET /api/usage (per-service meters + per-plan breakdown).
-type UsageEntry = {
-  service: string;
-  label: string;
-  shortLabel: string;
-  monthlyCap: number | null;
-  dailyBudget: number | null;
-  today: number;
-  monthToDate: number;
-};
-type PlanUsage = {
-  planId: string;
-  label: string;
-  services: Record<string, number>;
-  total: number;
-};
+// Shapes returned by GET /api/usage - imported from the route so the
+// dashboard can never drift from the API contract.
+import type { UsageEntry, PlanUsage } from "@/app/api/usage/route";
 type UsageResponse = { usage: UsageEntry[]; plans: PlanUsage[] };
 
 /**
@@ -265,7 +253,7 @@ function ApiUsageDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/usage")
+    fetch("/api/usage?plans=1")
       .then((res) => (res.ok ? (res.json() as Promise<UsageResponse>) : null))
       .then((d) => {
         if (cancelled) return;
@@ -353,7 +341,7 @@ function ApiUsageDashboard() {
 /** One service's meter: month-to-date vs its cap, today's count, pace warning. */
 function UsageMeterRow({ entry }: { entry: UsageEntry }) {
   const frac =
-    entry.monthlyCap !== null ? Math.min(1, entry.monthToDate / entry.monthlyCap) : null;
+    capFraction(entry.monthToDate, entry.monthlyCap);
   const nearCap = frac !== null && frac >= 0.8;
   const overPace = entry.dailyBudget !== null && entry.today > entry.dailyBudget;
 

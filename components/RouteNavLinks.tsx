@@ -1,4 +1,5 @@
 import { buildLegNavUrl, buildRouteNavUrl, navTravelMode, type NavStop } from "@/lib/nav-links";
+import { legKey } from "@/lib/route-legs";
 
 export type RouteNavStop = NavStop & {
   /** Route node id ("pickup", activity keys, "__entree__") - keys into legModes. */
@@ -23,7 +24,7 @@ export function RouteNavLinks({
   const routeUrl = buildRouteNavUrl(stops);
   const legs = stops.slice(1).map((to, i) => {
     const from = stops[i];
-    const key = `${from.id}→${to.id}`;
+    const key = legKey(from.id, to.id);
     const mode = legModes[key] === "walk" ? "walk" : "drive";
     return { key, from, to, mode, url: buildLegNavUrl(from, to, navTravelMode(mode)) };
   });

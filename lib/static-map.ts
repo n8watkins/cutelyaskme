@@ -45,8 +45,8 @@ export type StaticMapOptions = {
   signingSecret?: string;
 };
 
-/** Mirrors STOP_COLORS in components/sender/DateMap.tsx - keep the palettes in sync. */
-export const STATIC_STOP_COLORS = ["#ff7aaa", "#c7a6ff", "#7acdff", "#ffd6a5", "#a5ffd6"];
+import { STOP_COLORS as STATIC_STOP_COLORS } from "@/lib/palette";
+export { STATIC_STOP_COLORS };
 
 const DEFAULT_PATH_COLOR = "#ff7aaa";
 

@@ -7,6 +7,19 @@ import { haversineMiles, formatMiles, type LatLng } from "./geo";
 
 export type LegMode = "drive" | "walk";
 
+/**
+ * Persisted key for a leg between two stops (plan.legModes JSON). One
+ * constructor + parser, since the planner writes these and the recipient
+ * view reads them back.
+ */
+export function legKey(fromId: string, toId: string): string {
+  return `${fromId}\u2192${toId}`;
+}
+
+export function legKeyFromId(key: string): string {
+  return key.split("\u2192")[0];
+}
+
 export type LegInfo = {
   distanceMeters: number;
   durationSec: number;

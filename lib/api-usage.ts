@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { apiUsage } from "@/lib/db/schema";
 import { inArray, sql, and, gte, isNotNull } from "drizzle-orm";
-import { usageKey } from "@/lib/api-limits";
+import { usageKey, type TrackedService } from "@/lib/api-limits";
 
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
@@ -17,7 +17,7 @@ function monthStartUTC(): string {
  * is counted in that plan's own row, so per-service totals are SUM over rows.
  */
 export async function trackApiUsage(
-  service: string,
+  service: TrackedService,
   calls = 1,
   planId?: string | null,
 ): Promise<void> {

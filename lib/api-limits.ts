@@ -21,7 +21,7 @@ export type ApiLimit = {
   dailyBudget: number | null;
 };
 
-export const API_LIMITS: ApiLimit[] = [
+export const API_LIMITS = [
   { service: "places-search", label: "Places text search", shortLabel: "Search", monthlyCap: 5000, dailyBudget: 160 },
   { service: "places-details", label: "Places details", shortLabel: "Details", monthlyCap: 1000, dailyBudget: 30 },
   { service: "places-photos", label: "Places photos", shortLabel: "Photos", monthlyCap: 1000, dailyBudget: 30 },
@@ -31,13 +31,24 @@ export const API_LIMITS: ApiLimit[] = [
   { service: "maps-js-loads", label: "Map loads (Maps JS)", shortLabel: "Maps", monthlyCap: 10000, dailyBudget: 320 },
   { service: "overpass", label: "OpenStreetMap places (free, uncapped)", shortLabel: "OSM", monthlyCap: null, dailyBudget: null },
   { service: "nws", label: "Weather (NWS, free, uncapped)", shortLabel: "Weather", monthlyCap: null, dailyBudget: null },
-];
+] as const satisfies readonly ApiLimit[];
 
-export const TRACKED_SERVICES = API_LIMITS.map((l) => l.service);
+/**
+ * The service-name union — trackApiUsage only accepts these, so a typo can't
+ * silently mint an unmetered service that no dashboard ever reads.
+ */
+export type TrackedService = (typeof API_LIMITS)[number]["service"];
+
+export const TRACKED_SERVICES: string[] = API_LIMITS.map((l) => l.service);
 
 /** Services the client may report via POST /api/usage (beacons). Everything
  * else is counted server-side only, so a stray client can't skew the meters. */
-export const CLIENT_TRACKED_SERVICES = new Set(["maps-js-loads"]);
+export const CLIENT_TRACKED_SERVICES = new Set<TrackedService>(["maps-js-loads"]);
+
+/** Narrow an untrusted string to a client-reportable service, else null. */
+export function parseClientService(raw: string | undefined): TrackedService | null {
+  return raw && CLIENT_TRACKED_SERVICES.has(raw as TrackedService) ? (raw as TrackedService) : null;
+}
 
 export function getApiLimit(service: string): ApiLimit | undefined {
   return API_LIMITS.find((l) => l.service === service);
@@ -62,6 +73,6 @@ export function sanitizePlanId(raw: string | null | undefined): string | null {
  * Row key for api_usage: "service:day" for unattributed calls,
  * "service:day:planId" for calls made while planning a specific date.
  */
-export function usageKey(service: string, day: string, planId?: string | null): string {
+export function usageKey(service: TrackedService, day: string, planId?: string | null): string {
   return planId ? `${service}:${day}:${planId}` : `${service}:${day}`;
 }

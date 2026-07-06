@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@/lib/db";
-import { placeCache } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { cacheGet, cacheSet } from "@/lib/place-cache";
 import type { Venue } from "@/lib/venues";
 import { haversineMiles } from "@/lib/geo";
 import { trackApiUsage } from "@/lib/api-usage";
@@ -121,19 +119,11 @@ export async function GET(request: NextRequest) {
   }
 
   const cacheKey = `overpass:${activity}:${lat.toFixed(3)}:${lng.toFixed(3)}:r${radius}`;
-  const now = new Date().toISOString();
 
-  try {
-    const [cached] = await db
-      .select()
-      .from(placeCache)
-      .where(eq(placeCache.cacheKey, cacheKey))
-      .limit(1);
-
-    if (cached && cached.expiresAt > now) {
-      return NextResponse.json({ venues: JSON.parse(cached.results) as Venue[] });
-    }
-  } catch {}
+  const cached = await cacheGet<Venue[]>(cacheKey);
+  if (cached !== undefined) {
+    return NextResponse.json({ venues: cached });
+  }
 
   const query = buildQuery(activity, lat, lng, radius);
   let venues: Venue[] = [];
@@ -184,16 +174,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ venues: [] });
   }
 
-  const expiresAt = new Date(Date.now() + CACHE_TTL_MS).toISOString();
-
-  await db
-    .insert(placeCache)
-    .values({ id: crypto.randomUUID(), cacheKey, results: JSON.stringify(venues), expiresAt })
-    .onConflictDoUpdate({
-      target: placeCache.cacheKey,
-      set: { results: JSON.stringify(venues), expiresAt },
-    })
-    .catch(() => null);
+  await cacheSet(cacheKey, venues, CACHE_TTL_MS);
 
   return NextResponse.json({ venues });
 }
