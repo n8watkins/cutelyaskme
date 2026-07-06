@@ -157,16 +157,16 @@ describe("env-aware helpers", () => {
   });
 
   it("signedStaticMapUrl returns null when key or secret is missing", () => {
-    vi.stubEnv("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY", "browser-key");
+    vi.stubEnv("STATIC_MAPS_EMAIL_KEY", "email-key");
     vi.stubEnv("STATIC_MAPS_SIGNING_SECRET", "");
     expect(signedStaticMapUrl({})).toBeNull();
-    vi.stubEnv("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY", "");
+    vi.stubEnv("STATIC_MAPS_EMAIL_KEY", "");
     vi.stubEnv("STATIC_MAPS_SIGNING_SECRET", "vNIXE0xscrmjlyV-12Nj_BvUPaw=");
     expect(signedStaticMapUrl({})).toBeNull();
   });
 
   it("signedStaticMapUrl signs when both env vars are present", () => {
-    vi.stubEnv("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY", "browser-key");
+    vi.stubEnv("STATIC_MAPS_EMAIL_KEY", "email-key");
     vi.stubEnv("STATIC_MAPS_SIGNING_SECRET", "vNIXE0xscrmjlyV-12Nj_BvUPaw=");
     const url = signedStaticMapUrl({ center: LA, zoom: 13 });
     expect(url).toContain("signature=");

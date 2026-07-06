@@ -152,11 +152,15 @@ export function browserStaticMapUrl(opts: EnvlessOptions): string | null {
 }
 
 /**
- * Signed URL for referrer-less contexts (email clients). Null when either the
- * key or STATIC_MAPS_SIGNING_SECRET is missing - emails then just skip the map.
+ * Signed URL for referrer-less contexts (email clients). Needs its own key:
+ * a URL signature does NOT bypass application restrictions, so the
+ * referrer-restricted browser key always 403s from an email client.
+ * STATIC_MAPS_EMAIL_KEY must have no application restriction (API-restricted
+ * to Static Maps; the signature + quota cap bound abuse). Null when the key
+ * or STATIC_MAPS_SIGNING_SECRET is missing - emails then just skip the map.
  */
 export function signedStaticMapUrl(opts: EnvlessOptions): string | null {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const key = process.env.STATIC_MAPS_EMAIL_KEY;
   const secret = process.env.STATIC_MAPS_SIGNING_SECRET;
   if (!key || !secret) return null;
   return buildStaticMapUrl({ ...opts, key, signingSecret: secret });
