@@ -88,6 +88,35 @@ describe("dateEndMinutes", () => {
     expect(end).toBe(21 * 60 + 45); // same math, no timeline needed
   });
 
+  it("uses persisted normalized durations instead of mutable defaults", () => {
+    const end = dateEndMinutes({
+      selectedTime: START,
+      selectedEntree: ENTREE,
+      selectedActivities: ACTIVITIES,
+      stops: [
+        { position: 2, durationMinutes: 30 },
+        { position: 0, durationMinutes: 20 },
+        { position: 1, durationMinutes: 40 },
+      ],
+      itinerary: savedItinerary(),
+    });
+    expect(end).toBe(20 * 60);
+  });
+
+  it("includes persisted travel before normalized stops", () => {
+    const end = dateEndMinutes({
+      selectedTime: START,
+      selectedEntree: null,
+      selectedActivities: ACTIVITIES,
+      stops: [
+        { position: 0, durationMinutes: 45, travelMinutes: 10 },
+        { position: 1, durationMinutes: 75, travelMinutes: 20 },
+      ],
+      itinerary: savedItinerary(),
+    });
+    expect(end).toBe(21 * 60);
+  });
+
   it("adds travel minutes into stops when provided", () => {
     const end = dateEndMinutes({
       selectedTime: START,
@@ -144,7 +173,7 @@ describe("dateEnd / dateEndFromPlan / isDateOver", () => {
 
   it("lands on the selected date at the computed end time", () => {
     const end = dateEndFromPlan(row);
-    expect(end).toEqual(new Date(2026, 5, 5, 21, 45));
+    expect(end?.toISOString()).toBe("2026-06-05T21:45:00.000Z");
   });
 
   it("rolls past-midnight ends into the next day", () => {
@@ -155,7 +184,7 @@ describe("dateEnd / dateEndFromPlan / isDateOver", () => {
       selectedActivities: ["Movie"],
       itinerary: null,
     });
-    expect(end).toEqual(new Date(2026, 5, 6, 0, 30));
+    expect(end?.toISOString()).toBe("2026-06-06T00:30:00.000Z");
   });
 
   it("returns null when no date is selected (plan is never 'over')", () => {
@@ -166,11 +195,16 @@ describe("dateEnd / dateEndFromPlan / isDateOver", () => {
   it("survives malformed JSON columns", () => {
     const end = dateEndFromPlan({ ...row, selectedActivities: "not json", itinerary: "{oops" });
     // Activities/itinerary unparseable → only the entree stop (75m) remains.
-    expect(end).toEqual(new Date(2026, 5, 5, 19, 45));
+    expect(end?.toISOString()).toBe("2026-06-05T19:45:00.000Z");
   });
 
   it("isDateOver flips exactly after the end time", () => {
-    expect(isDateOver(row, new Date(2026, 5, 5, 21, 44))).toBe(false);
-    expect(isDateOver(row, new Date(2026, 5, 5, 21, 46))).toBe(true);
+    expect(isDateOver(row, new Date("2026-06-05T21:44:00Z"))).toBe(false);
+    expect(isDateOver(row, new Date("2026-06-05T21:46:00Z"))).toBe(true);
+  });
+
+  it("resolves the plan end in its stored timezone", () => {
+    const end = dateEndFromPlan({ ...row, timezone: "America/Los_Angeles" });
+    expect(end?.toISOString()).toBe("2026-06-06T04:45:00.000Z");
   });
 });

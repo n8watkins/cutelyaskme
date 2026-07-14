@@ -15,6 +15,7 @@ function plan(id: string, overrides: Partial<ReviewCandidatePlan> = {}): ReviewC
     canceledAt: null,
     selectedDate: "2026-06-05",
     selectedTime: "18:30",
+    timezone: "UTC",
     selectedEntree: "Tacos",
     selectedActivities: JSON.stringify(["Coffee", "Drinks"]),
     itinerary: null,
@@ -24,7 +25,7 @@ function plan(id: string, overrides: Partial<ReviewCandidatePlan> = {}): ReviewC
 
 const NONE = new Set<string>();
 // Well after every test plan's dateEnd.
-const LATER = new Date(2026, 5, 20, 12, 0);
+const LATER = new Date("2026-06-20T12:00:00Z");
 
 describe("pickReviewPromptPlan", () => {
   it("picks an over, confirmed, unreviewed plan", () => {
@@ -47,7 +48,9 @@ describe("pickReviewPromptPlan", () => {
 
   it("skips plans that aren't over yet (or have no date)", () => {
     // Date ends 21:45; at 20:00 it's still going.
-    expect(pickReviewPromptPlan([plan("a")], NONE, new Date(2026, 5, 5, 20, 0))).toBeNull();
+    expect(
+      pickReviewPromptPlan([plan("a")], NONE, new Date("2026-06-05T20:00:00Z")),
+    ).toBeNull();
     expect(pickReviewPromptPlan([plan("a", { selectedDate: null })], NONE, LATER)).toBeNull();
   });
 

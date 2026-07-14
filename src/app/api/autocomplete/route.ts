@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { trackApiUsage } from "@/lib/api-usage";
+import { reserveTrackedApiCall } from "@/lib/api-budget";
 
 type GoogleSuggestion = {
   placePrediction?: {
@@ -37,6 +38,10 @@ export async function GET(request: NextRequest) {
   const session = searchParams.get("session")?.trim();
   if (!q || q.length < 3 || !session) {
     return NextResponse.json({ suggestions: [] });
+  }
+
+  if (!(await reserveTrackedApiCall("places-autocomplete", userId))) {
+    return NextResponse.json({ suggestions: [] }, { status: 429 });
   }
 
   void trackApiUsage("places-autocomplete");

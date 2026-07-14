@@ -1,7 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { datePlans, dateRatings } from "@/lib/db/schema";
-import { isDateOver } from "@/lib/date-end";
+import { isStoredPlanDateOver } from "@/lib/plan-lifecycle";
+import { requireRouteClaimedParticipant } from "@/lib/plan-route-access";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -24,17 +25,22 @@ export async function POST(request: NextRequest) {
     .where(eq(datePlans.id, planId))
     .limit(1);
 
-  if (!plan || (plan.senderId !== userId && plan.recipientId !== userId)) {
+  if (!plan) {
+    return NextResponse.json({ message: "Plan not found" }, { status: 404 });
+  }
+  try {
+    requireRouteClaimedParticipant(plan, userId);
+  } catch {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
-  // F4: a canceled date never happened — nothing about it can be written.
+  // F4: a canceled date never happened. Nothing about it can be written.
   if (plan.canceledAt) {
     return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
   }
 
   // F1: ratings only open up once the date's end time has passed.
-  if (!isDateOver(plan)) {
+  if (!(await isStoredPlanDateOver(plan))) {
     return NextResponse.json({ message: "Come back after your date 💞" }, { status: 403 });
   }
 

@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { cacheGet, cacheSet } from "@/lib/place-cache";
 import { trackApiUsage } from "@/lib/api-usage";
+import { reserveTrackedApiCall } from "@/lib/api-budget";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -29,6 +30,10 @@ export async function GET(request: NextRequest) {
   const cached = await cacheGet<PlaceGeo>(cacheKey);
   if (cached !== undefined) {
     return NextResponse.json(cached);
+  }
+
+  if (!(await reserveTrackedApiCall("places-autocomplete", userId))) {
+    return NextResponse.json({ message: "Quota reached" }, { status: 429 });
   }
 
   void trackApiUsage("places-autocomplete");

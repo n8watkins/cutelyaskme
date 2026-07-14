@@ -23,7 +23,11 @@ export const invites = sqliteTable("invites", {
   recipientName: text("recipient_name").notNull(),
   recipientEmail: text("recipient_email").notNull(),
   location: text("location"),
+  locationLat: real("location_lat"),
+  locationLng: real("location_lng"),
   senderAvatarSrc: text("sender_avatar_src"),
+  // Rotating this invalidates every anonymous capability minted for the invite.
+  capabilityVersion: integer("capability_version").notNull().default(1),
   status: text("status", { enum: ["pending", "completed", "cancelled"] })
     .notNull()
     .default("pending"),
@@ -41,6 +45,8 @@ export const datePlans = sqliteTable("date_plans", {
   selectedDateLabel: text("selected_date_label"),
   selectedTime: text("selected_time"),
   selectedTimeLabel: text("selected_time_label"),
+  // IANA zone for all lifecycle decisions and calendar output.
+  timezone: text("timezone").notNull().default("UTC"),
   selectedEntree: text("selected_entree"),
   selectedActivities: text("selected_activities").notNull().default("[]"),
   selectedEntreeVenue: text("selected_entree_venue"),
@@ -54,6 +60,10 @@ export const datePlans = sqliteTable("date_plans", {
   // D3: per-leg travel mode picks (JSON: { "pickup→Coffee": "walk" }); keys are
   // "fromId→toId" node ids (start/pickup/stop key), absent = drive.
   legModes: text("leg_modes").notNull().default("{}"),
+  // How confirmed details become visible to the recipient.
+  notificationMode: text("notification_mode", { enum: ["share", "surprise"] }),
+  // Set when surprise details become visible. Share mode is visible immediately.
+  revealedAt: text("revealed_at"),
   // Set when the sender locks venues + hits Share/Surprise. Gates post-date reviews.
   confirmedAt: text("confirmed_at"),
   completedAt: text("completed_at"),
@@ -64,6 +74,39 @@ export const datePlans = sqliteTable("date_plans", {
     .notNull()
     .default(sql`(datetime('now'))`),
 });
+
+// Stable, ordered stops replace activity-name keyed parallel JSON objects.
+// Legacy columns remain during the compatibility rollout and are removed only
+// after every reader and writer has moved to this table.
+export const planStops = sqliteTable(
+  "plan_stops",
+  {
+    id: text("id").primaryKey(),
+    planId: text("plan_id")
+      .notNull()
+      .references(() => datePlans.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    kind: text("kind", { enum: ["activity", "entree"] }).notNull(),
+    activity: text("activity").notNull(),
+    durationMinutes: integer("duration_minutes").notNull().default(60),
+    travelMinutes: integer("travel_minutes").notNull().default(0),
+    venue: text("venue"),
+    legMode: text("leg_mode", { enum: ["drive", "walk"] })
+      .notNull()
+      .default("drive"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    unique("plan_stops_plan_position_unique").on(table.planId, table.position),
+    check("duration_minutes_range", sql`${table.durationMinutes} >= 15 AND ${table.durationMinutes} <= 720`),
+    check("travel_minutes_range", sql`${table.travelMinutes} >= 0 AND ${table.travelMinutes} <= 720`),
+  ],
+);
 
 export const dateRatings = sqliteTable(
   "date_ratings",
@@ -172,6 +215,84 @@ export const rateLimits = sqliteTable("rate_limits", {
   count: integer("count").notNull(),
   resetAt: integer("reset_at").notNull(), // ms epoch
 });
+
+// Atomic service budgets use one row per service, subject, and fixed window.
+// `subject_id` is a Clerk user id, an anonymous capability fingerprint, or
+// "global" for the application-wide ceiling.
+export const serviceBudgets = sqliteTable(
+  "service_budgets",
+  {
+    key: text("key").primaryKey(),
+    service: text("service").notNull(),
+    subjectId: text("subject_id").notNull(),
+    windowStart: integer("window_start").notNull(),
+    windowEnd: integer("window_end").notNull(),
+    count: integer("count").notNull().default(0),
+    limit: integer("limit_value").notNull(),
+  },
+  (table) => [
+    unique("service_budgets_window_unique").on(
+      table.service,
+      table.subjectId,
+      table.windowStart,
+    ),
+    check("service_budget_nonnegative", sql`${table.count} >= 0 AND ${table.limit} > 0`),
+  ],
+);
+
+// Durable notification outbox. Confirmation never depends on email or push
+// availability, and channel delivery can retry idempotently.
+export const notificationJobs = sqliteTable(
+  "notification_jobs",
+  {
+    id: text("id").primaryKey(),
+    planId: text("plan_id").references(() => datePlans.id, { onDelete: "cascade" }),
+    inviteId: text("invite_id").references(() => invites.id, { onDelete: "cascade" }),
+    channel: text("channel", { enum: ["email", "push"] }).notNull(),
+    // Email has the stable target "email". Push jobs use one subscription id so
+    // retries cannot resend successfully delivered sibling subscriptions.
+    targetId: text("target_id").notNull(),
+    kind: text("kind", {
+      enum: ["invite_created", "sender_plan_completed", "plan_ready", "date_canceled"],
+    }).notNull(),
+    status: text("status", {
+      enum: ["pending", "processing", "sent", "failed", "exhausted", "canceled"],
+    })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    availableAt: text("available_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    sentAt: text("sent_at"),
+    lastErrorCode: text("last_error_code"),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    unique("notification_jobs_plan_delivery_unique").on(
+      table.planId,
+      table.channel,
+      table.kind,
+      table.targetId,
+    ),
+    unique("notification_jobs_invite_delivery_unique").on(
+      table.inviteId,
+      table.channel,
+      table.kind,
+      table.targetId,
+    ),
+    check(
+      "notification_jobs_subject_check",
+      sql`(${table.planId} IS NOT NULL) != (${table.inviteId} IS NOT NULL)`,
+    ),
+    check("notification_attempts_nonnegative", sql`${table.attempts} >= 0`),
+  ],
+);
 
 // Daily outbound API call counts (C7). Unattributed calls live in one row per
 // service+day (key = "service:YYYY-MM-DD", UTC); calls made while planning a

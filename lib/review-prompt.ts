@@ -6,7 +6,12 @@
 // venue verdicts — callers pass those plan ids in). We prompt about at most
 // one plan per visit: the most recently-ended eligible one.
 
-import { dateEndFromPlan, isDateOver, type DateEndPlanRow } from "./date-end";
+import {
+  dateEndFromPlan,
+  isDateOver,
+  type DateEndPlanRow,
+  type DateEndStop,
+} from "./date-end";
 
 export type ReviewCandidatePlan = DateEndPlanRow & {
   id: string;
@@ -24,19 +29,23 @@ export function pickReviewPromptPlan<T extends ReviewCandidatePlan>(
   plans: T[],
   reviewedPlanIds: ReadonlySet<string>,
   now: Date = new Date(),
+  stopsByPlan: ReadonlyMap<string, readonly DateEndStop[]> = new Map(),
 ): T | null {
   const eligible = plans.filter(
     (p) =>
       p.confirmedAt !== null &&
       p.canceledAt === null &&
       !reviewedPlanIds.has(p.id) &&
-      isDateOver(p, now),
+      isDateOver(p, now, stopsByPlan.get(p.id) ?? []),
   );
   if (eligible.length === 0) return null;
 
   // Most recently ended first — isDateOver(true) guarantees dateEnd ≠ null.
   return eligible.reduce((best, p) =>
-    dateEndFromPlan(p)!.getTime() > dateEndFromPlan(best)!.getTime() ? p : best,
+    dateEndFromPlan(p, stopsByPlan.get(p.id) ?? [])!.getTime() >
+    dateEndFromPlan(best, stopsByPlan.get(best.id) ?? [])!.getTime()
+      ? p
+      : best,
   );
 }
 

@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { cacheGet, cacheSet } from "@/lib/place-cache";
 import { trackApiUsage } from "@/lib/api-usage";
+import { reserveTrackedApiCall } from "@/lib/api-budget";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -27,6 +28,10 @@ export async function GET(request: NextRequest) {
   const cached = await cacheGet<string>(cacheKey);
   if (cached !== undefined) {
     return NextResponse.redirect(cached, 302);
+  }
+
+  if (!(await reserveTrackedApiCall("places-photos", userId))) {
+    return new NextResponse(null, { status: 429 });
   }
 
   void trackApiUsage("places-photos");

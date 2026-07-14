@@ -1,13 +1,14 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
-import { db } from "@/lib/db";
-import { datePlans, invites } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
+import { db, getDbClient } from "@/lib/db";
+import { datePlans } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { sendDateCanceledEmail } from "@/lib/email";
-import { sendPushToUser } from "@/lib/push";
+import { deliverPlanNotificationJobs } from "@/lib/notification-delivery";
+import { enqueuePlanNotifications } from "@/lib/notification-outbox";
+import { requireRouteSender } from "@/lib/plan-route-access";
 
-// F4: the sender calls the date off. Freezes the plan (canceledAt) and — if it
-// was already shared with the recipient — gently lets them know (best-effort:
+// F4: the sender calls the date off. Freezes the plan (canceledAt) and, if it
+// was already shared with the recipient, gently lets them know (best-effort:
 // notification failures never fail the cancel).
 export async function POST(
   _request: Request,
@@ -23,65 +24,57 @@ export async function POST(
   const [plan] = await db
     .select()
     .from(datePlans)
-    .where(and(eq(datePlans.id, id), eq(datePlans.senderId, userId)))
+    .where(eq(datePlans.id, id))
     .limit(1);
 
   if (!plan) {
     return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
+  try {
+    requireRouteSender(plan, userId);
+  } catch {
+    return NextResponse.json({ message: "Plan not found" }, { status: 404 });
+  }
 
-  // Already canceled → nothing to do (idempotent, no duplicate notifications).
+  // Already canceled means there is nothing to do (idempotent, no duplicate notifications).
   if (plan.canceledAt) {
     return NextResponse.json({ ok: true, alreadyCanceled: true });
   }
 
-  await db
-    .update(datePlans)
-    .set({ canceledAt: new Date().toISOString() })
-    .where(and(eq(datePlans.id, id), eq(datePlans.senderId, userId)));
-
-  // Notify the other person only if the plan was actually shared/sent —
-  // confirmedAt is set when the sender hits Share/Surprise.
-  const wasShared = !!plan.confirmedAt;
-  if (wasShared) {
-    let senderName = "Someone special";
-    try {
-      const clerk = await clerkClient();
-      const sender = await clerk.users.getUser(userId);
-      senderName =
-        sender.firstName ??
-        sender.emailAddresses[0]?.emailAddress?.split("@")[0] ??
-        "Someone special";
-    } catch {}
-
-    // Push (if she's signed in + subscribed) — gentle copy, no guilt.
-    if (plan.recipientId) {
-      await sendPushToUser(plan.recipientId, {
-        title: "A little change of plans 💌",
-        body: "Tonight's plan was called off — more soon 💌",
-        url: `/plan/${plan.id}`,
-      }).catch(() => 0);
+  const client = getDbClient();
+  const transaction = await client.transaction("write");
+  let wasShared = false;
+  let alreadyCanceled = false;
+  try {
+    const canceled = await transaction.execute({
+      sql: `
+        UPDATE date_plans
+        SET canceled_at = ?
+        WHERE id = ? AND sender_id = ? AND canceled_at IS NULL
+        RETURNING confirmed_at
+      `,
+      args: [new Date().toISOString(), id, userId],
+    });
+    if (canceled.rows.length === 0) {
+      alreadyCanceled = true;
+      await transaction.rollback();
+    } else {
+      wasShared = canceled.rows[0]?.confirmed_at !== null;
+      if (wasShared) {
+        await enqueuePlanNotifications(transaction, id, "date_canceled");
+      }
+      await transaction.commit();
     }
-
-    // Email via the invite's address.
-    if (plan.inviteId) {
-      try {
-        const [invite] = await db
-          .select()
-          .from(invites)
-          .where(eq(invites.id, plan.inviteId))
-          .limit(1);
-        if (invite) {
-          await sendDateCanceledEmail({
-            recipientEmail: invite.recipientEmail,
-            recipientName: invite.recipientName,
-            senderName,
-            selectedDateLabel: plan.selectedDateLabel,
-          });
-        }
-      } catch {}
-    }
+  } finally {
+    transaction.close();
   }
 
-  return NextResponse.json({ ok: true });
+  if (alreadyCanceled) {
+    return NextResponse.json({ ok: true, alreadyCanceled: true });
+  }
+
+  const delivery = wasShared
+    ? await deliverPlanNotificationJobs(id, "date_canceled")
+    : { sent: 0, failed: 0, exhausted: 0, canceled: 0 };
+  return NextResponse.json({ ok: true, delivery });
 }

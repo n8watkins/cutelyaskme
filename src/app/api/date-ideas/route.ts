@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { reserveGeminiCall } from "@/lib/gemini-budget";
 
 type DateIdeasRequest = {
   period?: string;
@@ -41,15 +42,6 @@ export async function POST(request: NextRequest) {
   }
 
   const identifier = getClientIdentifier(request);
-  const allowed = await checkRateLimit(`ideas:${identifier}`, LIMIT, WINDOW_MS);
-
-  if (!allowed) {
-    return NextResponse.json(
-      { message: "Gemini idea limit reached. Try the local spinner for now." },
-      { status: 429 },
-    );
-  }
-
   const body = (await request.json().catch(() => ({}))) as DateIdeasRequest;
 
   // Check cache before consuming a Gemini call or a rate-limit slot
@@ -57,6 +49,15 @@ export async function POST(request: NextRequest) {
   const cached = suggestionCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return NextResponse.json({ ideas: cached.ideas, fromCache: true });
+  }
+
+  const allowed = await checkRateLimit(`ideas:${identifier}`, LIMIT, WINDOW_MS);
+  const budgeted = allowed && (await reserveGeminiCall("ideas", identifier));
+  if (!budgeted) {
+    return NextResponse.json(
+      { message: "Gemini idea limit reached. Try the local spinner for now." },
+      { status: 429 },
+    );
   }
 
   const prompt = buildPrompt(body);
@@ -179,4 +180,3 @@ function getClientIdentifier(request: NextRequest) {
     "local"
   );
 }
-

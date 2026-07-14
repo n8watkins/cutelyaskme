@@ -1,25 +1,12 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { invites } from "@/lib/db/schema";
+import { invites, notificationJobs } from "@/lib/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { sendInviteEmail } from "@/lib/email";
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rate-limit";
+import { deliverInviteNotificationJobs } from "@/lib/notification-delivery";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-
-// Simple in-memory rate limit: max 10 invites per user per hour
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-function checkRateLimit(userId: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(userId);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(userId, { count: 1, resetAt: now + 60 * 60 * 1000 });
-    return true;
-  }
-  if (entry.count >= 10) return false;
-  entry.count++;
-  return true;
-}
 
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
@@ -42,45 +29,43 @@ export async function POST(request: NextRequest) {
   const locationValue =
     typeof location === "string" && location.trim() ? location.trim() : null;
 
-  if (!checkRateLimit(userId)) {
+  if (!(await checkRateLimit(`invites:${userId}`, 10, 60 * 60 * 1000))) {
     return NextResponse.json({ message: "Too many invites. Try again later." }, { status: 429 });
   }
-
-  const clerk = await clerkClient();
-  const sender = await clerk.users.getUser(userId);
-  const senderName =
-    sender.firstName ??
-    sender.emailAddresses[0]?.emailAddress?.split("@")[0] ??
-    "Someone";
 
   const id = crypto.randomUUID();
   const token = crypto.randomUUID();
 
   try {
-    await db.insert(invites).values({
-      id,
-      token,
-      senderId: userId,
-      recipientName: recipientName.trim(),
-      recipientEmail: recipientEmail.trim().toLowerCase(),
-      location: locationValue,
-      senderAvatarSrc: typeof senderAvatarSrc === "string" && senderAvatarSrc.startsWith("data:image/") ? senderAvatarSrc : null,
+    await db.transaction(async (tx) => {
+      await tx.insert(invites).values({
+        id,
+        token,
+        senderId: userId,
+        recipientName: recipientName.trim(),
+        recipientEmail: recipientEmail.trim().toLowerCase(),
+        location: locationValue,
+        senderAvatarSrc:
+          typeof senderAvatarSrc === "string" && senderAvatarSrc.startsWith("data:image/")
+            ? senderAvatarSrc
+            : null,
+      });
+      await tx
+        .insert(notificationJobs)
+        .values({
+          id: crypto.randomUUID(),
+          inviteId: id,
+          channel: "email",
+          targetId: "email",
+          kind: "invite_created",
+        })
+        .onConflictDoNothing();
     });
   } catch {
     return NextResponse.json({ message: "Failed to create invite" }, { status: 500 });
   }
 
-  try {
-    await sendInviteEmail({
-      recipientName: recipientName.trim(),
-      recipientEmail: recipientEmail.trim().toLowerCase(),
-      senderName,
-      token,
-      location: locationValue,
-    });
-  } catch {
-    // Non-blocking — invite is created, email is best-effort
-  }
+  await deliverInviteNotificationJobs(id).catch(() => null);
 
   return NextResponse.json({ token });
 }

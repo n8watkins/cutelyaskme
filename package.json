@@ -2,14 +2,22 @@
   "name": "date-planner-mini-site",
   "version": "0.1.0",
   "private": true,
+  "overrides": {
+    "next": {
+      "postcss": "8.5.19"
+    }
+  },
   "scripts": {
     "dev": "next dev -p 1437",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:push": "dotenv -e .env.local drizzle-kit push",
-    "db:studio": "dotenv -e .env.local drizzle-kit studio",
-    "test": "vitest run"
+    "db:migrate": "dotenv -e .env.local -- node scripts/migrate.mjs",
+    "db:migrate:validate-copy": "node scripts/validate-migration-copy.mjs",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:install": "playwright install chromium webkit"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.3",
@@ -19,7 +27,7 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "framer-motion": "^12.40.0",
-    "next": "16.2.7",
+    "next": "^16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "resend": "^6.12.4",
@@ -28,6 +36,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/canvas-confetti": "^1.9.0",
     "@types/google.maps": "^3.65.2",
@@ -37,9 +46,8 @@
     "@types/suncalc": "^1.9.2",
     "@types/web-push": "^3.6.4",
     "dotenv-cli": "^11.0.0",
-    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.2.7",
+    "eslint-config-next": "^16.2.10",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.8"

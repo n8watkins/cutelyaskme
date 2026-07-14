@@ -15,6 +15,7 @@ import {
   type RouteLeg,
 } from "@/lib/route-legs";
 import type { LatLng } from "@/lib/geo";
+import { reserveTrackedApiCall } from "@/lib/api-budget";
 
 // D3: per-leg travel distance + time for an ordered waypoint set
 // (pickup -> stop1 -> ... -> stopN). One Google Routes computeRoutes call per
@@ -43,9 +44,11 @@ async function fetchRoutesLeg(
   from: LatLng,
   to: LatLng,
   planId: string | null,
+  userId: string,
 ): Promise<LegInfo | null> {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return null;
+  if (!(await reserveTrackedApiCall("routes", userId))) return null;
   try {
     void trackApiUsage("routes", 1, planId); // outbound call (cache hits return before this)
     const res = await fetch(ROUTES_URL, {
@@ -109,12 +112,12 @@ export async function POST(request: NextRequest) {
   const legs: RouteLeg[] = await Promise.all(
     points.slice(0, -1).map(async (from, i): Promise<RouteLeg> => {
       const to = points[i + 1];
-      const drive = await fetchRoutesLeg("drive", from, to, planId);
+      const drive = await fetchRoutesLeg("drive", from, to, planId, userId);
       if (!drive) routed = false;
       const leg: RouteLeg = { drive: drive ?? fallbackLeg(from, to, "drive"), walk: null };
       // Short hops also get a walking option (one WALK-mode call per such leg).
       if (isWalkable(leg.drive.distanceMeters)) {
-        const walk = drive ? await fetchRoutesLeg("walk", from, to, planId) : null;
+        const walk = drive ? await fetchRoutesLeg("walk", from, to, planId, userId) : null;
         if (!walk) routed = false; // a haversine walk estimate is a fallback too
         leg.walk = walk ?? fallbackLeg(from, to, "walk");
       }

@@ -2,7 +2,7 @@
 
 import { AnimatePresence } from "framer-motion";
 import confetti from "canvas-confetti";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ConfirmedStep } from "./ConfirmedStep";
 import { DateStep } from "./DateStep";
 import { DateAvatar } from "./DateAvatar";
@@ -44,6 +44,11 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
     location: location ?? null,
   });
   const [cursorMessage, setCursorMessage] = useState<string | null>(null);
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   useEffect(() => {
     if (!cursorMessage) {
@@ -133,6 +138,7 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
                 setCursorMessage(message);
               }}
               onAccept={handleAccept}
+              ready={hydrated}
             />
           ) : null}
 

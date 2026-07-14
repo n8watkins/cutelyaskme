@@ -1,7 +1,7 @@
 import webpush from "web-push";
 import { db } from "@/lib/db";
 import { pushSubscriptions } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 let configured = false;
 
@@ -22,36 +22,47 @@ export type PushPayload = {
   url?: string;
 };
 
-// Send a push to every device a user has enabled. Dead subscriptions are pruned.
-export async function sendPushToUser(userId: string, payload: PushPayload): Promise<number> {
-  if (!configure()) return 0;
+export type PushDeliveryResult = "sent" | "missing" | "dead" | "transient_failure";
 
-  const subs = await db
+// Send to exactly one outbox target. Dead subscriptions are pruned, while
+// transient failures remain retryable without resending sibling devices.
+export async function sendPushToSubscription(
+  subscriptionId: string,
+  userId: string,
+  payload: PushPayload,
+): Promise<PushDeliveryResult> {
+  if (!configure()) return "transient_failure";
+
+  const [subscription] = await db
     .select()
     .from(pushSubscriptions)
-    .where(eq(pushSubscriptions.userId, userId));
+    .where(
+      and(
+        eq(pushSubscriptions.id, subscriptionId),
+        eq(pushSubscriptions.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (!subscription) return "missing";
 
-  let sent = 0;
-  await Promise.all(
-    subs.map(async (sub) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify(payload),
-        );
-        sent++;
-      } catch (err: unknown) {
-        const code = (err as { statusCode?: number })?.statusCode;
-        // 404/410 → the subscription is gone; remove it.
-        if (code === 404 || code === 410) {
-          await db
-            .delete(pushSubscriptions)
-            .where(eq(pushSubscriptions.endpoint, sub.endpoint))
-            .catch(() => {});
-        }
-      }
-    }),
-  );
-
-  return sent;
+  try {
+    await webpush.sendNotification(
+      {
+        endpoint: subscription.endpoint,
+        keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+      },
+      JSON.stringify(payload),
+    );
+    return "sent";
+  } catch (err: unknown) {
+    const code = (err as { statusCode?: number })?.statusCode;
+    if (code === 404 || code === 410) {
+      await db
+        .delete(pushSubscriptions)
+        .where(eq(pushSubscriptions.id, subscription.id))
+        .catch(() => {});
+      return "dead";
+    }
+    return "transient_failure";
+  }
 }

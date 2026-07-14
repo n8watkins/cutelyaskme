@@ -60,6 +60,10 @@ export function SummaryStep({
     if (!inviteToken) return;
     setSubmitting(true);
     setSubmitError(null);
+    let timezone = "UTC";
+    try {
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || timezone;
+    } catch {}
 
     const res = await fetch("/api/plans", {
       method: "POST",
@@ -73,6 +77,7 @@ export function SummaryStep({
         selectedEntree,
         selectedActivities,
         dressVibe,
+        timezone,
       }),
     });
 

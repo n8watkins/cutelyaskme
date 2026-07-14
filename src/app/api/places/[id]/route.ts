@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { cacheGet, cacheSet } from "@/lib/place-cache";
 import { trackApiUsage } from "@/lib/api-usage";
 import { sanitizePlanId } from "@/lib/api-limits";
+import { reserveTrackedApiCall } from "@/lib/api-budget";
 import type { VenueDetails, OpenSlot } from "@/lib/hours";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -100,6 +101,10 @@ export async function GET(
     // on every open.
     if (hit === null) return NextResponse.json({ message: "Venue not found" }, { status: 404 });
     return NextResponse.json(hit);
+  }
+
+  if (!(await reserveTrackedApiCall("places-details", userId))) {
+    return NextResponse.json({ message: "Quota reached" }, { status: 429 });
   }
 
   // The scarcest SKU (1,000/month free) — attributed to the plan when known.
