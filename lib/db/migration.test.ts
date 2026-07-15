@@ -38,6 +38,7 @@ describe("wave 0 migration", () => {
           "notification_jobs",
           "plan_stops",
           "plan_timezone_backfills",
+          "plan_timezone_backfill_manifest",
           "service_budgets",
         ]),
       );
@@ -47,6 +48,7 @@ describe("wave 0 migration", () => {
         "0001_wave0_foundation.sql",
         "0002_notification_outbox_expansion.sql",
         "0003_plan_timezone_verification.sql",
+        "0004_timezone_backfill_manifest.sql",
       ]);
     } finally {
       client.close();
@@ -159,6 +161,7 @@ describe("wave 0 migration", () => {
         "0001_wave0_foundation.sql",
         "0002_notification_outbox_expansion.sql",
         "0003_plan_timezone_verification.sql",
+        "0004_timezone_backfill_manifest.sql",
       ]);
       migratedClient.close();
     } finally {
@@ -236,7 +239,9 @@ describe("wave 0 migration", () => {
       await client.execute({
         sql: `
           INSERT INTO date_plans (id, sender_id, timezone, created_at)
-          VALUES (?, ?, ?, datetime('now', '+1 minute'))
+          SELECT ?, ?, ?, applied_at
+          FROM app_migrations
+          WHERE id = '0003_plan_timezone_verification.sql'
         `,
         args: ["post-migration-plan", "sender-1", "America/Chicago"],
       });
@@ -284,6 +289,8 @@ describe("wave 0 migration", () => {
           `INSERT INTO plan_timezone_backfills (
              plan_id, previous_timezone, verified_timezone
            ) VALUES ('historical-plan', 'UTC', 'America/New_York')`,
+          `INSERT INTO plan_timezone_backfill_manifest (plan_id)
+           VALUES ('historical-plan')`,
           "DELETE FROM plan_timezone_backfills WHERE plan_id = 'historical-plan'",
         ],
         "write",

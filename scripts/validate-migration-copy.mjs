@@ -58,33 +58,6 @@ try {
   await copyFile(sourcePath, copyPath);
   const beforeClient = createClient({ url: `file:${copyPath}` });
   const before = await tableCounts(beforeClient);
-  const beforePlanIds = before.has("date_plans")
-    ? (await beforeClient.execute("SELECT id FROM date_plans ORDER BY id")).rows.map((row) =>
-        String(row.id),
-      )
-    : [];
-  const sourceTimezoneVerificationApplied = before.has("app_migrations")
-    ? (
-        await beforeClient.execute({
-          sql: "SELECT 1 FROM app_migrations WHERE id = ? LIMIT 1",
-          args: ["0003_plan_timezone_verification.sql"],
-        })
-      ).rows.length > 0
-    : false;
-  const expectedTimezoneAuditPlanIds = sourceTimezoneVerificationApplied
-    ? (
-        await beforeClient.execute({
-          sql: `
-            SELECT p.id
-            FROM date_plans p
-            INNER JOIN app_migrations m ON m.id = ?
-            WHERE julianday(p.created_at) <= julianday(m.applied_at)
-            ORDER BY p.id
-          `,
-          args: ["0003_plan_timezone_verification.sql"],
-        })
-      ).rows.map((row) => String(row.id))
-    : beforePlanIds;
   beforeClient.close();
 
   const migration = await execFileAsync(process.execPath, ["scripts/migrate.mjs"], {
@@ -124,6 +97,7 @@ try {
       "notification_jobs",
       "plan_stops",
       "plan_timezone_backfills",
+      "plan_timezone_backfill_manifest",
       "service_budgets",
     ];
     for (const table of required) {
@@ -134,6 +108,7 @@ try {
       date_plans: ["timezone", "notification_mode", "revealed_at"],
       plan_stops: ["position", "duration_minutes", "travel_minutes", "leg_mode"],
       notification_jobs: ["plan_id", "invite_id", "target_id", "kind", "status", "attempts"],
+      plan_timezone_backfill_manifest: ["plan_id", "captured_at"],
       service_budgets: ["subject_id", "window_start", "window_end", "limit_value"],
     };
     for (const [table, columns] of Object.entries(requiredColumns)) {
@@ -154,9 +129,12 @@ try {
     const verifiedTimezones = await afterClient.execute(
       "SELECT plan_id FROM plan_timezone_backfills ORDER BY plan_id",
     );
+    const timezoneManifest = await afterClient.execute(
+      "SELECT plan_id FROM plan_timezone_backfill_manifest ORDER BY plan_id",
+    );
     if (
       JSON.stringify(verifiedTimezones.rows.map((row) => String(row.plan_id))) !==
-      JSON.stringify(expectedTimezoneAuditPlanIds)
+      JSON.stringify(timezoneManifest.rows.map((row) => String(row.plan_id)))
     ) {
       throw new Error("Per-plan timezone verification is incomplete");
     }
