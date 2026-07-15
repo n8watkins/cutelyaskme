@@ -159,3 +159,21 @@ test.describe("public experience", () => {
     expect(response.headers()["strict-transport-security"]).toContain("max-age=63072000");
   });
 });
+
+test.describe("invite celebration", () => {
+  test.use({ reducedMotion: "no-preference" });
+
+  test("uses confetti only on desktop when motion is allowed", async ({ page }) => {
+    await page.goto("/invite/Playwright");
+    await page.getByRole("button", { name: "Yes!" }).click();
+
+    await expect(
+      page.getByRole("heading", { level: 1, name: "What day feels sweet?" }),
+    ).toBeVisible();
+
+    const hasDesktopViewport = await page.evaluate(() =>
+      window.matchMedia("(min-width: 640px)").matches,
+    );
+    await expect(page.locator("canvas")).toHaveCount(hasDesktopViewport ? 1 : 0);
+  });
+});

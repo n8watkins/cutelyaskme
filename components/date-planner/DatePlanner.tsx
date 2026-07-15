@@ -83,11 +83,12 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
   }
 
   function handleAccept() {
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const allowsMotion = window.matchMedia("(prefers-reduced-motion: no-preference)").matches;
     const hasDesktopViewport = window.matchMedia("(min-width: 640px)").matches;
 
-    if (!reduceMotion && hasDesktopViewport) {
+    if (allowsMotion && hasDesktopViewport) {
       confetti({
+        disableForReducedMotion: true,
         particleCount: 90,
         spread: 70,
         origin: { y: 0.72 },
