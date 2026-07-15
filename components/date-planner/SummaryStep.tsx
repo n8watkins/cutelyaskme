@@ -58,7 +58,9 @@ export function SummaryStep({
   useEffect(() => {
     const supported = Intl.supportedValuesOf?.("timeZone") ?? [];
     const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setTimezones(Array.from(new Set([browserZone, "UTC", ...supported])).filter(Boolean));
+    Promise.resolve().then(() => {
+      setTimezones(Array.from(new Set([browserZone, "UTC", ...supported])).filter(Boolean));
+    });
   }, []);
 
   const foodIcon =

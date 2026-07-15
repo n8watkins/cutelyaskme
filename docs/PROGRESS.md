@@ -190,7 +190,8 @@ date-planner-mini-site/
 │   ├── itinerary.ts                         Gemini itinerary generation
 │   ├── venues.ts                            Venue type, activity→query maps, durations
 │   └── [date-options, food-options, etc]
-├── drizzle.config.ts
+├── drizzle/                              Durable ordered SQL migrations
+├── scripts/migrate.mjs                   Migration runner and adoption checks
 └── docs/
     ├── PRODUCT_PLAN.md
     └── PROGRESS.md                          ← this file

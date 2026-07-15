@@ -26,7 +26,7 @@ The sender sees what she chose, then:
   one event or one-per-stop),
 - views every stop on an interactive **Google map** (click-to-set search
   center, configurable wheel-zoom),
-- **notifies** the recipient (share the plan, or keep it a surprise).
+- **notifies** the recipient (share the plan, or keep it a surprise), which confirms and freezes the plan so the shared details cannot drift.
 
 **After the date** — ratings, per-venue 👍/😐/👎 verdicts (which power
 "Places you loved" + Reminisce mode next time), and a **memory keepsake**:
@@ -49,8 +49,8 @@ gracefully. Per-user defaults live at `/settings`.
 | Geocoding | Nominatim (OpenStreetMap) |
 | Map | Google Maps JavaScript API |
 | Photos | Cloudinary (signed direct uploads) |
-| Notifications | web-push (VAPID) |
-| Tests | Vitest (`npm test`) over the pure `lib/*` helpers |
+| Notifications | Durable Resend email + web-push (VAPID) delivery queue |
+| Tests | Vitest (`npm test`) + Playwright (`npm run test:e2e`) |
 | Hosting | Vercel |
 
 Every service runs on a free tier — see [`COSTS.md`](./COSTS.md).
@@ -59,36 +59,20 @@ Every service runs on a free tier — see [`COSTS.md`](./COSTS.md).
 
 ```bash
 npm install
-cp .env.example .env.local   # then fill in the keys below
-npm run dev                  # http://localhost:3000
+cp .env.example .env.local   # then fill in the documented values
+npm run db:migrate
+npm run dev                  # http://localhost:1437
 ```
 
-### Required environment variables
+### Environment variables
 
-| Key | Source |
-|---|---|
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY` | clerk.com |
-| `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` | turso.tech |
-| `GOOGLE_PLACES_API_KEY` | console.cloud.google.com |
-| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` | console.cloud.google.com (browser Maps key + optional Map ID) |
-| `STATIC_MAPS_SIGNING_SECRET` | console.cloud.google.com (Maps URL signing secret - signs the static map images embedded in emails) |
-| `GEMINI_API_KEY` | Google AI Studio |
-| `RESEND_API_KEY`, `EMAIL_FROM` | resend.com |
-| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | cloudinary.com (memory photos) |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | `npx web-push generate-vapid-keys` |
-| `NEXT_PUBLIC_SITE_URL` | e.g. `http://localhost:3000` or `https://cutelyask.me` |
-
-The app degrades gracefully when a key is missing: no `GEMINI_API_KEY` skips
-AI itineraries/ideas; no `RESEND_API_KEY` skips emails.
-No `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` skips maps and static route snapshots.
-No `STATIC_MAPS_SIGNING_SECRET` skips only the map images inside emails.
+`.env.example` is the authoritative environment-variable reference, including which values are server-only and which are required for migrations, anonymous plan access, scheduled notification retries, maps, uploads, and optional service integrations.
 
 ### Database schema
 
-Drizzle schema lives in `lib/db/schema.ts`, but there is **no drizzle-kit
-flow** for migrations: edit the schema, then run a temp `migrate-tmp.mjs` in
-the repo root with raw SQL via `@libsql/client` (see "Conventions & gotchas"
-in [`docs/HANDOFF.md`](./docs/HANDOFF.md)).
+Drizzle schema lives in `lib/db/schema.ts`, and durable ordered SQL migrations live in `drizzle/`.
+Run them with `npm run db:migrate`; existing databases must first provide the exact `LEGACY_PLAN_TIMEZONES` mapping described in `.env.example`.
+See "Conventions & gotchas" in [`docs/HANDOFF.md`](./docs/HANDOFF.md) for the migration contract.
 
 ## Project status & docs
 

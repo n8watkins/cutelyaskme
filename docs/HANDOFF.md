@@ -69,12 +69,10 @@ reuse, don't reinvent.
   what+why, end with `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
   Run `git status --short` first; never commit `.env.local` (gitignored — all
   secrets live there and on Vercel).
-- **DB migrations:** no drizzle-kit flow. Pattern: edit `lib/db/schema.ts`,
-  then write a temp `migrate-tmp.mjs` in the repo root using
-  `@libsql/client` + raw SQL (`CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ADD
-  COLUMN`), run `npx dotenv -e .env.local -- node migrate-tmp.mjs`, verify the
-  output, delete the script. (Scripts must live in the repo root, not /tmp —
-  module resolution.)
+- **DB migrations:** `lib/db/schema.ts` owns the application schema, and durable ordered SQL migrations live in `drizzle/`.
+  Add schema changes as a new migration and run `npm run db:migrate`; never mutate a live database with an ad hoc script or `drizzle-kit push`.
+  The runner records applied files in `app_migrations`, refuses partial legacy foundation schemas, and requires `LEGACY_PLAN_TIMEZONES` to map exactly every existing plan before the timezone-verification migration can run.
+  Use `npm run db:migrate:validate-copy` to validate legacy adoption against a disposable database copy.
 - **Lint rules that have bitten us** (eslint will catch, but write it right):
   no synchronous `setState` in a `useEffect` body (wrap in
   `Promise.resolve().then(...)` or do it in an async callback); no ref
@@ -89,9 +87,9 @@ reuse, don't reinvent.
 - **Yelp:** `venue.id` is the Yelp business id. OSM venues have ids `osm-*`;
   hand-dropped pins have `source: "custom"` + id `custom-*`. Reviews endpoint
   is paid-tier (404s) — code degrades gracefully; don't "fix" it.
-- **API frugality (user cares a lot):** never fetch venues eagerly — searches
-  are explicit per-stop actions; track outbound calls via
-  `trackApiUsage(service)` from `@/lib/api-usage` (cache hits don't count).
+- **Paid-service budgets:** never fetch venues eagerly; searches are explicit per-stop actions.
+  Every paid server-side API call must atomically reserve its per-viewer and global daily budget through `reserveTrackedApiCall` before dispatch, then record successful usage through `trackApiUsage` (cache hits do not count).
+  Browser Maps loads and static-map image fetches remain protected by the Google Cloud quota caps documented in `lib/api-limits.ts`.
 - **Settings (Batch 8, live):** user preferences live in the `user_settings`
   table — add new prefs as columns + `lib/settings.ts` parse/merge validation,
   NOT as new `ca:` localStorage keys. The planner gets settings as server
@@ -127,13 +125,11 @@ reuse, don't reinvent.
   `new Date()` inline in a component body is a lint error. Do now-comparisons
   inside lib helpers (`isDateOver` in `lib/date-end.ts`, `pickReviewPromptPlan`
   in `lib/review-prompt.ts`) and call those from the component.
-- **Post-date lifecycle (Batch 7):** `isDateOver(plan)` from `lib/date-end`
-  gates ratings/verdicts/memories — client AND server (the POST routes 403
-  with "Come back after your date 💞"). `date_plans.canceled_at` freezes a
-  plan — every per-plan write route (PATCH, notify, ratings, verdicts,
-  memories, photos) rejects canceled plans with 409. `confirmedAt` is what
-  marks a plan shared/sent (set by Share/Surprise; cancel only notifies when
-  it's set). `/plan/[id]` has four render paths: canceled → called-off card;
+- **Plan lifecycle:** timezone-aware date completion uses normalized `plan_stops` through `isStoredPlanDateOver`; do not infer an instant from a server or browser timezone.
+  Ratings, verdicts, memories, and photo writes are gated after the date on both client and server.
+  Both `date_plans.canceled_at` and `confirmedAt` freeze plan details; the sender PATCH route rejects either state with 409, including a concurrent confirmation during an update.
+  Share/Surprise sets `confirmedAt` and queues its idempotent notifications; cancel only queues a notification for a previously confirmed plan.
+  `/plan/[id]` has four render paths: canceled → called-off card;
   sender+over → read-only reflection view; sender+active → planner;
   recipient/shared view. F3's never-re-prompt = server check (existing
   rating/verdicts) + `ca:reviewPrompted:<planId>` localStorage flag.
@@ -156,8 +152,8 @@ reuse, don't reinvent.
 | `src/app/api/natural-places/route.ts` | Overpass natural spots (UA + mirrors + no-fail-caching) |
 | `src/app/api/geocode/route.ts` | Nominatim forward/reverse, cached |
 | `src/app/plan/[id]/page.tsx` | Plan page (server): four render paths (canceled / sender reflection / sender planner / recipient), itinerary timeline + tips |
-| `lib/db/schema.ts` | All tables. Recent: `saved_addresses.kind`, `api_usage`, `date_plans.leg_modes`, `date_plans.canceled_at` |
-| `lib/date-end.ts` | `dateEnd`/`isDateOver`/`dateEndFromPlan` from raw plan rows (tested) — the post-date gate |
+| `lib/db/schema.ts` | All tables, including normalized plan stops, migration ledger support, service budgets, and notification jobs |
+| `lib/date-end.ts` + `lib/plan-lifecycle.ts` | Timezone-aware end calculation plus the database-backed normalized-stop lifecycle gate |
 | `lib/review-prompt.ts` | F3 eligibility: `pickReviewPromptPlan`, `reviewPromptTitle` (tested) |
 | `components/DateReviewModal.tsx` | F3 modal: stars → verdict swipe cards → keepsake link |
 | `components/sender/CancelDateButton.tsx` + `src/app/api/plans/[id]/cancel/route.ts` | F4 cancel (idempotent, best-effort notify) |
