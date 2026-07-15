@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { connection } from "next/server";
 import "./globals.css";
 
 const nunito = Nunito({
@@ -29,16 +30,24 @@ export const viewport: Viewport = {
   themeColor: "#ff7aaa",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <ClerkProvider>
-      <html lang="en" className={`${nunito.variable} h-full antialiased`}>
-        <body className="min-h-full flex flex-col">{children}</body>
-      </html>
-    </ClerkProvider>
+  // A per-request CSP nonce is only safe when the complete document is rendered
+  // for that request. This also lets Next apply the nonce to framework assets.
+  await connection();
+
+  const document = (
+    <html lang="en" className={`${nunito.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+
+  return process.env.PLAYWRIGHT_E2E === "1" ? (
+    document
+  ) : (
+    <ClerkProvider dynamic>{document}</ClerkProvider>
   );
 }

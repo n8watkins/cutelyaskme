@@ -12,6 +12,7 @@
 
 import type { ItineraryJson } from "./db/schema";
 import { parseTimeToMinutes } from "./datetime";
+import { planEndInstant } from "./plan-time";
 import { DEFAULT_STOP_DURATIONS } from "./venues";
 
 /** With no stops to go on, assume a date lasts this long. */
@@ -27,8 +28,12 @@ export type DateEndInput = {
   selectedEntree: string | null;
   /** Stop keys in lineup order (activity names). */
   selectedActivities: string[];
+  /** Persisted ordered stops are authoritative when available. */
+  stops?: DateEndStop[];
   /** The saved itinerary (its timeline carries the deterministic times). */
   itinerary: ItineraryJson | null;
+  /** IANA timezone for the selected wall-clock date and time. */
+  timezone?: string | null;
   /** Travel minutes INTO each stop, when known (client-side routed legs). */
   travelMinutes?: Record<string, number>;
 };
@@ -40,6 +45,13 @@ export type DateEndPlanRow = {
   selectedEntree: string | null;
   selectedActivities: string | null;
   itinerary: string | null;
+  timezone?: string | null;
+};
+
+export type DateEndStop = {
+  position: number;
+  durationMinutes: number;
+  travelMinutes?: number;
 };
 
 /** The stop keys an itinerary covers, in lineup order (mirrors buildItineraryStops). */
@@ -68,14 +80,22 @@ export function parseClockLabel(label: string): number | null {
  * Minutes after the start of `selectedDate` when the date ends. Can exceed
  * 1440 when the night runs past midnight.
  *
- * Preferred source: the saved timeline's last entry (its time is the last
- * stop's deterministic start) + that stop's duration. Fallback: project the
- * stops from durations (+ travel where given). Last resort: a default length.
+ * Preferred source: persisted normalized stop durations. Fallback: the saved
+ * timeline's last entry plus the legacy default for that stop. Last resort:
+ * project the legacy selection or use a default length.
  */
 export function dateEndMinutes(input: Omit<DateEndInput, "selectedDate">): number {
   const startMinutes = parseTimeToMinutes(input.selectedTime);
   const stops = dateStopKeys(input.selectedActivities, input.selectedEntree);
+  const normalizedStops = [...(input.stops ?? [])].sort((a, b) => a.position - b.position);
   const travel = input.travelMinutes ?? {};
+
+  if (normalizedStops.length > 0) {
+    return normalizedStops.reduce(
+      (minutes, stop) => minutes + stop.durationMinutes + (stop.travelMinutes ?? 0),
+      startMinutes,
+    );
+  }
 
   // The saved deterministic timeline, when parseable.
   const timeline = input.itinerary?.timeline;
@@ -105,31 +125,42 @@ export function dateEndMinutes(input: Omit<DateEndInput, "selectedDate">): numbe
 }
 
 /**
- * The Date the plan ends (server-local clock), or null when no date is
- * selected yet — an unscheduled plan is never "over".
+ * The absolute instant when the plan ends, or null when no date is selected.
+ * An unscheduled plan is never over.
  */
 export function dateEnd(input: DateEndInput): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.selectedDate ?? "");
-  if (!m) return null;
   const end = dateEndMinutes(input);
-  // Minutes > 1440 simply roll into the next day.
-  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10), 0, end);
+  return planEndInstant(
+    input.selectedDate,
+    input.selectedTime,
+    end,
+    input.timezone ?? "UTC",
+  );
 }
 
 /** dateEnd straight from a plan row's raw JSON columns (server-side use). */
-export function dateEndFromPlan(plan: DateEndPlanRow): Date | null {
+export function dateEndFromPlan(
+  plan: DateEndPlanRow,
+  stops: readonly DateEndStop[] = [],
+): Date | null {
   return dateEnd({
     selectedDate: plan.selectedDate,
     selectedTime: plan.selectedTime,
     selectedEntree: plan.selectedEntree,
     selectedActivities: safeParse<string[]>(plan.selectedActivities, []),
+    stops: [...stops],
     itinerary: safeParse<ItineraryJson | null>(plan.itinerary, null),
+    timezone: plan.timezone,
   });
 }
 
 /** F1 gate: has the date's end time passed? false when no date is selected. */
-export function isDateOver(plan: DateEndPlanRow, now: Date = new Date()): boolean {
-  const end = dateEndFromPlan(plan);
+export function isDateOver(
+  plan: DateEndPlanRow,
+  now: Date = new Date(),
+  stops: readonly DateEndStop[] = [],
+): boolean {
+  const end = dateEndFromPlan(plan, stops);
   return end !== null && now.getTime() > end.getTime();
 }
 

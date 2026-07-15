@@ -1,8 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useIsPresent } from "framer-motion";
 import Image from "next/image";
 import type { ReactNode } from "react";
+import { useHydratedReducedMotion } from "./useHydratedReducedMotion";
 
 type StepCardProps = {
   stickerSrc: string;
@@ -21,13 +22,22 @@ export function StepCard({
   subtitle,
   children,
 }: StepCardProps) {
+  const isPresent = useIsPresent();
+  const reduceMotion = useHydratedReducedMotion();
+
   return (
     <motion.section
       key={title}
-      initial={{ opacity: 0, y: 18, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -12, scale: 0.98 }}
-      transition={{ type: "spring", stiffness: 360, damping: 32 }}
+      aria-hidden={!isPresent}
+      inert={!isPresent}
+      initial={reduceMotion ? false : { opacity: 0, y: 18, scale: 0.98 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
+      exit={reduceMotion ? undefined : { opacity: 0, y: -12, scale: 0.98 }}
+      transition={
+        reduceMotion
+          ? undefined
+          : { type: "spring", stiffness: 360, damping: 32 }
+      }
       className="w-full rounded-[32px] border border-white/80 bg-white/75 p-5 shadow-[0_24px_80px_rgba(255,122,170,0.24)] backdrop-blur-xl sm:p-7"
     >
       <div className="mx-auto flex max-w-md flex-col items-center text-center">

@@ -1,8 +1,8 @@
 "use client";
 
-import { AnimatePresence } from "framer-motion";
+import { MotionConfig } from "framer-motion";
 import confetti from "canvas-confetti";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ConfirmedStep } from "./ConfirmedStep";
 import { DateStep } from "./DateStep";
 import { DateAvatar } from "./DateAvatar";
@@ -44,6 +44,11 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
     location: location ?? null,
   });
   const [cursorMessage, setCursorMessage] = useState<string | null>(null);
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   useEffect(() => {
     if (!cursorMessage) {
@@ -78,10 +83,12 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
   }
 
   function handleAccept() {
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const allowsMotion = window.matchMedia("(prefers-reduced-motion: no-preference)").matches;
+    const hasDesktopViewport = window.matchMedia("(min-width: 640px)").matches;
 
-    if (!reduceMotion) {
+    if (allowsMotion && hasDesktopViewport) {
       confetti({
+        disableForReducedMotion: true,
         particleCount: 90,
         spread: 70,
         origin: { y: 0.72 },
@@ -111,13 +118,13 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
   }
 
   return (
-    <main className="relative isolate flex min-h-svh flex-1 items-center justify-center overflow-hidden px-4 py-5 sm:px-6">
-      <FloatingDecor />
-      <PersonCursor message={cursorMessage} avatarSrc={avatarSrc} />
-      <DateAvatar step={state.step} avatarSrc={avatarSrc} />
-      <div className="relative z-10 w-full max-w-lg">
-        <ProgressHearts currentStep={state.step} />
-        <AnimatePresence mode="wait">
+    <MotionConfig reducedMotion={hydrated ? "user" : "always"}>
+      <main className="relative isolate flex min-h-svh flex-1 items-center justify-center overflow-hidden px-4 py-5 sm:px-6">
+        <FloatingDecor />
+        <PersonCursor message={cursorMessage} avatarSrc={avatarSrc} />
+        <DateAvatar step={state.step} avatarSrc={avatarSrc} />
+        <div className="relative z-10 w-full max-w-lg">
+          <ProgressHearts currentStep={state.step} />
           {state.step === "invite" ? (
             <InvitationStep
               key="invite"
@@ -133,6 +140,7 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
                 setCursorMessage(message);
               }}
               onAccept={handleAccept}
+              ready={hydrated}
             />
           ) : null}
 
@@ -222,6 +230,7 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
               selectedActivities={state.selectedActivities}
               dressVibe={state.dressVibe}
               inviteToken={inviteToken}
+              location={state.location}
               selectedDate={state.selectedDate ?? undefined}
               selectedTime={state.selectedTime ?? undefined}
               onConfirmed={(planId) =>
@@ -242,8 +251,8 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
           {state.step === "confirmed" && state.confirmedPlanId ? (
             <ConfirmedStep key="confirmed" planId={state.confirmedPlanId} />
           ) : null}
-        </AnimatePresence>
-      </div>
-    </main>
+        </div>
+      </main>
+    </MotionConfig>
   );
 }

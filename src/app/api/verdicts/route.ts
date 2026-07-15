@@ -1,7 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { datePlans, venueVerdicts } from "@/lib/db/schema";
-import { isDateOver } from "@/lib/date-end";
+import { isStoredPlanDateOver } from "@/lib/plan-lifecycle";
+import { requireRouteClaimedParticipant } from "@/lib/plan-route-access";
 import type { Venue } from "@/lib/venues";
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -60,11 +61,17 @@ export async function POST(request: NextRequest) {
   if (!plan) {
     return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
-  // F4: a canceled date never happened — nothing about it can be written.
+  try {
+    requireRouteClaimedParticipant(plan, userId);
+  } catch {
+    return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+  }
+
+  // F4: a canceled date never happened. Nothing about it can be written.
   if (plan.canceledAt) {
     return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
   }
-  if (!isDateOver(plan)) {
+  if (!(await isStoredPlanDateOver(plan))) {
     return NextResponse.json({ message: "Come back after your date 💞" }, { status: 403 });
   }
 

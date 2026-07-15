@@ -24,4 +24,35 @@ describe("signCloudinaryParams", () => {
     const b = signCloudinaryParams({ folder: "f", timestamp: 1 }, "s");
     expect(a).toBe(b);
   });
+
+  it("binds an upload signature to one non-overwritable public id", () => {
+    const signature = signCloudinaryParams(
+      {
+        overwrite: "false",
+        public_id: "date-memories/plan-1/user-1/photo-1",
+        timestamp: 1700000000,
+      },
+      "shhh",
+    );
+
+    expect(signature).not.toBe(
+      signCloudinaryParams(
+        {
+          overwrite: "false",
+          public_id: "date-memories/plan-1/user-1/photo-2",
+          timestamp: 1700000000,
+        },
+        "shhh",
+      ),
+    );
+    expect(signature).not.toBe(
+      signCloudinaryParams(
+        {
+          public_id: "date-memories/plan-1/user-1/photo-1",
+          timestamp: 1700000000,
+        },
+        "shhh",
+      ),
+    );
+  });
 });

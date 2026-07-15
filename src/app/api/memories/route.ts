@@ -1,10 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 import { dateMemories, datePlans, invites } from "@/lib/db/schema";
-import { isDateOver } from "@/lib/date-end";
+import { isStoredPlanDateOver } from "@/lib/plan-lifecycle";
 import { generateMemoryPoem } from "@/lib/memory-poem";
+import { requireRouteClaimedParticipant } from "@/lib/plan-route-access";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { reserveGeminiCall } from "@/lib/gemini-budget";
 
 function safeParse<T>(json: string | null, fallback: T): T {
   if (!json) return fallback;
@@ -35,20 +37,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
 
-  // Only the date's participants may write a memory.
-  const isParticipant =
-    userId === plan.senderId || userId === plan.recipientId || plan.recipientId === null;
-  if (!isParticipant) {
+  try {
+    requireRouteClaimedParticipant(plan, userId);
+  } catch {
     return NextResponse.json({ message: "Forbidden" }, { status: 403 });
   }
 
-  // F4: a canceled date never happened — nothing about it can be written.
+  // F4: a canceled date never happened. Nothing about it can be written.
   if (plan.canceledAt) {
     return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
   }
 
   // F1: keepsakes only open up once the date's end time has passed.
-  if (!isDateOver(plan)) {
+  if (!(await isStoredPlanDateOver(plan))) {
     return NextResponse.json({ message: "Come back after your date 💞" }, { status: 403 });
   }
 
@@ -62,17 +63,18 @@ export async function POST(request: NextRequest) {
     recipientName = inv?.recipientName ?? null;
   }
 
-  const poem = await generateMemoryPoem({
+  const canGeneratePoem = await reserveGeminiCall("poem", userId);
+  const poem = canGeneratePoem ? await generateMemoryPoem({
     notes,
     recipientName,
     selectedDateLabel: plan.selectedDateLabel,
     selectedEntree: plan.selectedEntree,
     activities: safeParse<string[]>(plan.selectedActivities, []),
-  });
+  }) : null;
 
   const now = new Date().toISOString();
 
-  // On update, only overwrite the poem if generation succeeded (don't wipe a
+  // On update, only overwrite the poem if generation succeeded. Do not wipe a
   // good poem when Gemini is unset or fails).
   const setValues: Record<string, string | null> = { notes, updatedAt: now };
   if (poem) setValues.poem = poem;

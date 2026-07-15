@@ -11,6 +11,15 @@ export type ItineraryInput = {
   selectedActivities: string[];
   selectedEntreeVenue?: { name: string; address: string } | null;
   selectedActivityVenues?: Record<string, { name: string; address: string }>;
+  /** Normalized lineup. When present, this order and these durations win. */
+  orderedStops?: ItineraryStopInput[];
+};
+
+export type ItineraryStopInput = {
+  key: string;
+  label: string;
+  durationMinutes: number;
+  venue: { name: string; address: string } | null;
 };
 
 /** One canonical stop the itinerary must cover — nothing more, nothing less. */
@@ -21,17 +30,26 @@ export type ItineraryStop = {
   label: string;
   emoji: string;
   venue: { name: string; address: string } | null;
+  durationMinutes: number;
 };
 
 const ENTREE_KEY = "__entree__";
 
 /** The exact stops a plan's itinerary must contain, in lineup order. */
 export function buildItineraryStops(input: ItineraryInput): ItineraryStop[] {
+  if (input.orderedStops && input.orderedStops.length > 0) {
+    return input.orderedStops.map((stop) => ({
+      ...stop,
+      emoji: stop.key === ENTREE_KEY ? "🍽️" : (ACTIVITY_ICONS[stop.key] ?? "✨"),
+    }));
+  }
+
   const stops: ItineraryStop[] = input.selectedActivities.map((act) => ({
     key: act,
     label: act,
     emoji: ACTIVITY_ICONS[act] ?? "✨",
     venue: input.selectedActivityVenues?.[act] ?? null,
+    durationMinutes: DEFAULT_STOP_DURATIONS[act] ?? 60,
   }));
   if (input.selectedEntree && input.selectedEntree !== "Surprise me") {
     stops.push({
@@ -39,6 +57,7 @@ export function buildItineraryStops(input: ItineraryInput): ItineraryStop[] {
       label: input.selectedEntree,
       emoji: "🍽️",
       venue: input.selectedEntreeVenue ?? null,
+      durationMinutes: DEFAULT_STOP_DURATIONS[ENTREE_KEY] ?? 60,
     });
   }
   return stops;
@@ -60,7 +79,7 @@ export function deterministicTimeline(
       activity: stop.venue ? `${stop.label} at ${stop.venue.name}` : stop.label,
       note: stop.venue ? stop.venue.address : "",
     };
-    t += DEFAULT_STOP_DURATIONS[stop.key] ?? 60;
+    t += stop.durationMinutes;
     return entry;
   });
 }

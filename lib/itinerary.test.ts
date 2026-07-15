@@ -32,6 +32,21 @@ describe("buildItineraryStops", () => {
     ).toEqual(["Coffee", "Sunset view"]);
     expect(buildItineraryStops({ ...input, selectedEntree: null })).toHaveLength(2);
   });
+
+  it("uses the normalized lineup order and durations when provided", () => {
+    const stops = buildItineraryStops({
+      ...input,
+      orderedStops: [
+        { key: "__entree__", label: "Tacos", durationMinutes: 90, venue: null },
+        { key: "Coffee", label: "Coffee", durationMinutes: 30, venue: null },
+      ],
+    });
+    expect(stops.map((stop) => stop.label)).toEqual(["Tacos", "Coffee"]);
+    expect(deterministicTimeline(stops, 18 * 60).map((entry) => entry.time)).toEqual([
+      "6:00 PM",
+      "7:30 PM",
+    ]);
+  });
 });
 
 describe("deterministicTimeline", () => {

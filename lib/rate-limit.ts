@@ -1,34 +1,25 @@
-import { db } from "@/lib/db";
-import { rateLimits } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { getDbClient } from "@/lib/db";
+import { reserveServiceBudget } from "@/lib/service-budget";
 
-// Persistent fixed-window rate limit. Returns true if the request is allowed.
-// Survives serverless cold starts (unlike an in-memory Map). Personal-scale —
-// the read-modify-write isn't strictly atomic, which is fine here.
+// Persistent, atomic fixed-window rate limit. Returns true if the request is
+// allowed and fails closed when the backing budget cannot be reserved.
 export async function checkRateLimit(
   key: string,
   limit: number,
   windowMs: number,
 ): Promise<boolean> {
   const now = Date.now();
+  const windowStart = Math.floor(now / windowMs) * windowMs;
 
   try {
-    const [row] = await db.select().from(rateLimits).where(eq(rateLimits.key, key)).limit(1);
-
-    if (!row || row.resetAt < now) {
-      await db
-        .insert(rateLimits)
-        .values({ key, count: 1, resetAt: now + windowMs })
-        .onConflictDoUpdate({ target: rateLimits.key, set: { count: 1, resetAt: now + windowMs } });
-      return true;
-    }
-
-    if (row.count >= limit) return false;
-
-    await db.update(rateLimits).set({ count: row.count + 1 }).where(eq(rateLimits.key, key));
-    return true;
+    const reservation = await reserveServiceBudget(getDbClient(), {
+      service: "request",
+      windowStart,
+      windowEnd: windowStart + windowMs,
+      limits: [{ subjectId: key, limit }],
+    });
+    return reservation.allowed;
   } catch {
-    // If the limiter errors, fail open rather than blocking real users.
-    return true;
+    return false;
   }
 }

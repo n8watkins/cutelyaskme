@@ -1,6 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { invites, datePlans, dateRatings, venueVerdicts } from "@/lib/db/schema";
+import { invites, datePlans, dateRatings, venueVerdicts, planStops } from "@/lib/db/schema";
 import { and, eq, ne, or, inArray, desc, sql } from "drizzle-orm";
 import Link from "next/link";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
@@ -10,6 +10,9 @@ import { DateReviewModal } from "@/components/DateReviewModal";
 import type { VerdictStop } from "@/components/VenueVerdicts";
 import { pickReviewPromptPlan, reviewPromptTitle } from "@/lib/review-prompt";
 import { ACTIVITY_ICONS, type Venue } from "@/lib/venues";
+import { classifyPlanDate } from "@/lib/plan-time";
+import { readPlanStops } from "@/lib/plan-stops";
+import { areRecipientPlanDetailsVisible } from "@/lib/plan-visibility";
 
 function parseJson<T>(json: string | null, fallback: T): T {
   if (!json) return fallback;
@@ -39,14 +42,44 @@ export default async function DashboardPage() {
   ]);
 
   const completedPlans = myPlans.filter((p) => p.completedAt !== null);
+  const normalizedStops = myPlans.length
+    ? await db
+        .select()
+        .from(planStops)
+        .where(inArray(planStops.planId, myPlans.map((plan) => plan.id)))
+        .orderBy(planStops.position)
+    : [];
+  const stopsByPlan = new Map(
+    myPlans.map((plan) => [
+      plan.id,
+      readPlanStops(
+        plan,
+        normalizedStops.filter((stop) => stop.planId === plan.id),
+      ),
+    ]),
+  );
   // Split by the date itself: upcoming (today or later) vs past.
-  // F4: canceled plans never count as upcoming — they live in Past, badged.
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // F4: canceled plans never count as upcoming. They live in Past, badged.
+  const now = new Date();
+  const hiddenSurprisePlanIds = new Set(
+    completedPlans
+      .filter(
+        (plan) =>
+          plan.senderId !== userId && !areRecipientPlanDetailsVisible(plan, now),
+      )
+      .map((plan) => plan.id),
+  );
+  const plansWithVisibleDetails = completedPlans.filter(
+    (plan) => !hiddenSurprisePlanIds.has(plan.id),
+  );
   const upcomingPlans = completedPlans.filter(
-    (p) => !p.canceledAt && p.selectedDate && p.selectedDate >= todayStr,
+    (plan) => {
+      const classification = classifyPlanDate(plan.selectedDate, plan.timezone, now);
+      return !plan.canceledAt && (classification === "today" || classification === "future");
+    },
   );
   const pastPlans = completedPlans.filter(
-    (p) => p.canceledAt || !p.selectedDate || p.selectedDate < todayStr,
+    (plan) => !upcomingPlans.includes(plan),
   );
 
   // F5: the soonest upcoming date is the hero; the rest list below it.
@@ -111,18 +144,15 @@ export default async function DashboardPage() {
     ...myRatings.map((r) => r.planId),
     ...myVerdicts.map((v) => v.planId),
   ]);
-  const reviewPlan = pickReviewPromptPlan(myPlans, reviewedPlanIds);
+  const reviewPlan = pickReviewPromptPlan(myPlans, reviewedPlanIds, now, stopsByPlan);
   let reviewStops: VerdictStop[] = [];
   if (reviewPlan) {
-    const activityVenues = parseJson<Record<string, Venue>>(reviewPlan.selectedActivityVenues, {});
-    const entreeVenue = parseJson<Venue | null>(reviewPlan.selectedEntreeVenue ?? null, null);
-    const activities = parseJson<string[]>(reviewPlan.selectedActivities, []);
-    reviewStops = [
-      ...activities
-        .filter((a) => activityVenues[a])
-        .map((a) => ({ activity: a, venue: activityVenues[a] })),
-      ...(entreeVenue ? [{ activity: "__entree__", venue: entreeVenue }] : []),
-    ];
+    reviewStops = (stopsByPlan.get(reviewPlan.id) ?? []).flatMap((stop) => {
+      const venue = parseJson<Venue | null>(stop.venue, null);
+      return venue
+        ? [{ activity: stop.kind === "entree" ? "__entree__" : stop.activity, venue }]
+        : [];
+    });
   }
 
   type PlaceItem = { venue: Venue; activity: string | null };
@@ -136,12 +166,11 @@ export default async function DashboardPage() {
   // "Our map" — every venue from your plans that has coordinates.
   const mapPoints: HistoryPoint[] = [];
   for (const plan of myPlans) {
-    const activityVenues = parseJson<Record<string, Venue>>(plan.selectedActivityVenues, {});
-    const entreeVenue = parseJson<Venue | null>(plan.selectedEntreeVenue ?? null, null);
-    const entries: { activity: string; venue: Venue }[] = [
-      ...Object.entries(activityVenues).map(([activity, venue]) => ({ activity, venue })),
-      ...(entreeVenue ? [{ activity: plan.selectedEntree ?? "Dinner", venue: entreeVenue }] : []),
-    ];
+    if (hiddenSurprisePlanIds.has(plan.id)) continue;
+    const entries = (stopsByPlan.get(plan.id) ?? []).flatMap((stop) => {
+      const venue = parseJson<Venue | null>(stop.venue, null);
+      return venue ? [{ activity: stop.activity, venue }] : [];
+    });
     for (const { activity, venue } of entries) {
       if (venue && typeof venue.lat === "number" && typeof venue.lng === "number") {
         mapPoints.push({
@@ -174,10 +203,12 @@ export default async function DashboardPage() {
   }
   const totalDates = completedPlans.length;
   const favCuisine = mode(
-    completedPlans.map((p) => p.selectedEntree).filter((e): e is string => !!e && e !== "Surprise me"),
+    plansWithVisibleDetails
+      .map((p) => p.selectedEntree)
+      .filter((e): e is string => !!e && e !== "Surprise me"),
   );
   const allActivities: string[] = [];
-  for (const p of completedPlans) {
+  for (const p of plansWithVisibleDetails) {
     try {
       allActivities.push(...(JSON.parse(p.selectedActivities) as string[]));
     } catch {}
@@ -231,6 +262,7 @@ export default async function DashboardPage() {
             recipientName={
               heroPlan.inviteId ? inviteRecipientName[heroPlan.inviteId] ?? null : null
             }
+            detailsHidden={hiddenSurprisePlanIds.has(heroPlan.id)}
           />
         </section>
       )}
@@ -247,6 +279,7 @@ export default async function DashboardPage() {
                 plan={plan}
                 isSender={plan.senderId === userId}
                 recipientName={plan.inviteId ? inviteRecipientName[plan.inviteId] ?? null : null}
+                detailsHidden={hiddenSurprisePlanIds.has(plan.id)}
               />
             ))}
           </div>
@@ -392,6 +425,7 @@ export default async function DashboardPage() {
                 plan={plan}
                 isSender={plan.senderId === userId}
                 recipientName={plan.inviteId ? inviteRecipientName[plan.inviteId] ?? null : null}
+                detailsHidden={hiddenSurprisePlanIds.has(plan.id)}
               />
             ))}
           </div>
@@ -470,10 +504,12 @@ function HeroPlanCard({
   plan,
   isSender,
   recipientName,
+  detailsHidden,
 }: {
   plan: PlanCardPlan;
   isSender: boolean;
   recipientName: string | null;
+  detailsHidden: boolean;
 }) {
   const { activities, who, when } = planCardCopy(plan, isSender, recipientName);
   return (
@@ -485,7 +521,11 @@ function HeroPlanCard({
         <div className="min-w-0">
           <p className="text-lg font-black text-[#3a2530]">{who}</p>
           {when && <p className="mt-1 text-sm font-black text-[#ff7aaa]">{when}</p>}
-          {activities.length > 0 && (
+          {detailsHidden ? (
+            <p className="mt-1 text-xs font-black text-[#c0a0b0]">
+              Surprise details unlock when the date begins 🎁
+            </p>
+          ) : activities.length > 0 && (
             <p className="mt-1 text-xs text-[#c0a0b0]">
               {activities.join(" + ")}
               {plan.selectedEntree ? ` · ${plan.selectedEntree}` : ""}
@@ -502,10 +542,12 @@ function PlanCard({
   plan,
   isSender,
   recipientName,
+  detailsHidden,
 }: {
   plan: PlanCardPlan;
   isSender: boolean;
   recipientName: string | null;
+  detailsHidden: boolean;
 }) {
   const { activities, who, when } = planCardCopy(plan, isSender, recipientName);
   const canceled = plan.canceledAt !== null;
@@ -526,7 +568,11 @@ function PlanCard({
             )}
           </p>
           {when && <p className="mt-0.5 text-sm text-[#8a6a78]">{when}</p>}
-          {activities.length > 0 && (
+          {detailsHidden ? (
+            <p className="mt-0.5 text-xs font-black text-[#c0a0b0]">
+              Surprise details unlock when the date begins 🎁
+            </p>
+          ) : activities.length > 0 && (
             <p className="mt-0.5 text-xs text-[#c0a0b0]">
               {activities.join(" + ")}
               {plan.selectedEntree ? ` · ${plan.selectedEntree}` : ""}

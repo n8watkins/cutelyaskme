@@ -15,7 +15,7 @@ export function parseMapZoomMode(raw: string | null): MapZoomMode {
   return raw === "plain" ? "plain" : "ctrl";
 }
 
-/** B3: Yelp hard-caps search radius at 25 mi; Overpass clamps to match. */
+/** B3: Shared product bounds keep business and Overpass searches aligned. */
 export const RADIUS_LIMIT_MIN_MI = 1;
 export const RADIUS_LIMIT_MAX_MI = 25;
 
@@ -24,7 +24,7 @@ export type UserSettings = {
   defaultRadiusMi: number;
   /** Planner slider's lower bound (>= 1 mi). */
   radiusMinMi: number;
-  /** Planner slider's upper bound (<= 25 mi, the Yelp cap). */
+  /** Planner slider's upper bound (<= 25 mi). */
   radiusMaxMi: number;
   mapZoomMode: MapZoomMode;
   /** E3: calendar export shape — one event vs. one event per stop. */

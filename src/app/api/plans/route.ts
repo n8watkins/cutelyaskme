@@ -1,17 +1,30 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
-import { invites, datePlans } from "@/lib/db/schema";
+import { invites, datePlans, notificationJobs, planStops } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { generateItinerary } from "@/lib/itinerary";
-import { sendPlanNotificationEmail } from "@/lib/email";
+import { mintPlanCapability } from "@/lib/plan-capability";
+import { planCapabilityCookieName } from "@/lib/plan-route-access";
+import {
+  buildPlanStopRows,
+  itineraryStopsFromPlanStops,
+  legacyStopColumns,
+} from "@/lib/plan-stops";
+import { isValidTimeZone, resolveZonedDateTime } from "@/lib/plan-time";
+import { reserveGeminiCall } from "@/lib/gemini-budget";
+import { deliverPlanNotificationJobs } from "@/lib/notification-delivery";
+import {
+  NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  scheduleNotificationDelivery,
+} from "@/lib/notification-queue";
+import { hasVerifiedEmailAddress } from "@/lib/user-email";
+import { afterResponse } from "@/lib/after-response";
+
+const CAPABILITY_TTL_SECONDS = 90 * 24 * 60 * 60;
 
 export async function POST(request: NextRequest) {
   const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-  }
-
   const body = await request.json().catch(() => null);
   const {
     inviteToken,
@@ -22,11 +35,29 @@ export async function POST(request: NextRequest) {
     selectedEntree,
     selectedActivities,
     dressVibe,
+    timezone: requestedTimezone,
   } = body ?? {};
 
   if (!inviteToken) {
     return NextResponse.json({ message: "Missing invite token" }, { status: 400 });
   }
+
+  if (typeof requestedTimezone !== "string" || !isValidTimeZone(requestedTimezone)) {
+    return NextResponse.json({ message: "Invalid timezone" }, { status: 400 });
+  }
+  const timezone = requestedTimezone;
+  if (
+    typeof selectedDate === "string" &&
+    typeof selectedTime === "string" &&
+    !resolveZonedDateTime(selectedDate, selectedTime, timezone).ok
+  ) {
+    return NextResponse.json({ message: "Invalid date or time" }, { status: 400 });
+  }
+
+  const activities = Array.isArray(selectedActivities)
+    ? selectedActivities.filter((value): value is string => typeof value === "string")
+    : [];
+  const entree = typeof selectedEntree === "string" ? selectedEntree : null;
 
   const [invite] = await db
     .select()
@@ -44,12 +75,55 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Invite already completed" }, { status: 409 });
   }
 
-  let planId!: string;
+  if (userId) {
+    const user = await currentUser();
+    if (!user || !hasVerifiedEmailAddress(user.emailAddresses, invite.recipientEmail)) {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    }
+  }
+
+  const capabilitySecret = process.env.PLAN_CAPABILITY_SECRET;
+  if (!userId && !capabilitySecret) {
+    return NextResponse.json({ message: "Anonymous plan access is unavailable" }, { status: 500 });
+  }
+
+  const planId = crypto.randomUUID();
+  const normalizedStops = buildPlanStopRows(planId, {
+    selectedActivities: activities,
+    selectedEntree: entree,
+  });
+  const legacyStops = legacyStopColumns(normalizedStops);
+  const scheduledStart =
+    typeof selectedDate === "string" && typeof selectedTime === "string"
+      ? resolveZonedDateTime(selectedDate, selectedTime, timezone)
+      : null;
+  const capabilityExpiresAt = Math.max(
+    Date.now() + CAPABILITY_TTL_SECONDS * 1000,
+    scheduledStart?.ok
+      ? scheduledStart.instant.getTime() + 30 * 24 * 60 * 60 * 1000
+      : 0,
+  );
+  let capabilityToken: string | null = null;
+  if (!userId && capabilitySecret) {
+    try {
+      capabilityToken = mintPlanCapability(
+        {
+          planId,
+          inviteId: invite.id,
+          capabilityVersion: invite.capabilityVersion,
+          expiresAt: capabilityExpiresAt,
+        },
+        capabilitySecret,
+      );
+    } catch {
+      return NextResponse.json({ message: "Anonymous plan access is unavailable" }, { status: 500 });
+    }
+  }
   let alreadyCompleted = false;
 
   try {
     await db.transaction(async (tx) => {
-      // Atomically claim the invite — only one concurrent request can win this.
+      // Atomically claim the invite - only one concurrent request can win this.
       const updated = await tx
         .update(invites)
         .set({ status: "completed" })
@@ -60,69 +134,94 @@ export async function POST(request: NextRequest) {
         throw new Error("already_completed");
       }
 
-      planId = crypto.randomUUID();
       await tx.insert(datePlans).values({
         id: planId,
         inviteId: invite.id,
         senderId: invite.senderId,
-        recipientId: userId,
-        selectedDate: selectedDate ?? null,
-        selectedDateLabel: selectedDateLabel ?? null,
-        selectedTime: selectedTime ?? null,
-        selectedTimeLabel: selectedTimeLabel ?? null,
-        selectedEntree: selectedEntree ?? null,
-        selectedActivities: JSON.stringify(selectedActivities ?? []),
+        recipientId: userId ?? null,
+        selectedDate: typeof selectedDate === "string" ? selectedDate : null,
+        selectedDateLabel: typeof selectedDateLabel === "string" ? selectedDateLabel : null,
+        selectedTime: typeof selectedTime === "string" ? selectedTime : null,
+        selectedTimeLabel: typeof selectedTimeLabel === "string" ? selectedTimeLabel : null,
+        timezone,
+        selectedEntree: entree,
+        selectedActivities: legacyStops.selectedActivities,
+        selectedEntreeVenue: legacyStops.selectedEntreeVenue,
+        selectedActivityVenues: legacyStops.selectedActivityVenues,
         itinerary: null,
         itineraryGeneratedAt: null,
         dressVibe: dressVibe ?? null,
         completedAt: new Date().toISOString(),
       });
+      if (normalizedStops.length > 0) {
+        await tx.insert(planStops).values(normalizedStops);
+      }
+      await tx
+        .insert(notificationJobs)
+        .values({
+          id: crypto.randomUUID(),
+          planId,
+          channel: "email",
+          targetId: "email",
+          kind: "sender_plan_completed",
+        })
+        .onConflictDoNothing();
     });
-  } catch {
+  } catch (error) {
     if (alreadyCompleted) {
       return NextResponse.json({ message: "Invite already completed" }, { status: 409 });
     }
+    console.error("Failed to save plan:", error);
     return NextResponse.json({ message: "Failed to save plan" }, { status: 500 });
   }
 
-  // Run Gemini and sender notification in parallel after the transaction commits —
-  // neither should block the response or roll back the plan if they fail.
-  const [itinerary] = await Promise.all([
-    generateItinerary({
-      selectedDateLabel,
-      selectedTimeLabel,
-      selectedTime,
-      selectedEntree,
-      selectedActivities: selectedActivities ?? [],
-      selectedEntreeVenue: null,
-      selectedActivityVenues: {},
-    }).catch(() => null),
-    clerkClient()
-      .then((clerk) => clerk.users.getUser(invite.senderId))
-      .then(async (senderUser) => {
-        const senderEmail = senderUser.emailAddresses[0]?.emailAddress;
-        if (senderEmail) {
-          await sendPlanNotificationEmail({
-            senderEmail,
-            recipientName: invite.recipientName,
-            selectedDateLabel: selectedDateLabel ?? null,
-            planId,
-          });
-        }
-      })
-      .catch(() => null),
-  ]);
+  await scheduleNotificationDelivery({
+    idempotencyKey: `sender-plan-completed:${planId}`,
+    reason: "new",
+    delaySeconds: NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  });
+  afterResponse(async () => {
+    const canGenerateItinerary = await reserveGeminiCall(
+      "itinerary",
+      userId ?? `invite:${invite.id}`,
+    );
+    const [itinerary] = await Promise.all([
+      canGenerateItinerary ? generateItinerary({
+        selectedDateLabel,
+        selectedTimeLabel,
+        selectedTime,
+        selectedEntree,
+        selectedActivities: activities,
+        selectedEntreeVenue: null,
+        selectedActivityVenues: {},
+        orderedStops: itineraryStopsFromPlanStops(normalizedStops),
+      }).catch(() => null) : Promise.resolve(null),
+      deliverPlanNotificationJobs(planId, "sender_plan_completed").catch(() => null),
+    ]);
 
-  if (itinerary) {
-    await db
-      .update(datePlans)
-      .set({
-        itinerary: JSON.stringify(itinerary),
-        itineraryGeneratedAt: new Date().toISOString(),
-      })
-      .where(eq(datePlans.id, planId))
-      .catch(() => null);
+    if (itinerary) {
+      await db
+        .update(datePlans)
+        .set({
+          itinerary: JSON.stringify(itinerary),
+          itineraryGeneratedAt: new Date().toISOString(),
+        })
+        .where(eq(datePlans.id, planId))
+        .catch(() => null);
+    }
+  });
+
+  const response = NextResponse.json({ planId });
+  if (capabilityToken) {
+    response.cookies.set(planCapabilityCookieName(planId), capabilityToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: Math.floor((capabilityExpiresAt - Date.now()) / 1000),
+      expires: new Date(capabilityExpiresAt),
+    });
   }
 
-  return NextResponse.json({ planId });
+  return response;
 }

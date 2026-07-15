@@ -39,6 +39,7 @@ import { dayIndexFromDate, formatDayHours, openBadge, type VenueDetails } from "
 import { forecastEmoji, type DayForecast } from "@/lib/weather";
 import { KIND_ICONS, type SavedAddress } from "@/components/SavedAddresses";
 import { LocationAutocomplete } from "@/components/LocationAutocomplete";
+import { ENTREE_STOP_KEY, type PlanStopSelection } from "@/lib/plan-stops";
 
 type Waypoint = { label: string; lat: number; lng: number };
 // Why a venue search failed: expired session vs. anything else.
@@ -74,7 +75,7 @@ const DURATION_OPTIONS = [
   { label: "3h", value: 180 },
 ];
 
-const ENTREE_KEY = "__entree__";
+const ENTREE_KEY = ENTREE_STOP_KEY;
 const PAGE_SIZE = 5;
 
 type PlanData = {
@@ -92,6 +93,9 @@ type PlanData = {
   startPoint: Waypoint | null;
   pickupPoint: Waypoint | null;
   legModes: Record<string, LegMode>;
+  stopOrder?: string[];
+  stopDurations?: Record<string, number>;
+  stopTravelMinutes?: Record<string, number>;
 };
 
 type TimelineStop = {
@@ -105,7 +109,19 @@ type TimelineStop = {
 
 function buildStops(plan: PlanData): string[] {
   const hasEntree = !!plan.selectedEntree && plan.selectedEntree !== "Surprise me";
-  return [...plan.selectedActivities, ...(hasEntree ? [ENTREE_KEY] : [])];
+  const defaultOrder = [...plan.selectedActivities, ...(hasEntree ? [ENTREE_KEY] : [])];
+  const available = new Set(defaultOrder);
+  const requested = (plan.stopOrder ?? []).filter((key) => available.delete(key));
+  return [...requested, ...defaultOrder.filter((key) => available.delete(key))];
+}
+
+function buildStopDurations(plan: PlanData): Record<string, number> {
+  return Object.fromEntries(
+    buildStops(plan).map((key) => [
+      key,
+      plan.stopDurations?.[key] ?? DEFAULT_STOP_DURATIONS[key] ?? 60,
+    ]),
+  );
 }
 
 
@@ -168,13 +184,9 @@ export function SenderPlanningView({
   // C3: each stop carries its own price level (null = any) — tacos can be $
   // while dinner is $$$.
   const [stopPrices, setStopPrices] = useState<Record<string, number | null>>({});
-  const [stopDurations, setStopDurations] = useState<Record<string, number>>(() => {
-    const d: Record<string, number> = {};
-    for (const key of buildStops(plan)) {
-      d[key] = DEFAULT_STOP_DURATIONS[key] ?? 60;
-    }
-    return d;
-  });
+  const [stopDurations, setStopDurations] = useState<Record<string, number>>(() =>
+    buildStopDurations(plan),
+  );
 
   // B2: the search defaults to the pickup point (where the date starts), then
   // falls back to the plan's location. Always overridable via the search box.
@@ -532,11 +544,14 @@ export function SenderPlanningView({
 
   function setDuration(key: string, minutes: number) {
     setStopDurations((p) => ({ ...p, [key]: minutes }));
+    setSaved(false);
   }
 
   const initialStops = buildStops(plan);
+  const initialStopDurations = buildStopDurations(plan);
   const isDirty =
     JSON.stringify(stopOrder) !== JSON.stringify(initialStops) ||
+    JSON.stringify(stopDurations) !== JSON.stringify(initialStopDurations) ||
     JSON.stringify(activityVenues) !== JSON.stringify(plan.selectedActivityVenues) ||
     entreeVenue?.id !== plan.selectedEntreeVenue?.id ||
     JSON.stringify(startPoint) !== JSON.stringify(plan.startPoint) ||
@@ -671,6 +686,24 @@ export function SenderPlanningView({
     setSaving(true);
     setSaveError(null);
     try {
+      const stopSelection: Pick<
+        PlanStopSelection,
+        "stopOrder" | "stopDurations" | "stopTravelMinutes"
+      > = {
+        stopOrder,
+        stopDurations,
+        stopTravelMinutes: Object.fromEntries(
+          stopOrder.map((key) => {
+            const leg = chosenLeg(key);
+            return [
+              key,
+              leg
+                ? Math.round(leg.info.durationSec / 60)
+                : (plan.stopTravelMinutes?.[key] ?? 0),
+            ];
+          }),
+        ),
+      };
       const res = await fetch(`/api/plans/${planId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -680,6 +713,7 @@ export function SenderPlanningView({
           startPoint,
           pickupPoint,
           activityOrder: stopOrder.filter((k) => k !== ENTREE_KEY),
+          ...stopSelection,
           legModes,
         }),
       });

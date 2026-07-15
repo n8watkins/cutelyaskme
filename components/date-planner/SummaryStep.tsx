@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { entreeIcons } from "@/lib/food-options";
 import { StepCard } from "./StepCard";
 import { SharePlanButton } from "./SharePlanButton";
@@ -23,6 +23,7 @@ type SummaryStepProps = {
   selectedActivities: string[];
   dressVibe: DressVibe | null;
   inviteToken?: string;
+  location?: string | null;
   onConfirmed: (planId: string) => void;
   onEditDate: () => void;
   onEditTime: () => void;
@@ -41,6 +42,7 @@ export function SummaryStep({
   selectedActivities,
   dressVibe,
   inviteToken,
+  location,
   onConfirmed,
   onEditDate,
   onEditTime,
@@ -50,6 +52,16 @@ export function SummaryStep({
 }: SummaryStepProps) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [timezone, setTimezone] = useState("");
+  const [timezones, setTimezones] = useState(["UTC"]);
+
+  useEffect(() => {
+    const supported = Intl.supportedValuesOf?.("timeZone") ?? [];
+    const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    Promise.resolve().then(() => {
+      setTimezones(Array.from(new Set([browserZone, "UTC", ...supported])).filter(Boolean));
+    });
+  }, []);
 
   const foodIcon =
     selectedEntree in entreeIcons
@@ -57,7 +69,7 @@ export function SummaryStep({
       : "🍽️";
 
   async function handleLockIn() {
-    if (!inviteToken) return;
+    if (!inviteToken || !timezone) return;
     setSubmitting(true);
     setSubmitError(null);
 
@@ -73,6 +85,7 @@ export function SummaryStep({
         selectedEntree,
         selectedActivities,
         dressVibe,
+        timezone,
       }),
     });
 
@@ -145,6 +158,30 @@ export function SummaryStep({
           )}
         </dl>
       </div>
+      {inviteToken ? (
+        <label className="mt-4 block rounded-[24px] border-2 border-[#e7d9ff] bg-white/90 p-4 text-left shadow-sm">
+          <span className="block text-xs font-black uppercase tracking-[0.16em] text-[#8a6a78]">
+            Date timezone
+          </span>
+          <span className="mt-1 block text-sm font-bold text-[#8a6a78]">
+            Choose the timezone where the date takes place{location ? ` near ${location}` : ""}.
+          </span>
+          <select
+            aria-label="Date timezone"
+            required
+            value={timezone}
+            onChange={(event) => setTimezone(event.target.value)}
+            className="mt-3 min-h-12 w-full rounded-2xl border-2 border-[#ffd6e8] bg-white px-3 text-sm font-black text-[#3a2530] outline-none focus-visible:ring-4 focus-visible:ring-[#e7d9ff]"
+          >
+            <option value="">Choose the date&apos;s timezone</option>
+            {timezones.map((zone) => (
+              <option key={zone} value={zone}>
+                {zone.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <div className="mt-5">
         {inviteToken ? (
           <div className="grid gap-3">
@@ -154,7 +191,7 @@ export function SummaryStep({
             <button
               type="button"
               onClick={handleLockIn}
-              disabled={submitting}
+              disabled={submitting || !timezone}
               className="min-h-14 rounded-full bg-[#ff7aaa] px-5 py-3 text-lg font-black text-white shadow-[0_14px_30px_rgba(255,122,170,0.32)] outline-none transition disabled:opacity-60 focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
             >
               {submitting ? "Locking it in…" : "Lock it in 🔒"}

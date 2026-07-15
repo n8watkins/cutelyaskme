@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/notifications/process",
+      "schedule": "0 3 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/queues/notifications/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "notification-delivery",
+          "retryAfterSeconds": 120,
+          "initialDelaySeconds": 0
+        }
+      ]
+    }
+  }
+}

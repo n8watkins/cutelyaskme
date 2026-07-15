@@ -17,6 +17,7 @@ import { KeepsakeCard } from "@/components/memory/KeepsakeCard";
 import type { Venue } from "@/lib/venues";
 import { browserStaticMapUrl, numberedStopMarkers } from "@/lib/static-map";
 import { trackApiUsage } from "@/lib/api-usage";
+import { isStoredPlanDateOver } from "@/lib/plan-lifecycle";
 
 // Display serif for the poem centerpiece + title.
 const playfair = Playfair_Display({
@@ -51,6 +52,7 @@ export default async function MemoryPage({
   // F4: a canceled date never happened — there is no keepsake for it,
   // shared link or not.
   if (plan.canceledAt) notFound();
+  if (!(await isStoredPlanDateOver(plan))) notFound();
 
   const rows = await db.select().from(dateMemories).where(eq(dateMemories.planId, id));
 
@@ -68,10 +70,10 @@ export default async function MemoryPage({
       // A participant who isn't signed in yet — same /login flow as elsewhere.
       redirect(`/login?redirect_url=/plan/${id}/memory`);
     }
-    // Mirrors the memories API: sender, recipient, or an unclaimed plan
-    // (recipientId null — the recipient may not have linked her account yet).
+    // Mirrors the memories API: only a claimed sender or recipient.
     const isParticipant =
-      userId === plan.senderId || userId === plan.recipientId || plan.recipientId === null;
+      userId === plan.senderId ||
+      (plan.recipientId !== null && userId === plan.recipientId);
     if (!isParticipant) notFound();
   }
 
@@ -79,6 +81,7 @@ export default async function MemoryPage({
   // viewer's own if they wrote one, else their partner's (one row per
   // (plan, author)).
   const memory = sharedMemory ?? pickMemoryForViewer(rows, userId);
+  const isPublicShare = sharedMemory !== null;
 
   if (!memory) {
     // Friendly empty state — nothing written yet (or the date isn't over).
@@ -117,7 +120,7 @@ export default async function MemoryPage({
     ...(entreeVenue ? [{ lat: entreeVenue.lat, lng: entreeVenue.lng }] : []),
   ];
   const mapUrl =
-    stopPoints.length > 0
+    !isPublicShare && stopPoints.length > 0
       ? browserStaticMapUrl({
           markers: numberedStopMarkers(stopPoints),
           path: stopPoints,
@@ -136,8 +139,8 @@ export default async function MemoryPage({
     <div className={playfair.variable}>
       <KeepsakeCard
         planId={id}
-        title={itinerary?.title ?? "Our Date"}
-        dateLabel={plan.selectedDateLabel}
+        title={isPublicShare ? "A Date Night Keepsake" : (itinerary?.title ?? "Our Date")}
+        dateLabel={isPublicShare ? null : plan.selectedDateLabel}
         poem={memory.poem}
         notes={memory.notes}
         photos={parsePhotoRefs(memory.photoRefs)}

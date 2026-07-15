@@ -4,6 +4,7 @@ import { cacheGet, cacheSet } from "@/lib/place-cache";
 import { mapPriceLevel, type Venue } from "@/lib/venues";
 import { trackApiUsage } from "@/lib/api-usage";
 import { sanitizePlanId } from "@/lib/api-limits";
+import { reserveTrackedApiCall } from "@/lib/api-budget";
 
 const PLACES_BASE = "https://places.googleapis.com/v1";
 
@@ -88,6 +89,10 @@ export async function GET(request: NextRequest) {
   const cached = await cacheGet<Venue[]>(cacheKey);
   if (cached !== undefined) {
     return page(cached);
+  }
+
+  if (!(await reserveTrackedApiCall("places-search", userId))) {
+    return NextResponse.json({ venues: [], hasMore: false }, { status: 429 });
   }
 
   try {

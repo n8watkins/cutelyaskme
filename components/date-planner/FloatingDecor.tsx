@@ -1,6 +1,7 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useHydratedReducedMotion } from "./useHydratedReducedMotion";
 
 const decor = [
   { text: "♥", left: "8%", top: "14%", delay: 0 },
@@ -16,7 +17,7 @@ const decor = [
 ];
 
 export function FloatingDecor() {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydratedReducedMotion();
 
   return (
       <div aria-hidden className="pointer-events-none fixed inset-0 overflow-hidden">

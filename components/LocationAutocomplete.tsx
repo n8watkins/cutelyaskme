@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { AutocompleteSuggestion } from "@/app/api/autocomplete/route";
 import type { PlaceGeo } from "@/app/api/place-geo/route";
 
@@ -36,6 +36,7 @@ export function LocationAutocomplete({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
 
   // Close on outside click
   useEffect(() => {
@@ -126,13 +127,25 @@ export function LocationAutocomplete({
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"
+        aria-controls={listboxId}
+        aria-activedescendant={active >= 0 ? `${listboxId}-option-${active}` : undefined}
       />
       {open && (
-        <ul className="absolute left-0 right-0 top-full z-[1200] mt-1 overflow-hidden rounded-2xl border-2 border-[#ffd6e8] bg-white shadow-lg">
+        <ul
+          id={listboxId}
+          role="listbox"
+          className="absolute left-0 right-0 top-full z-[1200] mt-1 overflow-hidden rounded-2xl border-2 border-[#ffd6e8] bg-white shadow-lg"
+        >
           {suggestions.map((s, i) => (
-            <li key={s.placeId}>
+            <li
+              id={`${listboxId}-option-${i}`}
+              key={s.placeId}
+              role="option"
+              aria-selected={i === active}
+            >
               <button
                 type="button"
+                tabIndex={-1}
                 onMouseDown={(e) => e.preventDefault()} // keep input focus
                 onClick={() => void pick(s)}
                 onMouseEnter={() => setActive(i)}
@@ -147,7 +160,10 @@ export function LocationAutocomplete({
               </button>
             </li>
           ))}
-          <li className="border-t border-[#fff0f6] px-3 py-1 text-right text-[9px] text-[#c0a0b0]">
+          <li
+            role="presentation"
+            className="border-t border-[#fff0f6] px-3 py-1 text-right text-[9px] text-[#c0a0b0]"
+          >
             powered by Google
           </li>
         </ul>

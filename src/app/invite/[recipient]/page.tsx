@@ -82,10 +82,10 @@ export default async function InvitePage({ params }: InvitePageProps) {
               This date has already been planned.
             </p>
             <a
-              href="/dashboard"
+              href={`/api/invites/redeem?token=${encodeURIComponent(invite.token)}`}
               className="mt-6 inline-block rounded-full bg-[#ff7aaa] px-6 py-3 font-black text-white"
             >
-              View dashboard
+              View your plan
             </a>
           </div>
         </main>

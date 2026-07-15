@@ -11,6 +11,7 @@ type InvitationStepProps = {
   onNoAttempt: () => void;
   onNoCommentary: (message: string) => void;
   onAccept: () => void;
+  ready: boolean;
 };
 
 export function InvitationStep({
@@ -19,6 +20,7 @@ export function InvitationStep({
   onNoAttempt,
   onNoCommentary,
   onAccept,
+  ready,
 }: InvitationStepProps) {
   const yesButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -39,9 +41,10 @@ export function InvitationStep({
             ref={yesButtonRef}
             type="button"
             onClick={onAccept}
+            disabled={!ready}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.96 }}
-            className="min-h-20 min-w-44 rounded-full bg-[#ff7aaa] px-10 py-5 text-2xl font-black text-white shadow-[0_18px_38px_rgba(255,122,170,0.4)] outline-none transition focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
+            className="min-h-20 min-w-44 rounded-full bg-[#ff7aaa] px-10 py-5 text-2xl font-black text-white shadow-[0_18px_38px_rgba(255,122,170,0.4)] outline-none transition disabled:cursor-wait disabled:opacity-70 focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
             animate={{
               scale: 1 + Math.min(noAttempts, 4) * 0.025,
               boxShadow:

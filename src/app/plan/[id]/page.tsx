@@ -1,6 +1,14 @@
 import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
 import { db } from "@/lib/db";
-import { datePlans, invites, dateRatings, venueVerdicts, dateMemories } from "@/lib/db/schema";
+import {
+  datePlans,
+  invites,
+  dateRatings,
+  venueVerdicts,
+  dateMemories,
+  planStops,
+} from "@/lib/db/schema";
 import type { ItineraryJson } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
@@ -15,6 +23,18 @@ import { isDateOver } from "@/lib/date-end";
 import { getUserSettingsState } from "@/lib/user-settings";
 import { browserStaticMapUrl, numberedStopMarkers } from "@/lib/static-map";
 import { trackApiUsage } from "@/lib/api-usage";
+import { authorizePlanViewer } from "@/lib/plan-access";
+import { verifyPlanCapability } from "@/lib/plan-capability";
+import { planCapabilityCookieName } from "@/lib/plan-route-access";
+import { areRecipientPlanDetailsVisible } from "@/lib/plan-visibility";
+import { claimPlanRecipient } from "@/lib/plan-claim";
+import { hasVerifiedEmailAddress } from "@/lib/user-email";
+import {
+  ENTREE_STOP_KEY,
+  readPlanStops,
+  stopDurationsByKey,
+  stopTravelMinutesByKey,
+} from "@/lib/plan-stops";
 
 type PlanPageProps = {
   params: Promise<{ id: string }>;
@@ -39,37 +59,78 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
   const isSender = userId === plan.senderId;
 
-  // Block logged-in non-participants from viewing plans where the recipient is known
-  if (userId && !isSender && plan.recipientId !== null && plan.recipientId !== userId) {
-    notFound();
-  }
+  const invitation = plan.inviteId
+    ? (await db
+        .select({
+          recipientName: invites.recipientName,
+          recipientEmail: invites.recipientEmail,
+          location: invites.location,
+          capabilityVersion: invites.capabilityVersion,
+        })
+        .from(invites)
+        .where(eq(invites.id, plan.inviteId))
+        .limit(1))[0]
+    : undefined;
 
   // Claim the plan for the recipient when she opens it signed in with the invited
   // email — links it to her account so it shows on her dashboard.
-  if (userId && !isSender && plan.recipientId === null && plan.inviteId) {
+  if (userId && !isSender && plan.recipientId === null && invitation) {
     const me = await currentUser();
-    const myEmail = me?.emailAddresses?.[0]?.emailAddress?.toLowerCase();
-    if (myEmail) {
-      const [inv] = await db
-        .select({ email: invites.recipientEmail })
-        .from(invites)
-        .where(eq(invites.id, plan.inviteId))
-        .limit(1);
-      if (inv && inv.email.toLowerCase() === myEmail) {
-        await db.update(datePlans).set({ recipientId: userId }).where(eq(datePlans.id, id));
-        plan.recipientId = userId;
-      }
+    if (me && hasVerifiedEmailAddress(me.emailAddresses, invitation.recipientEmail)) {
+      const claim = await claimPlanRecipient(id, plan.inviteId!, userId);
+      plan.recipientId = claim.recipientId;
+      invitation.capabilityVersion = claim.capabilityVersion;
     }
   }
 
+  let capability = null;
+  const capabilitySecret = process.env.PLAN_CAPABILITY_SECRET;
+  if (capabilitySecret) {
+    const token = (await cookies()).get(planCapabilityCookieName(id))?.value;
+    if (token) {
+      try {
+        const verification = verifyPlanCapability(token, capabilitySecret);
+        capability = verification.valid ? verification.claims : null;
+      } catch {}
+    }
+  }
+  const access = authorizePlanViewer(
+    {
+      id: plan.id,
+      senderId: plan.senderId,
+      recipientId: plan.recipientId,
+      inviteId: plan.inviteId,
+      capabilityVersion: invitation?.capabilityVersion ?? 0,
+    },
+    { userId, capability },
+  );
+  if (!access.allowed) notFound();
+  const isClaimedParticipant = access.role !== "anonymous";
+
+  const normalizedStopRows = await db
+    .select()
+    .from(planStops)
+    .where(eq(planStops.planId, id))
+    .orderBy(planStops.position);
+  const stops = readPlanStops(plan, normalizedStopRows);
   const itinerary = safeParse<ItineraryJson | null>(plan.itinerary, null);
-  const activities = safeParse<string[]>(plan.selectedActivities, []);
-  const ratings = await db.select().from(dateRatings).where(eq(dateRatings.planId, id));
+  const activities = stops
+    .filter((stop) => stop.kind === "activity")
+    .map((stop) => stop.activity);
+  const ratings = isClaimedParticipant
+    ? await db.select().from(dateRatings).where(eq(dateRatings.planId, id))
+    : [];
   const userRating = ratings.find((r) => r.raterId === userId) ?? null;
 
   // Chosen venues + this user's "would we go back?" swipes (for both views).
-  const entreeVenue = safeParse<Venue | null>(plan.selectedEntreeVenue ?? null, null);
-  const activityVenues = safeParse<Record<string, Venue>>(plan.selectedActivityVenues, {});
+  const entreeStop = stops.find((stop) => stop.kind === "entree");
+  const entreeVenue = safeParse<Venue | null>(entreeStop?.venue ?? null, null);
+  const activityVenues = Object.fromEntries(
+    stops
+      .filter((stop) => stop.kind === "activity")
+      .map((stop) => [stop.activity, safeParse<Venue | null>(stop.venue, null)])
+      .filter((entry): entry is [string, Venue] => entry[1] !== null),
+  );
   const verdictStops: VerdictStop[] = [
     ...activities
       .filter((a) => activityVenues[a])
@@ -77,7 +138,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
     ...(entreeVenue ? [{ activity: "__entree__", venue: entreeVenue }] : []),
   ];
   let userVerdicts: Record<string, VerdictStatus> = {};
-  if (userId && verdictStops.length > 0) {
+  if (userId && isClaimedParticipant && verdictStops.length > 0) {
     const rows = await db
       .select()
       .from(venueVerdicts)
@@ -87,7 +148,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
   // F1: reviews + keepsake unlock only once the date's end time has passed
   // (selected date + last stop's end, from the deterministic timeline).
-  const dateOver = isDateOver(plan);
+  const dateOver = isDateOver(plan, new Date(), stops);
 
   // F4: a canceled plan is frozen — both sides see a graceful called-off state,
   // never the planner or the post-date widgets.
@@ -99,7 +160,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
     poem: string | null;
     photos: { url: string; publicId: string }[];
   } | null = null;
-  if (userId) {
+  if (userId && isClaimedParticipant) {
     const [mem] = await db
       .select()
       .from(dateMemories)
@@ -119,13 +180,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
   const legModes = safeParse<Record<string, "drive" | "walk">>(plan.legModes, {});
 
   if (isSender) {
-    const invite = plan.inviteId
-      ? (await db
-          .select({ recipientName: invites.recipientName, location: invites.location })
-          .from(invites)
-          .where(eq(invites.id, plan.inviteId))
-          .limit(1))[0]
-      : undefined;
+    const invite = invitation;
 
     // F4: canceled → a quiet called-off state. No planner, no widgets, no edits.
     if (canceled) {
@@ -268,6 +323,11 @@ export default async function PlanPage({ params }: PlanPageProps) {
             startPoint,
             pickupPoint,
             legModes,
+            stopOrder: stops.map((stop) =>
+              stop.kind === "entree" ? ENTREE_STOP_KEY : stop.activity,
+            ),
+            stopDurations: stopDurationsByKey(stops),
+            stopTravelMinutes: stopTravelMinutesByKey(stops),
           }}
         />
         <div className="mx-auto max-w-lg px-4 pb-12">
@@ -301,24 +361,41 @@ export default async function PlanPage({ params }: PlanPageProps) {
     );
   }
 
-  // Her route for the night: pickup → each activity venue (in order) → dinner.
-  // The sender's start point stays off her view. Same stop order as the
-  // planner's buildStops: activities first, entree last.
+  if (!areRecipientPlanDetailsVisible(plan)) {
+    return (
+      <main className="grid min-h-screen place-items-center px-4 py-10">
+        <div className="w-full max-w-lg rounded-[28px] border-2 border-[#ffd6e8] bg-white/90 p-8 text-center shadow-sm">
+          <div className="mb-3 text-5xl">🎁</div>
+          <h1 className="text-3xl font-black text-[#3a2530]">Your date is a surprise</h1>
+          <p className="mt-2 text-[#8a6a78]">
+            The full plan unlocks when your date begins.
+          </p>
+          <dl className="mx-auto mt-6 grid max-w-sm gap-3 text-left">
+            <PlanRow icon="📅" label="Date" value={plan.selectedDateLabel ?? "To be revealed"} />
+            <PlanRow icon="🕰️" label="Time" value={plan.selectedTimeLabel ?? "To be revealed"} />
+          </dl>
+        </div>
+      </main>
+    );
+  }
+
+  // Her route follows the authoritative normalized stop order. The sender's
+  // start point stays off her view.
   const navStops: RouteNavStop[] = [
     ...(pickupPoint && pickupPoint.lat
       ? [{ id: "pickup", name: pickupPoint.label, lat: pickupPoint.lat, lng: pickupPoint.lng }]
       : []),
-    ...activities
-      .filter((a) => activityVenues[a])
-      .map((a) => ({
-        id: a,
-        name: activityVenues[a].name,
-        lat: activityVenues[a].lat,
-        lng: activityVenues[a].lng,
-      })),
-    ...(entreeVenue
-      ? [{ id: "__entree__", name: entreeVenue.name, lat: entreeVenue.lat, lng: entreeVenue.lng }]
-      : []),
+    ...stops.flatMap((stop) => {
+      const venue = safeParse<Venue | null>(stop.venue, null);
+      return venue
+        ? [{
+            id: stop.kind === "entree" ? ENTREE_STOP_KEY : stop.activity,
+            name: venue.name,
+            lat: venue.lat,
+            lng: venue.lng,
+          }]
+        : [];
+    }),
   ];
 
   let senderName = "someone special";
@@ -359,20 +436,20 @@ export default async function PlanPage({ params }: PlanPageProps) {
 
       {!dateOver && <RouteNavLinks stops={navStops} legModes={legModes} />}
 
-      {userId && dateOver && (
+      {userId && isClaimedParticipant && dateOver && (
         <div className="mt-8">
           <h2 className="mb-3 text-center font-black text-[#3a2530]">How did it go?</h2>
           <RatingWidget planId={id} existingRating={userRating} allRatings={ratings} />
         </div>
       )}
 
-      {userId && dateOver && verdictStops.length > 0 && (
+      {userId && isClaimedParticipant && dateOver && verdictStops.length > 0 && (
         <div className="mt-8">
           <VenueVerdicts planId={id} stops={verdictStops} initial={userVerdicts} />
         </div>
       )}
 
-      {userId && dateOver && (
+      {userId && isClaimedParticipant && dateOver && (
         <div className="mt-8">
           <MemoryKeepsake
             planId={id}
@@ -384,7 +461,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
       )}
 
       {/* F1: ratings, verdicts, and the keepsake stay locked until dateEnd. */}
-      {userId && !dateOver && <LockedUntilAfterDate />}
+      {userId && isClaimedParticipant && !dateOver && <LockedUntilAfterDate />}
     </main>
   );
 }

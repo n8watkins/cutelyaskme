@@ -1,6 +1,12 @@
 import { SignIn } from "@clerk/nextjs";
+import { validatedLoginReturnPath } from "@/lib/login-return";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string | string[] }>;
+}) {
+  const returnTo = validatedLoginReturnPath((await searchParams).returnTo);
   return (
     <main className="flex min-h-svh flex-col items-center justify-center px-4 py-12">
       <div className="mb-8 text-center">
@@ -10,7 +16,7 @@ export default function LoginPage() {
           To send or open a date invite
         </p>
       </div>
-      <SignIn />
+      <SignIn forceRedirectUrl={returnTo} />
     </main>
   );
 }

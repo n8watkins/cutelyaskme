@@ -14,11 +14,8 @@ recipient picks activities/food/vibe through a cute wizard, then the sender
 plans concrete venues on a map (`/plan/[id]`), confirms, and both review the
 date afterward (verdicts, memory poem, photos).
 
-**Stack:** Next.js 16 (App Router — it has breaking changes vs. your training
-data; check `node_modules/next/dist/docs/` when unsure, per `AGENTS.md`),
-React 19, TypeScript, Tailwind v4, Clerk auth (test keys), Turso (libSQL) +
-Drizzle, Resend email, Gemini (`gemini-3.1-flash-lite`), Yelp Fusion,
-Overpass/OSM, Nominatim, Leaflet, Cloudinary, web-push, suncalc, Vitest.
+**Stack:** The [`README`](../README.md#stack) owns the current technology inventory.
+This project uses Next.js 16 App Router, whose local documentation in `node_modules/next/dist/docs/` takes precedence over older framework knowledge.
 
 **Deployed:** https://date-planner-mini-site.vercel.app (stable alias).
 `git push` does NOT auto-deploy — deploy explicitly (below).
@@ -39,7 +36,7 @@ memory page. Batch 8 added `user_settings` (1 row per user; migration
 applied), `lib/settings.ts` (defaults/validation/`legacySettingsPatch`,
 tested), `lib/user-settings.ts` (`getUserSettings` / `getUserSettingsState`),
 GET/PATCH `/api/settings`, and the `/settings` page (radius default+bounds,
-zoom mode, calendar mode, Yelp usage meter, re-homed address book). The
+zoom mode, calendar mode, paid-service usage dashboard, re-homed address book). The
 planner consumes settings via server props from `/plan/[id]`; legacy
 `ca:mapZoomMode`/`ca:calendarMode` localStorage values migrate up once when no
 settings row exists (the row itself is the migration flag). (The per-plan
@@ -69,29 +66,27 @@ reuse, don't reinvent.
   what+why, end with `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
   Run `git status --short` first; never commit `.env.local` (gitignored — all
   secrets live there and on Vercel).
-- **DB migrations:** no drizzle-kit flow. Pattern: edit `lib/db/schema.ts`,
-  then write a temp `migrate-tmp.mjs` in the repo root using
-  `@libsql/client` + raw SQL (`CREATE TABLE IF NOT EXISTS` / `ALTER TABLE ADD
-  COLUMN`), run `npx dotenv -e .env.local -- node migrate-tmp.mjs`, verify the
-  output, delete the script. (Scripts must live in the repo root, not /tmp —
-  module resolution.)
+- **DB migrations:** `lib/db/schema.ts` owns the application schema, and durable ordered SQL migrations live in `drizzle/`.
+  Add schema changes as a new migration and run `npm run db:migrate`; never mutate a live database with an ad hoc script or `drizzle-kit push`.
+  The runner records applied files in `app_migrations`, refuses partial legacy foundation schemas, and requires `LEGACY_PLAN_TIMEZONES` to map exactly every existing plan before the timezone-verification migration can run.
+  Use `npm run db:migrate:validate-copy` to validate legacy adoption against a disposable database copy.
 - **Lint rules that have bitten us** (eslint will catch, but write it right):
   no synchronous `setState` in a `useEffect` body (wrap in
   `Promise.resolve().then(...)` or do it in an async callback); no ref
   reads/writes during render (move to effects); escape ALL interpolations in
-  Leaflet `bindPopup` HTML via `htmlEscape` from `@/lib/html`.
+  generated map info-window HTML via `htmlEscape` from `@/lib/html`.
 - **Gemini:** model `gemini-3.1-flash-lite` via raw fetch, header
   `x-goog-api-key`. `generationConfig.thinkingConfig.thinkingBudget: 0` is
   REQUIRED — without it thinking eats the token budget and truncates output.
 - **Overpass:** always send a `User-Agent`; endpoints list with mirror
   fallback already in `natural-places/route.ts`; NEVER cache a failed/empty
   fetch result.
-- **Yelp:** `venue.id` is the Yelp business id. OSM venues have ids `osm-*`;
-  hand-dropped pins have `source: "custom"` + id `custom-*`. Reviews endpoint
-  is paid-tier (404s) — code degrades gracefully; don't "fix" it.
-- **API frugality (user cares a lot):** never fetch venues eagerly — searches
-  are explicit per-stop actions; track outbound calls via
-  `trackApiUsage(service)` from `@/lib/api-usage` (cache hits don't count).
+- **Venue identifiers:** business `venue.id` values are Google Place ids.
+  OSM venues have ids `osm-*`; hand-dropped pins have `source: "custom"` plus id `custom-*`.
+  Legacy Yelp ids can remain in stored plans, and the Places details route negatively caches their expected misses.
+- **Paid-service budgets:** never fetch venues eagerly; searches are explicit per-stop actions.
+  Every paid server-side API call must atomically reserve its per-viewer and global daily budget through `reserveTrackedApiCall` before dispatch, then record successful usage through `trackApiUsage` (cache hits do not count).
+  Browser Maps loads and static-map image fetches remain protected by the Google Cloud quota caps documented in `lib/api-limits.ts`.
 - **Settings (Batch 8, live):** user preferences live in the `user_settings`
   table — add new prefs as columns + `lib/settings.ts` parse/merge validation,
   NOT as new `ca:` localStorage keys. The planner gets settings as server
@@ -127,13 +122,11 @@ reuse, don't reinvent.
   `new Date()` inline in a component body is a lint error. Do now-comparisons
   inside lib helpers (`isDateOver` in `lib/date-end.ts`, `pickReviewPromptPlan`
   in `lib/review-prompt.ts`) and call those from the component.
-- **Post-date lifecycle (Batch 7):** `isDateOver(plan)` from `lib/date-end`
-  gates ratings/verdicts/memories — client AND server (the POST routes 403
-  with "Come back after your date 💞"). `date_plans.canceled_at` freezes a
-  plan — every per-plan write route (PATCH, notify, ratings, verdicts,
-  memories, photos) rejects canceled plans with 409. `confirmedAt` is what
-  marks a plan shared/sent (set by Share/Surprise; cancel only notifies when
-  it's set). `/plan/[id]` has four render paths: canceled → called-off card;
+- **Plan lifecycle:** timezone-aware date completion uses normalized `plan_stops` through `isStoredPlanDateOver`; do not infer an instant from a server or browser timezone.
+  Ratings, verdicts, memories, and photo writes are gated after the date on both client and server.
+  Both `date_plans.canceled_at` and `confirmedAt` freeze plan details; the sender PATCH route rejects either state with 409, including a concurrent confirmation during an update.
+  Share/Surprise sets `confirmedAt` and queues its idempotent notifications; cancel only queues a notification for a previously confirmed plan.
+  `/plan/[id]` has four render paths: canceled → called-off card;
   sender+over → read-only reflection view; sender+active → planner;
   recipient/shared view. F3's never-re-prompt = server check (existing
   rating/verdicts) + `ca:reviewPrompted:<planId>` localStorage flag.
@@ -143,28 +136,28 @@ reuse, don't reinvent.
 | File | What it is |
 |---|---|
 | `components/sender/SenderPlanningView.tsx` | The whole sender planner (~1500 lines): stops, search, timeline, sun strip, waypoints, save/notify. `StopCard`, `VenueCard`, `WaypointPicker`, `SunStrip`, `BannerItem` live here |
-| `components/sender/DateMap.tsx` | Leaflet map: numbered stop pins, candidate pins, waypoints, search pin+radius, click-to-pick (A5), wheel-zoom modes |
+| `components/sender/DateMap.tsx` | Google map: numbered stop pins, candidate pins, waypoints, search pin+radius, click-to-pick (A5), wheel-zoom modes |
 | `lib/venues.ts` | `Venue` type, activity→query maps, `NATURAL_PLACE_ACTIVITIES`, `NO_VENUE_ACTIVITIES`, durations, icons |
 | `lib/calendar.ts` | `buildGCalLink`, `buildItineraryText`, `icsEscape` (tested) |
-| `lib/datetime.ts` / `lib/sun.ts` / `lib/geo.ts` / `lib/hours.ts` | tested pure helpers (time parsing, sun warnings, haversine, Yelp hours/badges) |
+| `lib/datetime.ts` / `lib/sun.ts` / `lib/geo.ts` / `lib/hours.ts` | tested pure helpers (time parsing, sun warnings, haversine, Google Places hours/badges) |
 | `lib/itinerary.ts` | Deterministic timeline + Gemini notes/tips with validation (tested; used by plan PATCH + create) |
 | `lib/route-legs.ts` | travel-leg types, cache keys, Routes API response mapping, fallback estimates, `formatLeg` (tested) |
 | `lib/schedule.ts` | `projectedStarts` + `suggestOrder` sunset-aware reordering (tested) |
 | `src/app/api/route/route.ts` | Google Routes travel times (driving + short-leg walking), `place_cache`d |
 | `src/app/api/plans/[id]/route.ts` | PATCH: saves venues/waypoints/order/legModes, regenerates itinerary |
-| `src/app/api/places/route.ts` (+ `[id]/route.ts`) | Yelp search (+ details/hours/reviews), `place_cache`d |
+| `src/app/api/places/route.ts` (+ `[id]/route.ts`) | Google Places search (+ details/hours/reviews), `place_cache`d |
 | `src/app/api/natural-places/route.ts` | Overpass natural spots (UA + mirrors + no-fail-caching) |
 | `src/app/api/geocode/route.ts` | Nominatim forward/reverse, cached |
 | `src/app/plan/[id]/page.tsx` | Plan page (server): four render paths (canceled / sender reflection / sender planner / recipient), itinerary timeline + tips |
-| `lib/db/schema.ts` | All tables. Recent: `saved_addresses.kind`, `api_usage`, `date_plans.leg_modes`, `date_plans.canceled_at` |
-| `lib/date-end.ts` | `dateEnd`/`isDateOver`/`dateEndFromPlan` from raw plan rows (tested) — the post-date gate |
+| `lib/db/schema.ts` | All tables, including normalized plan stops, migration ledger support, service budgets, and notification jobs |
+| `lib/date-end.ts` + `lib/plan-lifecycle.ts` | Timezone-aware end calculation plus the database-backed normalized-stop lifecycle gate |
 | `lib/review-prompt.ts` | F3 eligibility: `pickReviewPromptPlan`, `reviewPromptTitle` (tested) |
 | `components/DateReviewModal.tsx` | F3 modal: stars → verdict swipe cards → keepsake link |
 | `components/sender/CancelDateButton.tsx` + `src/app/api/plans/[id]/cancel/route.ts` | F4 cancel (idempotent, best-effort notify) |
 | `src/app/dashboard/page.tsx` | Dashboard: F5 order (hero → Upcoming → invites → map+stats → Past → Places), hosts the F3 modal; header links to `/settings` |
-| `lib/settings.ts` | `UserSettings` type, `DEFAULT_SETTINGS`, 1–25 mi hard limits, `parseSettingsPatch`/`mergeSettings`/`legacySettingsPatch`, `YELP_FREE_TIER_DAILY_CALLS` (tested) |
+| `lib/settings.ts` | `UserSettings` type, `DEFAULT_SETTINGS`, 1–25 mi hard limits, `parseSettingsPatch`/`mergeSettings`/`legacySettingsPatch` (tested) |
 | `lib/user-settings.ts` | `getUserSettings` / `getUserSettingsState` (returns `{ settings, persisted }`) / `saveUserSettings` upsert |
-| `src/app/settings/page.tsx` + `components/SettingsView.tsx` + `src/app/api/settings/route.ts` | Settings page (radius default+bounds, zoom mode, calendar mode, Yelp usage meter, address book) + GET/PATCH API |
+| `src/app/settings/page.tsx` + `components/SettingsView.tsx` + `src/app/api/settings/route.ts` | Settings page (radius default+bounds, zoom mode, calendar mode, paid-service usage dashboard, address book) + GET/PATCH API |
 
 ### Files Batch 9 will touch
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { MAX_MEMORY_PHOTOS } from "@/lib/photo-refs";
 
 type PhotoRef = { url: string; publicId: string };
 
@@ -110,37 +111,48 @@ export function MemoryKeepsake({
   }
 
   async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
+    const remainingSlots = Math.max(0, MAX_MEMORY_PHOTOS - photos.length);
+    const files = Array.from(e.target.files ?? []).slice(0, remainingSlots);
+    if (remainingSlots === 0) {
+      setError(`You can keep up to ${MAX_MEMORY_PHOTOS} photos.`);
+      if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
     if (files.length === 0) return;
     setUploading(true);
     setError(null);
 
     try {
-      const signRes = await fetch("/api/memories/sign");
-      if (!signRes.ok) {
-        setError("Photo uploads aren't set up yet.");
-        return;
-      }
-      const sign = (await signRes.json()) as {
-        cloudName: string;
-        apiKey: string;
-        timestamp: number;
-        folder: string;
-        signature: string;
-      };
-
       const uploaded: PhotoRef[] = [];
       for (const file of files) {
         if (file.size > MAX_BYTES) {
           setError("Each photo must be under 10 MB.");
           continue;
         }
+        const signRes = await fetch(`/api/memories/sign?planId=${encodeURIComponent(planId)}`);
+        if (!signRes.ok) {
+          setError(
+            signRes.status === 429
+              ? "You've reached today's photo upload limit."
+              : "Photo uploads aren't set up yet.",
+          );
+          break;
+        }
+        const sign = (await signRes.json()) as {
+          cloudName: string;
+          apiKey: string;
+          timestamp: number;
+          publicId: string;
+          overwrite: "false";
+          signature: string;
+        };
         const form = new FormData();
         form.append("file", file);
         form.append("api_key", sign.apiKey);
         form.append("timestamp", String(sign.timestamp));
         form.append("signature", sign.signature);
-        form.append("folder", sign.folder);
+        form.append("public_id", sign.publicId);
+        form.append("overwrite", sign.overwrite);
 
         const up = await fetch(`https://api.cloudinary.com/v1_1/${sign.cloudName}/image/upload`, {
           method: "POST",
@@ -151,6 +163,10 @@ export function MemoryKeepsake({
           continue;
         }
         const d = (await up.json()) as { secure_url: string; public_id: string };
+        if (d.public_id !== sign.publicId || typeof d.secure_url !== "string") {
+          setError("A photo upload returned an unexpected result.");
+          continue;
+        }
         uploaded.push({ url: d.secure_url, publicId: d.public_id });
       }
 

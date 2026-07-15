@@ -1,11 +1,15 @@
-import { auth, clerkClient } from "@clerk/nextjs/server";
-import { db } from "@/lib/db";
+import { auth } from "@clerk/nextjs/server";
+import { db, getDbClient } from "@/lib/db";
 import { datePlans, invites } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
-import { sendSpotReadyEmail } from "@/lib/email";
-import { sendPushToUser } from "@/lib/push";
-import type { Venue } from "@/lib/venues";
+import { deliverPlanNotificationJobs } from "@/lib/notification-delivery";
+import { enqueuePlanNotifications } from "@/lib/notification-outbox";
+import {
+  NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  scheduleNotificationDelivery,
+} from "@/lib/notification-queue";
+import { requireRouteSender } from "@/lib/plan-route-access";
 
 export async function POST(
   request: NextRequest,
@@ -23,25 +27,21 @@ export async function POST(
   const [plan] = await db
     .select()
     .from(datePlans)
-    .where(and(eq(datePlans.id, id), eq(datePlans.senderId, userId)))
+    .where(eq(datePlans.id, id))
     .limit(1);
 
   if (!plan) {
     return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
-
-  // F4: never share/notify a canceled plan.
-  if (plan.canceledAt) {
-    return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
+  try {
+    requireRouteSender(plan, userId);
+  } catch {
+    return NextResponse.json({ message: "Plan not found" }, { status: 404 });
   }
 
-  // Mark the plan confirmed (first time only) — this is what unlocks post-date
-  // reviews. Independent of whether the email below succeeds.
-  if (!plan.confirmedAt) {
-    await db
-      .update(datePlans)
-      .set({ confirmedAt: new Date().toISOString() })
-      .where(and(eq(datePlans.id, id), eq(datePlans.senderId, userId)));
+  // F4: never share or notify a canceled plan.
+  if (plan.canceledAt) {
+    return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
   }
 
   if (!plan.inviteId) {
@@ -58,61 +58,34 @@ export async function POST(
     return NextResponse.json({ message: "Invite not found" }, { status: 404 });
   }
 
-  // Get sender's display name
-  let senderName = "Someone special";
+  const client = getDbClient();
+  const transaction = await client.transaction("write");
   try {
-    const clerk = await clerkClient();
-    const sender = await clerk.users.getUser(userId);
-    senderName =
-      sender.firstName ??
-      sender.emailAddresses[0]?.emailAddress?.split("@")[0] ??
-      "Someone special";
-  } catch {}
-
-  // Build venue list for share mode (lat/lng feeds the email's static map)
-  let venues: { name: string; address: string; lat?: number; lng?: number }[] = [];
-  if (mode === "share") {
-    try {
-      const activityVenues = JSON.parse(plan.selectedActivityVenues) as Record<string, Venue>;
-      const entreeVenue = plan.selectedEntreeVenue
-        ? (JSON.parse(plan.selectedEntreeVenue) as Venue)
-        : null;
-      const activities = JSON.parse(plan.selectedActivities) as string[];
-      const toStop = (v: Venue) => ({ name: v.name, address: v.address, lat: v.lat, lng: v.lng });
-      venues = [
-        ...activities.map((a) => activityVenues[a]).filter(Boolean).map(toStop),
-        ...(entreeVenue ? [toStop(entreeVenue)] : []),
-      ];
-    } catch {}
-  }
-
-  // Track B: push the recipient if she's signed in + subscribed (best-effort).
-  if (plan.recipientId) {
-    const body =
-      mode === "share"
-        ? `${senderName} locked in the spots for your date — tap to see the plan.`
-        : `${senderName} has a date all planned for you ✨`;
-    await sendPushToUser(plan.recipientId, {
-      title: mode === "share" ? "Your date is set! 📍" : "A surprise awaits ✨",
-      body,
-      url: `/plan/${plan.id}`,
-    }).catch(() => 0);
-  }
-
-  try {
-    await sendSpotReadyEmail({
-      mode,
-      recipientEmail: invite.recipientEmail,
-      recipientName: invite.recipientName,
-      senderName,
-      selectedDateLabel: plan.selectedDateLabel,
-      selectedTimeLabel: plan.selectedTimeLabel,
-      planId: plan.id,
-      venues,
+    const updated = await transaction.execute({
+      sql: `
+        UPDATE date_plans
+        SET
+          confirmed_at = COALESCE(confirmed_at, ?),
+          notification_mode = COALESCE(notification_mode, ?)
+        WHERE id = ? AND sender_id = ? AND canceled_at IS NULL
+      `,
+      args: [new Date().toISOString(), mode, id, userId],
     });
-  } catch {
-    return NextResponse.json({ message: "Failed to send notification" }, { status: 500 });
+    if (updated.rowsAffected !== 1) {
+      await transaction.rollback();
+      return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
+    }
+    await enqueuePlanNotifications(transaction, id, "plan_ready");
+    await transaction.commit();
+  } finally {
+    transaction.close();
   }
 
-  return NextResponse.json({ ok: true });
+  await scheduleNotificationDelivery({
+    idempotencyKey: `plan-ready:${id}`,
+    reason: "new",
+    delaySeconds: NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  });
+  const delivery = await deliverPlanNotificationJobs(id, "plan_ready");
+  return NextResponse.json({ ok: true, delivery });
 }
