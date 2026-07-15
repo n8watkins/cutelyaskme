@@ -71,6 +71,20 @@ try {
         })
       ).rows.length > 0
     : false;
+  const expectedTimezoneAuditPlanIds = sourceTimezoneVerificationApplied
+    ? (
+        await beforeClient.execute({
+          sql: `
+            SELECT p.id
+            FROM date_plans p
+            INNER JOIN app_migrations m ON m.id = ?
+            WHERE julianday(p.created_at) <= julianday(m.applied_at)
+            ORDER BY p.id
+          `,
+          args: ["0003_plan_timezone_verification.sql"],
+        })
+      ).rows.map((row) => String(row.id))
+    : beforePlanIds;
   beforeClient.close();
 
   const migration = await execFileAsync(process.execPath, ["scripts/migrate.mjs"], {
@@ -137,16 +151,14 @@ try {
         `Timezone backfill is incomplete for plan ${missingTimezones.rows[0].id}`,
       );
     }
-    if (!sourceTimezoneVerificationApplied && beforePlanIds.length > 0) {
-      const verifiedTimezones = await afterClient.execute(
-        "SELECT plan_id FROM plan_timezone_backfills ORDER BY plan_id",
-      );
-      if (
-        JSON.stringify(verifiedTimezones.rows.map((row) => String(row.plan_id))) !==
-        JSON.stringify(beforePlanIds)
-      ) {
-        throw new Error("Per-plan timezone verification is incomplete");
-      }
+    const verifiedTimezones = await afterClient.execute(
+      "SELECT plan_id FROM plan_timezone_backfills ORDER BY plan_id",
+    );
+    if (
+      JSON.stringify(verifiedTimezones.rows.map((row) => String(row.plan_id))) !==
+      JSON.stringify(expectedTimezoneAuditPlanIds)
+    ) {
+      throw new Error("Per-plan timezone verification is incomplete");
     }
     const planColumnInfo = await afterClient.execute("PRAGMA table_info(date_plans)");
     const timezoneColumn = planColumnInfo.rows.find((row) => row.name === "timezone");

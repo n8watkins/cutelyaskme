@@ -234,7 +234,10 @@ describe("wave 0 migration", () => {
     const client = createClient({ url: `file:${databasePath}` });
     try {
       await client.execute({
-        sql: "INSERT INTO date_plans (id, sender_id, timezone) VALUES (?, ?, ?)",
+        sql: `
+          INSERT INTO date_plans (id, sender_id, timezone, created_at)
+          VALUES (?, ?, ?, datetime('now', '+1 minute'))
+        `,
         args: ["post-migration-plan", "sender-1", "America/Chicago"],
       });
     } finally {
@@ -261,6 +264,41 @@ describe("wave 0 migration", () => {
     } finally {
       original.close();
     }
+  });
+
+  it("rejects a migrated copy missing a historical timezone audit", async () => {
+    const environment = {
+      ...process.env,
+      TURSO_DATABASE_URL: `file:${databasePath}`,
+      TURSO_AUTH_TOKEN: "",
+    };
+    await execFileAsync(process.execPath, ["scripts/migrate.mjs"], {
+      env: environment,
+    });
+    const client = createClient({ url: `file:${databasePath}` });
+    try {
+      await client.batch(
+        [
+          `INSERT INTO date_plans (id, sender_id, timezone, created_at)
+           VALUES ('historical-plan', 'sender-1', 'America/New_York', '2000-01-01 00:00:00')`,
+          `INSERT INTO plan_timezone_backfills (
+             plan_id, previous_timezone, verified_timezone
+           ) VALUES ('historical-plan', 'UTC', 'America/New_York')`,
+          "DELETE FROM plan_timezone_backfills WHERE plan_id = 'historical-plan'",
+        ],
+        "write",
+      );
+    } finally {
+      client.close();
+    }
+
+    await expect(
+      execFileAsync(
+        process.execPath,
+        ["scripts/validate-migration-copy.mjs", databasePath],
+        { env: process.env },
+      ),
+    ).rejects.toThrow("Per-plan timezone verification is incomplete");
   });
 
   it("refuses to adopt a partial foundation schema", async () => {
