@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { areRecipientPlanDetailsVisible } from "./plan-visibility";
+import { planCapabilityCookieName } from "./plan-route-access";
 
 const authState = vi.hoisted(() => ({ userId: null as string | null }));
 const deliveryState = vi.hoisted(() => ({ calls: [] as string[] }));
@@ -42,6 +43,11 @@ vi.mock("./notification-delivery", () => ({
   },
 }));
 vi.mock("./cloudinary", () => ({ destroyCloudinaryImage: async () => undefined }));
+vi.mock("./after-response", () => ({
+  afterResponse: (task: () => Promise<void> | void) => {
+    void task();
+  },
+}));
 
 const execFileAsync = promisify(execFile);
 const databasePath = path.join(
@@ -58,6 +64,8 @@ type Routes = {
   saveMemory: typeof import("../src/app/api/memories/route").POST;
   savePhotos: typeof import("../src/app/api/memories/photos/route").PUT;
   shareMemory: typeof import("../src/app/api/memories/share/route").PATCH;
+  redeemInvite: typeof import("../src/app/api/invites/redeem/route").GET;
+  revokeCapability: typeof import("../src/app/api/plans/[id]/capability/revoke/route").POST;
 };
 
 let client: Client;
@@ -80,7 +88,18 @@ beforeAll(async () => {
   await execFileAsync(process.execPath, ["scripts/migrate.mjs"], { env: process.env });
   client = createClient({ url: `file:${databasePath}` });
 
-  const [createPlan, editPlan, notifyPlan, cancelPlan, ratePlan, saveMemory, savePhotos, shareMemory] =
+  const [
+    createPlan,
+    editPlan,
+    notifyPlan,
+    cancelPlan,
+    ratePlan,
+    saveMemory,
+    savePhotos,
+    shareMemory,
+    redeemInvite,
+    revokeCapability,
+  ] =
     await Promise.all([
       import("../src/app/api/plans/route"),
       import("../src/app/api/plans/[id]/route"),
@@ -90,6 +109,8 @@ beforeAll(async () => {
       import("../src/app/api/memories/route"),
       import("../src/app/api/memories/photos/route"),
       import("../src/app/api/memories/share/route"),
+      import("../src/app/api/invites/redeem/route"),
+      import("../src/app/api/plans/[id]/capability/revoke/route"),
     ]);
   routes = {
     createPlan: createPlan.POST,
@@ -100,6 +121,8 @@ beforeAll(async () => {
     saveMemory: saveMemory.POST,
     savePhotos: savePhotos.PUT,
     shareMemory: shareMemory.PATCH,
+    redeemInvite: redeemInvite.GET,
+    revokeCapability: revokeCapability.POST,
   };
 });
 
@@ -111,6 +134,96 @@ afterAll(async () => {
 });
 
 describe.sequential("authenticated database-backed API flow", () => {
+  it("requires callers to identify the event timezone", async () => {
+    await client.execute({
+      sql: `
+        INSERT INTO invites (
+          id, token, sender_id, recipient_name, recipient_email, status
+        ) VALUES (?, ?, ?, ?, ?, 'pending')
+      `,
+      args: [
+        "invite-no-timezone",
+        "token-no-timezone",
+        "sender-1",
+        "Recipient",
+        "recipient@example.test",
+      ],
+    });
+    authState.userId = null;
+
+    const response = await routes.createPlan(
+      jsonRequest("http://localhost/api/plans", "POST", {
+        inviteToken: "token-no-timezone",
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    const invite = await client.execute(
+      "SELECT status FROM invites WHERE id = 'invite-no-timezone'",
+    );
+    expect(invite.rows[0]?.status).toBe("pending");
+  });
+
+  it("rotates the completed invite token when anonymous access is revoked", async () => {
+    await client.execute({
+      sql: `
+        INSERT INTO invites (
+          id, token, sender_id, recipient_name, recipient_email, status
+        ) VALUES (?, ?, ?, ?, ?, 'pending')
+      `,
+      args: [
+        "invite-revocation",
+        "token-revocation",
+        "sender-1",
+        "Recipient",
+        "recipient@example.test",
+      ],
+    });
+    authState.userId = null;
+    const created = await routes.createPlan(
+      jsonRequest("http://localhost/api/plans", "POST", {
+        inviteToken: "token-revocation",
+        selectedDate: "2099-01-01",
+        selectedTime: "18:00",
+        timezone: "America/Los_Angeles",
+      }),
+    );
+    expect(created.status).toBe(200);
+    const { planId: revokedPlanId } = await created.json() as { planId: string };
+    expect(created.cookies.get(planCapabilityCookieName(revokedPlanId))?.value).toBeTruthy();
+
+    const beforeRevocation = await routes.redeemInvite(
+      new NextRequest(
+        "http://localhost/api/invites/redeem?token=token-revocation",
+      ),
+    );
+    expect(beforeRevocation.headers.get("location")).toBe(
+      `http://localhost/plan/${revokedPlanId}`,
+    );
+
+    authState.userId = "sender-1";
+    const revoked = await routes.revokeCapability(
+      new Request(`http://localhost/api/plans/${revokedPlanId}/capability/revoke`, {
+        method: "POST",
+      }),
+      { params: Promise.resolve({ id: revokedPlanId }) },
+    );
+    expect(revoked.status).toBe(200);
+
+    const invite = await client.execute(
+      "SELECT token, capability_version FROM invites WHERE id = 'invite-revocation'",
+    );
+    expect(invite.rows[0]?.token).not.toBe("token-revocation");
+    expect(invite.rows[0]?.capability_version).toBe(2);
+
+    const afterRevocation = await routes.redeemInvite(
+      new NextRequest(
+        "http://localhost/api/invites/redeem?token=token-revocation",
+      ),
+    );
+    expect(afterRevocation.headers.get("location")).toBe("http://localhost/login");
+  });
+
   it("does not let an unrelated signed-in user claim an invite token", async () => {
     await client.execute({
       sql: `
@@ -335,7 +448,7 @@ describe.sequential("authenticated database-backed API flow", () => {
       expect.objectContaining({ kind: "plan_ready", channel: "push", target_id: "recipient-device-2" }),
       expect.objectContaining({ kind: "sender_plan_completed", channel: "email", target_id: "email" }),
     ]);
-    expect(deliveryState.calls).toEqual([
+    expect(deliveryState.calls.filter((call) => call.startsWith(`${planId}:`))).toEqual([
       `${planId}:sender_plan_completed`,
       `${planId}:plan_ready`,
       `${planId}:date_canceled`,

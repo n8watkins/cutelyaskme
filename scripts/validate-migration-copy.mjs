@@ -115,6 +115,28 @@ try {
         if (!actual.has(column)) throw new Error(`Required column is missing: ${table}.${column}`);
       }
     }
+    const missingTimezones = await afterClient.execute(
+      "SELECT id FROM date_plans WHERE timezone IS NULL LIMIT 1",
+    );
+    if (missingTimezones.rows.length > 0) {
+      throw new Error(
+        `Timezone backfill is incomplete for plan ${missingTimezones.rows[0].id}`,
+      );
+    }
+    const planColumnInfo = await afterClient.execute("PRAGMA table_info(date_plans)");
+    const timezoneColumn = planColumnInfo.rows.find((row) => row.name === "timezone");
+    if (Number(timezoneColumn?.notnull ?? 0) !== 1) {
+      const timezoneTriggers = await afterClient.execute(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'trigger' AND name IN (
+          'date_plans_timezone_insert_required',
+          'date_plans_timezone_update_required'
+        )
+      `);
+      if (timezoneTriggers.rows.length !== 2) {
+        throw new Error("Legacy plan timezone constraints are missing");
+      }
+    }
 
     const requiredIndexes = [
       "notification_jobs_invite_delivery_unique",

@@ -39,11 +39,15 @@ export default async function RootLayout({
   // for that request. This also lets Next apply the nonce to framework assets.
   await connection();
 
-  return (
-    <ClerkProvider dynamic>
-      <html lang="en" className={`${nunito.variable} h-full antialiased`}>
-        <body className="min-h-full flex flex-col">{children}</body>
-      </html>
-    </ClerkProvider>
+  const document = (
+    <html lang="en" className={`${nunito.variable} h-full antialiased`}>
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+
+  return process.env.PLAYWRIGHT_E2E === "1" ? (
+    document
+  ) : (
+    <ClerkProvider dynamic>{document}</ClerkProvider>
   );
 }

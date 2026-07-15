@@ -228,6 +228,7 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
               selectedActivities={state.selectedActivities}
               dressVibe={state.dressVibe}
               inviteToken={inviteToken}
+              location={state.location}
               selectedDate={state.selectedDate ?? undefined}
               selectedTime={state.selectedTime ?? undefined}
               onConfirmed={(planId) =>

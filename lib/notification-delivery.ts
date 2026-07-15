@@ -148,6 +148,7 @@ async function deliverClaimedNotificationJobs(
                   title: "A little change of plans 💌",
                   body: "Tonight's plan was called off - more soon 💌",
                   url: `/plan/${plan.id}`,
+                  tag: job.id,
                 }
               : {
                   title:
@@ -159,6 +160,7 @@ async function deliverClaimedNotificationJobs(
                       ? `${senderName} locked in the spots for your date - tap to see the plan.`
                       : `${senderName} has a date all planned for you ✨`,
                   url: `/plan/${plan.id}`,
+                  tag: job.id,
                 },
         );
         if (pushResult === "missing" || pushResult === "dead") {
@@ -208,7 +210,7 @@ async function deliverClaimedNotificationJobs(
             selectedDateLabel: plan.selectedDateLabel,
             selectedTimeLabel: plan.selectedTimeLabel,
             planId: plan.id,
-            inviteToken: invite.token,
+            inviteToken: plan.recipientId ? undefined : invite.token,
             venues,
             deliveryKey: job.id,
           });

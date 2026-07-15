@@ -105,6 +105,7 @@ describe("wave 0 migration", () => {
           ...process.env,
           TURSO_DATABASE_URL: `file:${databasePath}`,
           TURSO_AUTH_TOKEN: "",
+          LEGACY_PLAN_TIMEZONE: "America/Los_Angeles",
         },
       });
 
@@ -142,6 +143,13 @@ describe("wave 0 migration", () => {
           venue: JSON.stringify({ id: "dinner", name: "Pasta Place" }),
         }),
       ]);
+      const plans = await migratedClient.execute(
+        "SELECT timezone FROM date_plans WHERE id = 'plan-1'",
+      );
+      expect(plans.rows[0]?.timezone).toBe("America/Los_Angeles");
+      await expect(
+        migratedClient.execute("INSERT INTO date_plans (id) VALUES ('missing-timezone')"),
+      ).rejects.toThrow("date_plans.timezone is required");
       const migrations = await migratedClient.execute(
         "SELECT id FROM app_migrations ORDER BY id",
       );
@@ -188,7 +196,7 @@ describe("wave 0 migration", () => {
     const result = await execFileAsync(
       process.execPath,
       ["scripts/validate-migration-copy.mjs", databasePath],
-      { env: process.env },
+      { env: { ...process.env, LEGACY_PLAN_TIMEZONE: "America/New_York" } },
     );
     expect(result.stdout).toContain("Validated migration on an isolated copy");
 
@@ -247,6 +255,56 @@ describe("wave 0 migration", () => {
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_migrations'",
       );
       expect(migrations.rows).toHaveLength(0);
+    } finally {
+      unchanged.close();
+    }
+  });
+
+  it("refuses to reinterpret legacy plans without an explicit timezone", async () => {
+    const client = createClient({ url: `file:${databasePath}` });
+    await client.batch(
+      [
+        `CREATE TABLE invites (
+          id text PRIMARY KEY NOT NULL,
+          token text NOT NULL,
+          sender_id text NOT NULL,
+          recipient_name text NOT NULL,
+          recipient_email text NOT NULL
+        )`,
+        `CREATE TABLE date_plans (
+          id text PRIMARY KEY NOT NULL,
+          selected_entree text,
+          selected_activities text NOT NULL DEFAULT '[]',
+          selected_entree_venue text,
+          selected_activity_venues text NOT NULL DEFAULT '{}'
+        )`,
+        `CREATE TABLE push_subscriptions (
+          id text PRIMARY KEY NOT NULL,
+          user_id text NOT NULL
+        )`,
+        "INSERT INTO date_plans (id) VALUES ('legacy-plan')",
+      ],
+      "write",
+    );
+    client.close();
+
+    await expect(
+      execFileAsync(process.execPath, ["scripts/migrate.mjs"], {
+        env: {
+          ...process.env,
+          TURSO_DATABASE_URL: `file:${databasePath}`,
+          TURSO_AUTH_TOKEN: "",
+          LEGACY_PLAN_TIMEZONE: "",
+        },
+      }),
+    ).rejects.toThrow("LEGACY_PLAN_TIMEZONE");
+
+    const unchanged = createClient({ url: `file:${databasePath}` });
+    try {
+      const columns = await unchanged.execute("PRAGMA table_info(date_plans)");
+      expect(columns.rows.map((row) => row.name)).not.toContain("timezone");
+      const plans = await unchanged.execute("SELECT id FROM date_plans");
+      expect(plans.rows).toEqual([expect.objectContaining({ id: "legacy-plan" })]);
     } finally {
       unchanged.close();
     }

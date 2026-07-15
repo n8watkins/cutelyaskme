@@ -15,6 +15,7 @@ import { isValidTimeZone, resolveZonedDateTime } from "@/lib/plan-time";
 import { reserveGeminiCall } from "@/lib/gemini-budget";
 import { deliverPlanNotificationJobs } from "@/lib/notification-delivery";
 import { hasVerifiedEmailAddress } from "@/lib/user-email";
+import { afterResponse } from "@/lib/after-response";
 
 const CAPABILITY_TTL_SECONDS = 90 * 24 * 60 * 60;
 
@@ -37,10 +38,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Missing invite token" }, { status: 400 });
   }
 
-  const timezone = typeof requestedTimezone === "string" ? requestedTimezone : "UTC";
-  if (!isValidTimeZone(timezone)) {
+  if (typeof requestedTimezone !== "string" || !isValidTimeZone(requestedTimezone)) {
     return NextResponse.json({ message: "Invalid timezone" }, { status: 400 });
   }
+  const timezone = requestedTimezone;
   if (
     typeof selectedDate === "string" &&
     typeof selectedTime === "string" &&
@@ -170,36 +171,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Failed to save plan" }, { status: 500 });
   }
 
-  // Run Gemini and sender notification in parallel after the transaction commits -
-  // neither should block the response or roll back the plan if they fail.
-  const canGenerateItinerary = await reserveGeminiCall(
-    "itinerary",
-    userId ?? `invite:${invite.id}`,
-  );
-  const [itinerary] = await Promise.all([
-    canGenerateItinerary ? generateItinerary({
-      selectedDateLabel,
-      selectedTimeLabel,
-      selectedTime,
-      selectedEntree,
-      selectedActivities: activities,
-      selectedEntreeVenue: null,
-      selectedActivityVenues: {},
-      orderedStops: itineraryStopsFromPlanStops(normalizedStops),
-    }).catch(() => null) : Promise.resolve(null),
-    deliverPlanNotificationJobs(planId, "sender_plan_completed").catch(() => null),
-  ]);
+  afterResponse(async () => {
+    const canGenerateItinerary = await reserveGeminiCall(
+      "itinerary",
+      userId ?? `invite:${invite.id}`,
+    );
+    const [itinerary] = await Promise.all([
+      canGenerateItinerary ? generateItinerary({
+        selectedDateLabel,
+        selectedTimeLabel,
+        selectedTime,
+        selectedEntree,
+        selectedActivities: activities,
+        selectedEntreeVenue: null,
+        selectedActivityVenues: {},
+        orderedStops: itineraryStopsFromPlanStops(normalizedStops),
+      }).catch(() => null) : Promise.resolve(null),
+      deliverPlanNotificationJobs(planId, "sender_plan_completed").catch(() => null),
+    ]);
 
-  if (itinerary) {
-    await db
-      .update(datePlans)
-      .set({
-        itinerary: JSON.stringify(itinerary),
-        itineraryGeneratedAt: new Date().toISOString(),
-      })
-      .where(eq(datePlans.id, planId))
-      .catch(() => null);
-  }
+    if (itinerary) {
+      await db
+        .update(datePlans)
+        .set({
+          itinerary: JSON.stringify(itinerary),
+          itineraryGeneratedAt: new Date().toISOString(),
+        })
+        .where(eq(datePlans.id, planId))
+        .catch(() => null);
+    }
+  });
 
   const response = NextResponse.json({ planId });
   if (capabilityToken) {

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { readFile } from "node:fs/promises";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const delivery = vi.hoisted(() => ({
@@ -21,6 +22,17 @@ function request(authorization?: string): NextRequest {
 }
 
 describe.sequential("notification worker route", () => {
+  it("runs often enough for the shortest retry delay", async () => {
+    const deployment = JSON.parse(
+      await readFile("vercel.json", "utf8"),
+    ) as { crons: Array<{ path: string; schedule: string }> };
+
+    expect(deployment.crons).toContainEqual({
+      path: "/api/notifications/process",
+      schedule: "*/2 * * * *",
+    });
+  });
+
   beforeEach(() => {
     delete process.env.CRON_SECRET;
     delete process.env.NOTIFICATION_WORKER_SECRET;

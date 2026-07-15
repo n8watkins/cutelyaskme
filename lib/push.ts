@@ -20,6 +20,7 @@ export type PushPayload = {
   title: string;
   body: string;
   url?: string;
+  tag?: string;
 };
 
 export type PushDeliveryResult = "sent" | "missing" | "dead" | "transient_failure";

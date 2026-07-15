@@ -11,6 +11,16 @@ const foundationMigration = "0001_wave0_foundation.sql";
 const outboxMigration = "0002_notification_outbox_expansion.sql";
 const url = process.env.TURSO_DATABASE_URL;
 
+function isValidTimeZone(value) {
+  if (!value) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 if (!url) {
   throw new Error("TURSO_DATABASE_URL is required");
 }
@@ -94,6 +104,21 @@ try {
       inviteColumns.has(column),
     );
 
+  let legacyPlanTimezone = null;
+  if (hadPlansTable && !planColumns.has("timezone")) {
+    const legacyPlans = await client.execute(
+      "SELECT COUNT(*) AS count FROM date_plans",
+    );
+    if (Number(legacyPlans.rows[0]?.count ?? 0) > 0) {
+      legacyPlanTimezone = process.env.LEGACY_PLAN_TIMEZONE?.trim() ?? "";
+      if (!isValidTimeZone(legacyPlanTimezone)) {
+        throw new Error(
+          "LEGACY_PLAN_TIMEZONE must be a valid IANA timezone before migrating existing plans",
+        );
+      }
+    }
+  }
+
   if (hadPlansTable && hasAnyFoundationMarker && !foundationComplete) {
     throw new Error(
       "Refusing to adopt a partial foundation schema; restore a complete snapshot or repair it explicitly",
@@ -172,6 +197,12 @@ try {
       .split("--> statement-breakpoint")
       .map((statement) => statement.trim())
       .filter(Boolean);
+    if (file === foundationMigration && hadPlansTable) {
+      statements.push({
+        sql: "UPDATE date_plans SET timezone = ? WHERE timezone IS NULL",
+        args: [legacyPlanTimezone ?? "UTC"],
+      });
+    }
 
     await client.batch(
       [

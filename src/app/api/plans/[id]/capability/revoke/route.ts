@@ -24,7 +24,10 @@ export async function POST(
 
   await db
     .update(invites)
-    .set({ capabilityVersion: sql`${invites.capabilityVersion} + 1` })
+    .set({
+      capabilityVersion: sql`${invites.capabilityVersion} + 1`,
+      token: crypto.randomUUID(),
+    })
     .where(eq(invites.id, plan.inviteId));
   return NextResponse.json({ ok: true });
 }

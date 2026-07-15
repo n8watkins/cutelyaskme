@@ -39,7 +39,7 @@ vi.mock("@/lib/db", () => ({
 
 import { sendPushToSubscription } from "./push";
 
-const payload = { title: "Ready", body: "Your date is ready" };
+const payload = { title: "Ready", body: "Your date is ready", tag: "job-1" };
 
 beforeEach(() => {
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = "public-key";
