@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence } from "framer-motion";
+import { AnimatePresence, MotionConfig } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ConfirmedStep } from "./ConfirmedStep";
@@ -116,13 +116,14 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
   }
 
   return (
-    <main className="relative isolate flex min-h-svh flex-1 items-center justify-center overflow-hidden px-4 py-5 sm:px-6">
-      <FloatingDecor />
-      <PersonCursor message={cursorMessage} avatarSrc={avatarSrc} />
-      <DateAvatar step={state.step} avatarSrc={avatarSrc} />
-      <div className="relative z-10 w-full max-w-lg">
-        <ProgressHearts currentStep={state.step} />
-        <AnimatePresence mode="wait">
+    <MotionConfig reducedMotion="user">
+      <main className="relative isolate flex min-h-svh flex-1 items-center justify-center overflow-hidden px-4 py-5 sm:px-6">
+        <FloatingDecor />
+        <PersonCursor message={cursorMessage} avatarSrc={avatarSrc} />
+        <DateAvatar step={state.step} avatarSrc={avatarSrc} />
+        <div className="relative z-10 w-full max-w-lg">
+          <ProgressHearts currentStep={state.step} />
+          <AnimatePresence>
           {state.step === "invite" ? (
             <InvitationStep
               key="invite"
@@ -249,8 +250,9 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
           {state.step === "confirmed" && state.confirmedPlanId ? (
             <ConfirmedStep key="confirmed" planId={state.confirmedPlanId} />
           ) : null}
-        </AnimatePresence>
-      </div>
-    </main>
+          </AnimatePresence>
+        </div>
+      </main>
+    </MotionConfig>
   );
 }
