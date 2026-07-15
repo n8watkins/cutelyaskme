@@ -9,6 +9,7 @@ const migrationsDirectory = path.join(root, "drizzle");
 const baselineMigration = "0000_baseline.sql";
 const foundationMigration = "0001_wave0_foundation.sql";
 const outboxMigration = "0002_notification_outbox_expansion.sql";
+const timezoneVerificationMigration = "0003_plan_timezone_verification.sql";
 const url = process.env.TURSO_DATABASE_URL;
 
 function isValidTimeZone(value) {
@@ -19,6 +20,40 @@ function isValidTimeZone(value) {
   } catch {
     return false;
   }
+}
+
+function parsePlanTimezoneBackfills(value, planIds) {
+  let parsed;
+  try {
+    parsed = JSON.parse(value ?? "");
+  } catch {
+    throw new Error(
+      "LEGACY_PLAN_TIMEZONES must be a JSON object mapping every existing plan id to its IANA timezone",
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      "LEGACY_PLAN_TIMEZONES must be a JSON object mapping every existing plan id to its IANA timezone",
+    );
+  }
+
+  const suppliedIds = Object.keys(parsed).sort();
+  const expectedIds = [...planIds].sort();
+  if (JSON.stringify(suppliedIds) !== JSON.stringify(expectedIds)) {
+    throw new Error(
+      "LEGACY_PLAN_TIMEZONES must contain exactly one entry for every existing plan id",
+    );
+  }
+
+  return new Map(
+    expectedIds.map((planId) => {
+      const timezone = parsed[planId];
+      if (typeof timezone !== "string" || !isValidTimeZone(timezone)) {
+        throw new Error(`LEGACY_PLAN_TIMEZONES contains an invalid timezone for ${planId}`);
+      }
+      return [planId, timezone];
+    }),
+  );
 }
 
 if (!url) {
@@ -104,25 +139,27 @@ try {
       inviteColumns.has(column),
     );
 
-  let legacyPlanTimezone = null;
-  if (hadPlansTable && !planColumns.has("timezone")) {
-    const legacyPlans = await client.execute(
-      "SELECT COUNT(*) AS count FROM date_plans",
-    );
-    if (Number(legacyPlans.rows[0]?.count ?? 0) > 0) {
-      legacyPlanTimezone = process.env.LEGACY_PLAN_TIMEZONE?.trim() ?? "";
-      if (!isValidTimeZone(legacyPlanTimezone)) {
-        throw new Error(
-          "LEGACY_PLAN_TIMEZONE must be a valid IANA timezone before migrating existing plans",
-        );
-      }
-    }
-  }
-
   if (hadPlansTable && hasAnyFoundationMarker && !foundationComplete) {
     throw new Error(
       "Refusing to adopt a partial foundation schema; restore a complete snapshot or repair it explicitly",
     );
+  }
+
+  const existingApplied = new Set();
+  if (tableNames.has("app_migrations")) {
+    const existingLedger = await client.execute("SELECT id FROM app_migrations");
+    for (const row of existingLedger.rows) existingApplied.add(String(row.id));
+  }
+  let planTimezoneBackfills = new Map();
+  if (hadPlansTable && !existingApplied.has(timezoneVerificationMigration)) {
+    const existingPlans = await client.execute("SELECT id FROM date_plans ORDER BY id");
+    const planIds = existingPlans.rows.map((row) => String(row.id));
+    if (planIds.length > 0) {
+      planTimezoneBackfills = parsePlanTimezoneBackfills(
+        process.env.LEGACY_PLAN_TIMEZONES,
+        planIds,
+      );
+    }
   }
 
   await client.execute(`
@@ -197,11 +234,19 @@ try {
       .split("--> statement-breakpoint")
       .map((statement) => statement.trim())
       .filter(Boolean);
-    if (file === foundationMigration && hadPlansTable) {
-      statements.push({
-        sql: "UPDATE date_plans SET timezone = ? WHERE timezone IS NULL",
-        args: [legacyPlanTimezone ?? "UTC"],
-      });
+    if (file === timezoneVerificationMigration) {
+      for (const [planId, timezone] of planTimezoneBackfills) {
+        statements.push({
+          sql: `INSERT INTO plan_timezone_backfills (
+            plan_id, previous_timezone, verified_timezone
+          ) SELECT id, timezone, ? FROM date_plans WHERE id = ?`,
+          args: [timezone, planId],
+        });
+        statements.push({
+          sql: "UPDATE date_plans SET timezone = ? WHERE id = ?",
+          args: [timezone, planId],
+        });
+      }
     }
 
     await client.batch(

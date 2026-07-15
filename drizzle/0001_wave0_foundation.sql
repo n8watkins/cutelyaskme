@@ -4,21 +4,7 @@ ALTER TABLE `invites` ADD `location_lng` real;
 --> statement-breakpoint
 ALTER TABLE `invites` ADD `capability_version` integer NOT NULL DEFAULT 1;
 --> statement-breakpoint
-ALTER TABLE `date_plans` ADD `timezone` text;
---> statement-breakpoint
-CREATE TRIGGER `date_plans_timezone_insert_required`
-BEFORE INSERT ON `date_plans`
-WHEN NEW.`timezone` IS NULL
-BEGIN
-	SELECT RAISE(ABORT, 'date_plans.timezone is required');
-END;
---> statement-breakpoint
-CREATE TRIGGER `date_plans_timezone_update_required`
-BEFORE UPDATE OF `timezone` ON `date_plans`
-WHEN NEW.`timezone` IS NULL
-BEGIN
-	SELECT RAISE(ABORT, 'date_plans.timezone is required');
-END;
+ALTER TABLE `date_plans` ADD `timezone` text NOT NULL DEFAULT 'UTC';
 --> statement-breakpoint
 ALTER TABLE `date_plans` ADD `notification_mode` text;
 --> statement-breakpoint

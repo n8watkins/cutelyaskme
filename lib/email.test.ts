@@ -69,5 +69,26 @@ describe("email HTML rendering", () => {
     expect(message.html).toContain("Friday &lt;svg onload=alert(1)&gt;");
     expect(message.html).toContain("Cafe &lt;script&gt;x&lt;/script&gt;");
     expect(message.html).toContain("1 Main &quot;Street&quot;");
+    expect(message.html).toContain(
+      "login?returnTo=%2Fplan%2Fplan-1",
+    );
+  });
+
+  it("preserves anonymous invite redemption for unclaimed plans", async () => {
+    await sendSpotReadyEmail({
+      mode: "surprise",
+      recipientEmail: "recipient@example.com",
+      recipientName: "Recipient",
+      senderName: "Sender",
+      selectedDateLabel: null,
+      selectedTimeLabel: null,
+      planId: "plan-1",
+      inviteToken: "invite-token",
+      venues: [],
+    });
+
+    const message = mocks.send.mock.calls[0][0] as { html: string };
+    expect(message.html).toContain("api/invites/redeem?token=invite-token");
+    expect(message.html).not.toContain("login?returnTo=");
   });
 });

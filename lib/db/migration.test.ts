@@ -1,6 +1,6 @@
 import { createClient } from "@libsql/client";
 import { execFile } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
@@ -37,6 +37,7 @@ describe("wave 0 migration", () => {
           "invites",
           "notification_jobs",
           "plan_stops",
+          "plan_timezone_backfills",
           "service_budgets",
         ]),
       );
@@ -45,6 +46,7 @@ describe("wave 0 migration", () => {
         "0000_baseline.sql",
         "0001_wave0_foundation.sql",
         "0002_notification_outbox_expansion.sql",
+        "0003_plan_timezone_verification.sql",
       ]);
     } finally {
       client.close();
@@ -105,7 +107,9 @@ describe("wave 0 migration", () => {
           ...process.env,
           TURSO_DATABASE_URL: `file:${databasePath}`,
           TURSO_AUTH_TOKEN: "",
-          LEGACY_PLAN_TIMEZONE: "America/Los_Angeles",
+          LEGACY_PLAN_TIMEZONES: JSON.stringify({
+            "plan-1": "America/Los_Angeles",
+          }),
         },
       });
 
@@ -147,9 +151,6 @@ describe("wave 0 migration", () => {
         "SELECT timezone FROM date_plans WHERE id = 'plan-1'",
       );
       expect(plans.rows[0]?.timezone).toBe("America/Los_Angeles");
-      await expect(
-        migratedClient.execute("INSERT INTO date_plans (id) VALUES ('missing-timezone')"),
-      ).rejects.toThrow("date_plans.timezone is required");
       const migrations = await migratedClient.execute(
         "SELECT id FROM app_migrations ORDER BY id",
       );
@@ -157,6 +158,7 @@ describe("wave 0 migration", () => {
         "0000_baseline.sql",
         "0001_wave0_foundation.sql",
         "0002_notification_outbox_expansion.sql",
+        "0003_plan_timezone_verification.sql",
       ]);
       migratedClient.close();
     } finally {
@@ -196,7 +198,14 @@ describe("wave 0 migration", () => {
     const result = await execFileAsync(
       process.execPath,
       ["scripts/validate-migration-copy.mjs", databasePath],
-      { env: { ...process.env, LEGACY_PLAN_TIMEZONE: "America/New_York" } },
+      {
+        env: {
+          ...process.env,
+          LEGACY_PLAN_TIMEZONES: JSON.stringify({
+            "snapshot-plan": "America/New_York",
+          }),
+        },
+      },
     );
     expect(result.stdout).toContain("Validated migration on an isolated copy");
 
@@ -260,7 +269,7 @@ describe("wave 0 migration", () => {
     }
   });
 
-  it("refuses to reinterpret legacy plans without an explicit timezone", async () => {
+  it("refuses to reinterpret legacy plans without complete per-plan timezones", async () => {
     const client = createClient({ url: `file:${databasePath}` });
     await client.batch(
       [
@@ -294,10 +303,10 @@ describe("wave 0 migration", () => {
           ...process.env,
           TURSO_DATABASE_URL: `file:${databasePath}`,
           TURSO_AUTH_TOKEN: "",
-          LEGACY_PLAN_TIMEZONE: "",
+          LEGACY_PLAN_TIMEZONES: JSON.stringify({}),
         },
       }),
-    ).rejects.toThrow("LEGACY_PLAN_TIMEZONE");
+    ).rejects.toThrow("exactly one entry for every existing plan id");
 
     const unchanged = createClient({ url: `file:${databasePath}` });
     try {
@@ -307,6 +316,74 @@ describe("wave 0 migration", () => {
       expect(plans.rows).toEqual([expect.objectContaining({ id: "legacy-plan" })]);
     } finally {
       unchanged.close();
+    }
+  });
+
+  it("repairs an already-applied UTC migration with per-plan timezones", async () => {
+    const client = createClient({ url: `file:${databasePath}` });
+    try {
+      const baseline = await readFile(
+        path.join(process.cwd(), "drizzle/0000_baseline.sql"),
+        "utf8",
+      );
+      const statements = baseline
+        .split("--> statement-breakpoint")
+        .map((statement) => statement.trim())
+        .filter(Boolean);
+      await client.batch(
+        [
+          ...statements,
+          `CREATE TABLE app_migrations (
+            id text PRIMARY KEY NOT NULL,
+            applied_at text NOT NULL DEFAULT (datetime('now'))
+          )`,
+          "INSERT INTO app_migrations (id) VALUES ('0000_baseline.sql'), ('0001_wave0_foundation.sql'), ('0002_notification_outbox_expansion.sql')",
+          "INSERT INTO date_plans (id, sender_id, timezone) VALUES ('west-plan', 'sender', 'UTC'), ('east-plan', 'sender', 'UTC')",
+        ],
+        "write",
+      );
+    } finally {
+      client.close();
+    }
+
+    await execFileAsync(process.execPath, ["scripts/migrate.mjs"], {
+      env: {
+        ...process.env,
+        TURSO_DATABASE_URL: `file:${databasePath}`,
+        TURSO_AUTH_TOKEN: "",
+        LEGACY_PLAN_TIMEZONES: JSON.stringify({
+          "west-plan": "America/Los_Angeles",
+          "east-plan": "America/New_York",
+        }),
+      },
+    });
+
+    const migrated = createClient({ url: `file:${databasePath}` });
+    try {
+      const plans = await migrated.execute(
+        "SELECT id, timezone FROM date_plans ORDER BY id",
+      );
+      expect(plans.rows).toEqual([
+        expect.objectContaining({ id: "east-plan", timezone: "America/New_York" }),
+        expect.objectContaining({ id: "west-plan", timezone: "America/Los_Angeles" }),
+      ]);
+      const audit = await migrated.execute(
+        "SELECT plan_id, previous_timezone, verified_timezone FROM plan_timezone_backfills ORDER BY plan_id",
+      );
+      expect(audit.rows).toEqual([
+        expect.objectContaining({
+          plan_id: "east-plan",
+          previous_timezone: "UTC",
+          verified_timezone: "America/New_York",
+        }),
+        expect.objectContaining({
+          plan_id: "west-plan",
+          previous_timezone: "UTC",
+          verified_timezone: "America/Los_Angeles",
+        }),
+      ]);
+    } finally {
+      migrated.close();
     }
   });
 });

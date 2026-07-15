@@ -58,6 +58,11 @@ try {
   await copyFile(sourcePath, copyPath);
   const beforeClient = createClient({ url: `file:${copyPath}` });
   const before = await tableCounts(beforeClient);
+  const beforePlanIds = before.has("date_plans")
+    ? (await beforeClient.execute("SELECT id FROM date_plans ORDER BY id")).rows.map((row) =>
+        String(row.id),
+      )
+    : [];
   beforeClient.close();
 
   const migration = await execFileAsync(process.execPath, ["scripts/migrate.mjs"], {
@@ -96,6 +101,7 @@ try {
       "invites",
       "notification_jobs",
       "plan_stops",
+      "plan_timezone_backfills",
       "service_budgets",
     ];
     for (const table of required) {
@@ -122,6 +128,17 @@ try {
       throw new Error(
         `Timezone backfill is incomplete for plan ${missingTimezones.rows[0].id}`,
       );
+    }
+    if (beforePlanIds.length > 0) {
+      const verifiedTimezones = await afterClient.execute(
+        "SELECT plan_id FROM plan_timezone_backfills ORDER BY plan_id",
+      );
+      if (
+        JSON.stringify(verifiedTimezones.rows.map((row) => String(row.plan_id))) !==
+        JSON.stringify(beforePlanIds)
+      ) {
+        throw new Error("Per-plan timezone verification is incomplete");
+      }
     }
     const planColumnInfo = await afterClient.execute("PRAGMA table_info(date_plans)");
     const timezoneColumn = planColumnInfo.rows.find((row) => row.name === "timezone");

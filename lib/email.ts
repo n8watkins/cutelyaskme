@@ -87,9 +87,14 @@ export async function sendSpotReadyEmail({
   venues: { name: string; address: string; lat?: number; lng?: number }[];
   deliveryKey?: string;
 }) {
-  const rawPlanLink = inviteToken
-    ? `${emailAppUrl(SITE_URL, "api", "invites", "redeem")}?token=${encodeURIComponent(inviteToken)}`
-    : emailAppUrl(SITE_URL, "plan", planId);
+  let rawPlanLink;
+  if (inviteToken) {
+    rawPlanLink = `${emailAppUrl(SITE_URL, "api", "invites", "redeem")}?token=${encodeURIComponent(inviteToken)}`;
+  } else {
+    const loginUrl = new URL(emailAppUrl(SITE_URL, "login"));
+    loginUrl.searchParams.set("returnTo", `/plan/${planId}`);
+    rawPlanLink = loginUrl.toString();
+  }
   const planLink = emailUrl(rawPlanLink);
   const when = emailText(
     [selectedDateLabel, selectedTimeLabel].filter(Boolean).join(" at "),

@@ -89,7 +89,7 @@ beforeEach(() => {
 });
 
 describe("notification delivery policy", () => {
-  it("links claimed recipients directly to their authorized plan", async () => {
+  it("links claimed recipients through authenticated plan access", async () => {
     state.jobs = [{
       id: "email-job",
       planId: "plan-1",

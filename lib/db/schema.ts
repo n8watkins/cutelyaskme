@@ -75,6 +75,17 @@ export const datePlans = sqliteTable("date_plans", {
     .default(sql`(datetime('now'))`),
 });
 
+export const planTimezoneBackfills = sqliteTable("plan_timezone_backfills", {
+  planId: text("plan_id")
+    .primaryKey()
+    .references(() => datePlans.id, { onDelete: "cascade" }),
+  previousTimezone: text("previous_timezone").notNull(),
+  verifiedTimezone: text("verified_timezone").notNull(),
+  verifiedAt: text("verified_at")
+    .notNull()
+    .default(sql`(datetime('now'))`),
+});
+
 // Stable, ordered stops replace activity-name keyed parallel JSON objects.
 // Legacy columns remain during the compatibility rollout and are removed only
 // after every reader and writer has moved to this table.
