@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 import { createClient } from "@libsql/client";
 
 test.describe("public experience", () => {
-  test.use({ reducedMotion: "reduce" });
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+  });
 
   test("home page presents the primary public actions", async ({ page }) => {
     await page.goto("/");
@@ -27,6 +29,15 @@ test.describe("public experience", () => {
   });
 
   test("name-based invite starts the recipient journey", async ({ page }) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        consoleErrors.push(message.text());
+      }
+    });
+
     await page.goto("/invite/Playwright");
 
     await expect(page).toHaveTitle(/Playwright, you're invited on a date/);
@@ -44,6 +55,10 @@ test.describe("public experience", () => {
     await expect(
       page.getByRole("heading", { level: 1, name: "What day feels sweet?" }),
     ).toBeVisible();
+    expect(pageErrors).toEqual([]);
+    expect(
+      consoleErrors.filter((message) => /hydration|React error #418/i.test(message)),
+    ).toEqual([]);
   });
 
   test("anonymous invite completes with an explicit event timezone", async ({ page, baseURL }) => {
@@ -72,8 +87,18 @@ test.describe("public experience", () => {
 
     try {
       await page.goto(`/invite/${token}`);
+      expect(
+        await page.evaluate(() =>
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        ),
+      ).toBe(true);
       await page.getByRole("button", { name: "Yes!" }).click();
       await expect(page.getByRole("heading", { name: "What day feels sweet?" })).toBeVisible();
+      expect(
+        await page.evaluate(() =>
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+        ),
+      ).toBe(true);
       await expect(page.locator("main section")).toHaveCount(1);
       await expect(page.locator("canvas")).toHaveCount(0);
       await page.getByRole("button", { name: /Soon would be cute/ }).click();
@@ -161,7 +186,9 @@ test.describe("public experience", () => {
 });
 
 test.describe("invite celebration", () => {
-  test.use({ reducedMotion: "no-preference" });
+  test.beforeEach(async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+  });
 
   test("uses confetti only on desktop when motion is allowed", async ({ page }) => {
     await page.goto("/invite/Playwright");

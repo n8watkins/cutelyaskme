@@ -1,8 +1,9 @@
 "use client";
 
-import { motion, useIsPresent, useReducedMotion } from "framer-motion";
+import { motion, useIsPresent } from "framer-motion";
 import Image from "next/image";
 import type { ReactNode } from "react";
+import { useHydratedReducedMotion } from "./useHydratedReducedMotion";
 
 type StepCardProps = {
   stickerSrc: string;
@@ -22,7 +23,7 @@ export function StepCard({
   children,
 }: StepCardProps) {
   const isPresent = useIsPresent();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydratedReducedMotion();
 
   return (
     <motion.section

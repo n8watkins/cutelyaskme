@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState, type RefObject } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import { noButtonLabels } from "@/lib/planner-copy";
+import { useHydratedReducedMotion } from "./useHydratedReducedMotion";
 
 type Point = {
   x: number;
@@ -119,7 +120,7 @@ export function EvasiveNoButton({
   onAttempt,
   onCommentary,
 }: EvasiveNoButtonProps) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydratedReducedMotion();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [position, setPosition] = useState<Point>({ x: -88, y: 0 });
   const [remainingLabels, setRemainingLabels] = useState<string[]>(

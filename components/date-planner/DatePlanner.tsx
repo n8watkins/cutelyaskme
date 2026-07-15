@@ -118,7 +118,7 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
   }
 
   return (
-    <MotionConfig reducedMotion="user">
+    <MotionConfig reducedMotion={hydrated ? "user" : "always"}>
       <main className="relative isolate flex min-h-svh flex-1 items-center justify-center overflow-hidden px-4 py-5 sm:px-6">
         <FloatingDecor />
         <PersonCursor message={cursorMessage} avatarSrc={avatarSrc} />

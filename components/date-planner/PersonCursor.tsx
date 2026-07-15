@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
+import { useHydratedReducedMotion } from "./useHydratedReducedMotion";
 
 export function PersonCursor({ message, avatarSrc }: { message: string | null; avatarSrc: string | null }) {
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useHydratedReducedMotion();
   const [point, setPoint] = useState({ x: -100, y: -100 });
 
   useEffect(() => {
