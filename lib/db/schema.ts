@@ -215,7 +215,7 @@ export const pushSubscriptions = sqliteTable("push_subscriptions", {
 // created lazily on first PATCH, so "no row" simply means "all defaults".
 export const userSettings = sqliteTable("user_settings", {
   userId: text("user_id").primaryKey(),
-  // B3: planner radius slider — initial value + user-tunable bounds (1–25 mi, Yelp cap).
+  // B3: planner radius slider with initial value and user-tunable 1–25 mi bounds.
   defaultRadiusMi: integer("default_radius_mi").notNull().default(5),
   radiusMinMi: integer("radius_min_mi").notNull().default(1),
   radiusMaxMi: integer("radius_max_mi").notNull().default(25),

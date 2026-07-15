@@ -44,7 +44,7 @@ A plan moves through a lifecycle; some UI is gated on it.
    `POST /api/plans` creates `date_plans`, generates a first itinerary, emails
    the sender.
 5. **Sender builds it** — `/plan/[id]` → `SenderPlanningView`: per-stop venue
-   search (Yelp + Overpass), radius/price filters, reorder, durations, "💘 Places
+   search (Google Places + Overpass), radius/price filters, reorder, durations, "💘 Places
    you loved", timeline + Google Calendar/.ics, map pin. Saving re-generates the
    itinerary with the real venues. **Share plan** (reveal) or **Surprise her**
    (secret) → this marks the plan **confirmed** and permanently freezes its venue, stop, timing, and itinerary details.
