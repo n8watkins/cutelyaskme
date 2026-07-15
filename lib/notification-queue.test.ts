@@ -31,7 +31,7 @@ describe("notification queue scheduling", () => {
       {
         delaySeconds: 240,
         idempotencyKey: "notification-retry:job-1:2",
-        retentionSeconds: 604800,
+        retentionSeconds: 86400,
       },
     );
   });

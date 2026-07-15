@@ -85,7 +85,10 @@ export async function POST(
     });
   }
   const delivery = wasShared
-    ? await deliverPlanNotificationJobs(id, "date_canceled")
+    ? await deliverPlanNotificationJobs(id, "date_canceled").catch((error) => {
+        console.error("Failed to deliver cancellation notifications", error);
+        return { sent: 0, failed: 0, exhausted: 0, canceled: 0 };
+      })
     : { sent: 0, failed: 0, exhausted: 0, canceled: 0 };
   return NextResponse.json({ ok: true, delivery });
 }

@@ -51,7 +51,13 @@ describe.sequential("notification worker route", () => {
   beforeEach(() => {
     delete process.env.CRON_SECRET;
     delete process.env.NOTIFICATION_WORKER_SECRET;
-    delivery.run.mockClear();
+    delivery.run.mockReset();
+    delivery.run.mockResolvedValue({
+      sent: 2,
+      failed: 1,
+      exhausted: 1,
+      canceled: 1,
+    });
   });
 
   afterAll(() => {
@@ -90,6 +96,42 @@ describe.sequential("notification worker route", () => {
       failed: 1,
       exhausted: 1,
       canceled: 1,
+    });
+  });
+
+  it("drains additional reconciliation batches while work remains", async () => {
+    process.env.CRON_SECRET = "cron-secret";
+    delivery.run
+      .mockResolvedValueOnce({ sent: 20, failed: 0, exhausted: 0, canceled: 0 })
+      .mockResolvedValueOnce({ sent: 3, failed: 1, exhausted: 0, canceled: 1 });
+
+    const response = await GET(request("Bearer cron-secret"));
+
+    expect(delivery.run).toHaveBeenCalledTimes(2);
+    expect(delivery.run).toHaveBeenNthCalledWith(1, 20);
+    expect(delivery.run).toHaveBeenNthCalledWith(2, 20);
+    expect(await response.json()).toEqual({
+      processed: 25,
+      sent: 23,
+      failed: 1,
+      exhausted: 0,
+      canceled: 1,
+    });
+  });
+
+  it("bounds reconciliation when every batch is full", async () => {
+    process.env.CRON_SECRET = "cron-secret";
+    delivery.run.mockResolvedValue({ sent: 20, failed: 0, exhausted: 0, canceled: 0 });
+
+    const response = await GET(request("Bearer cron-secret"));
+
+    expect(delivery.run).toHaveBeenCalledTimes(5);
+    expect(await response.json()).toEqual({
+      processed: 100,
+      sent: 100,
+      failed: 0,
+      exhausted: 0,
+      canceled: 0,
     });
   });
 

@@ -2,6 +2,9 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { deliverPendingNotificationJobs } from "@/lib/notification-delivery";
 
+const RECONCILIATION_BATCH_SIZE = 20;
+const MAX_RECONCILIATION_BATCHES = 5;
+
 function digest(value: string): Buffer {
   return createHash("sha256").update(value).digest();
 }
@@ -25,7 +28,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
-  const { sent, failed, exhausted, canceled } = await deliverPendingNotificationJobs(20);
+  let sent = 0;
+  let failed = 0;
+  let exhausted = 0;
+  let canceled = 0;
+
+  for (let batch = 0; batch < MAX_RECONCILIATION_BATCHES; batch += 1) {
+    const summary = await deliverPendingNotificationJobs(RECONCILIATION_BATCH_SIZE);
+    sent += summary.sent;
+    failed += summary.failed;
+    exhausted += summary.exhausted;
+    canceled += summary.canceled;
+
+    const processed =
+      summary.sent + summary.failed + summary.exhausted + summary.canceled;
+    if (processed < RECONCILIATION_BATCH_SIZE) break;
+  }
 
   return NextResponse.json({
     processed: sent + failed + exhausted + canceled,

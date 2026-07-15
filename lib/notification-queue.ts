@@ -33,7 +33,7 @@ export async function scheduleNotificationDelivery({
       {
         delaySeconds,
         idempotencyKey,
-        retentionSeconds: 7 * 24 * 60 * 60,
+        retentionSeconds: 24 * 60 * 60,
       },
     );
     return true;

@@ -9,7 +9,10 @@ import { areRecipientPlanDetailsVisible } from "./plan-visibility";
 import { planCapabilityCookieName } from "./plan-route-access";
 
 const authState = vi.hoisted(() => ({ userId: null as string | null }));
-const deliveryState = vi.hoisted(() => ({ calls: [] as string[] }));
+const deliveryState = vi.hoisted(() => ({
+  calls: [] as string[],
+  failures: new Set<string>(),
+}));
 
 vi.mock("@clerk/nextjs/server", () => ({
   auth: async () => ({ userId: authState.userId }),
@@ -39,6 +42,7 @@ vi.mock("./email", () => ({ sendPlanNotificationEmail: async () => undefined }))
 vi.mock("./notification-delivery", () => ({
   deliverPlanNotificationJobs: async (planId: string, kind: string) => {
     deliveryState.calls.push(`${planId}:${kind}`);
+    if (deliveryState.failures.has(kind)) throw new Error("delivery unavailable");
     return { sent: 0, failed: 0 };
   },
 }));
@@ -407,10 +411,18 @@ describe.sequential("authenticated database-backed API flow", () => {
     );
     expect(rejectedEdit.status).toBe(409);
 
+    deliveryState.failures.add("date_canceled");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const canceled = await routes.cancelPlan(
       jsonRequest(`http://localhost/api/plans/${planId}/cancel`, "POST", {}),
       { params: Promise.resolve({ id: planId }) },
     );
+    deliveryState.failures.delete("date_canceled");
+    expect(consoleError).toHaveBeenCalledWith(
+      "Failed to deliver cancellation notifications",
+      expect.any(Error),
+    );
+    consoleError.mockRestore();
     expect(canceled.status).toBe(200);
 
     const rejectedNotify = await routes.notifyPlan(
