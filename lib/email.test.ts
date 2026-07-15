@@ -12,7 +12,8 @@ vi.mock("resend", () => ({
 
 process.env.RESEND_API_KEY = "test-key";
 
-const { sendInviteEmail, sendSpotReadyEmail } = await import("./email");
+const { sendInviteEmail, sendPlanNotificationEmail, sendSpotReadyEmail } =
+  await import("./email");
 
 describe("email HTML rendering", () => {
   beforeEach(() => {
@@ -49,6 +50,19 @@ describe("email HTML rendering", () => {
       expect.any(Object),
       { idempotencyKey: "job-123" },
     );
+  });
+
+  it("routes signed-out senders through validated plan login", async () => {
+    await sendPlanNotificationEmail({
+      senderEmail: "sender@example.com",
+      recipientName: "Recipient",
+      selectedDateLabel: "Friday",
+      planId: "plan-1",
+    });
+
+    const message = mocks.send.mock.calls[0][0] as { html: string };
+    expect(message.html).toContain("login?returnTo=%2Fplan%2Fplan-1");
+    expect(message.html).not.toContain('href="http://localhost:3000/plan/plan-1"');
   });
 
   it("escapes shared venue details and date labels", async () => {

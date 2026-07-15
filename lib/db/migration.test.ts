@@ -222,6 +222,47 @@ describe("wave 0 migration", () => {
     }
   });
 
+  it("validates post-migration plans without requiring historical audit rows", async () => {
+    const environment = {
+      ...process.env,
+      TURSO_DATABASE_URL: `file:${databasePath}`,
+      TURSO_AUTH_TOKEN: "",
+    };
+    await execFileAsync(process.execPath, ["scripts/migrate.mjs"], {
+      env: environment,
+    });
+    const client = createClient({ url: `file:${databasePath}` });
+    try {
+      await client.execute({
+        sql: "INSERT INTO date_plans (id, sender_id, timezone) VALUES (?, ?, ?)",
+        args: ["post-migration-plan", "sender-1", "America/Chicago"],
+      });
+    } finally {
+      client.close();
+    }
+
+    const result = await execFileAsync(
+      process.execPath,
+      ["scripts/validate-migration-copy.mjs", databasePath],
+      { env: process.env },
+    );
+    expect(result.stdout).toContain("Validated migration on an isolated copy");
+
+    const original = createClient({ url: `file:${databasePath}` });
+    try {
+      const audits = await original.execute(
+        "SELECT plan_id FROM plan_timezone_backfills",
+      );
+      expect(audits.rows).toHaveLength(0);
+      const plan = await original.execute(
+        "SELECT timezone FROM date_plans WHERE id = 'post-migration-plan'",
+      );
+      expect(plan.rows[0]?.timezone).toBe("America/Chicago");
+    } finally {
+      original.close();
+    }
+  });
+
   it("refuses to adopt a partial foundation schema", async () => {
     const client = createClient({ url: `file:${databasePath}` });
     await client.batch(

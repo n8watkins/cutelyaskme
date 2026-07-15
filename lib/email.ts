@@ -23,6 +23,12 @@ function staticMapImgHtml(url: string | null, alt: string): string {
 const FROM = process.env.EMAIL_FROM ?? "Date Night <invites@cutelyask.me>";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
+function authenticatedPlanUrl(planId: string): string {
+  const loginUrl = new URL(emailAppUrl(SITE_URL, "login"));
+  loginUrl.searchParams.set("returnTo", `/plan/${planId}`);
+  return loginUrl.toString();
+}
+
 export async function sendPlanNotificationEmail({
   senderEmail,
   recipientName,
@@ -36,7 +42,7 @@ export async function sendPlanNotificationEmail({
   planId: string;
   deliveryKey?: string;
 }) {
-  const link = emailAppUrl(SITE_URL, "plan", planId);
+  const link = authenticatedPlanUrl(planId);
   const safeLink = emailUrl(link);
   const safeRecipientName = emailText(recipientName);
   const safeDateLabel = selectedDateLabel ? emailText(selectedDateLabel) : null;
@@ -91,9 +97,7 @@ export async function sendSpotReadyEmail({
   if (inviteToken) {
     rawPlanLink = `${emailAppUrl(SITE_URL, "api", "invites", "redeem")}?token=${encodeURIComponent(inviteToken)}`;
   } else {
-    const loginUrl = new URL(emailAppUrl(SITE_URL, "login"));
-    loginUrl.searchParams.set("returnTo", `/plan/${planId}`);
-    rawPlanLink = loginUrl.toString();
+    rawPlanLink = authenticatedPlanUrl(planId);
   }
   const planLink = emailUrl(rawPlanLink);
   const when = emailText(

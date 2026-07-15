@@ -63,6 +63,14 @@ try {
         String(row.id),
       )
     : [];
+  const sourceTimezoneVerificationApplied = before.has("app_migrations")
+    ? (
+        await beforeClient.execute({
+          sql: "SELECT 1 FROM app_migrations WHERE id = ? LIMIT 1",
+          args: ["0003_plan_timezone_verification.sql"],
+        })
+      ).rows.length > 0
+    : false;
   beforeClient.close();
 
   const migration = await execFileAsync(process.execPath, ["scripts/migrate.mjs"], {
@@ -129,7 +137,7 @@ try {
         `Timezone backfill is incomplete for plan ${missingTimezones.rows[0].id}`,
       );
     }
-    if (beforePlanIds.length > 0) {
+    if (!sourceTimezoneVerificationApplied && beforePlanIds.length > 0) {
       const verifiedTimezones = await afterClient.execute(
         "SELECT plan_id FROM plan_timezone_backfills ORDER BY plan_id",
       );
