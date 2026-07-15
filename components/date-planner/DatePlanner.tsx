@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, MotionConfig } from "framer-motion";
+import { MotionConfig } from "framer-motion";
 import confetti from "canvas-confetti";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { ConfirmedStep } from "./ConfirmedStep";
@@ -84,8 +84,9 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
 
   function handleAccept() {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const hasDesktopViewport = window.matchMedia("(min-width: 640px)").matches;
 
-    if (!reduceMotion) {
+    if (!reduceMotion && hasDesktopViewport) {
       confetti({
         particleCount: 90,
         spread: 70,
@@ -123,7 +124,6 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
         <DateAvatar step={state.step} avatarSrc={avatarSrc} />
         <div className="relative z-10 w-full max-w-lg">
           <ProgressHearts currentStep={state.step} />
-          <AnimatePresence>
           {state.step === "invite" ? (
             <InvitationStep
               key="invite"
@@ -250,7 +250,6 @@ export function DatePlanner({ recipientName, inviteToken, location, avatarSrc = 
           {state.step === "confirmed" && state.confirmedPlanId ? (
             <ConfirmedStep key="confirmed" planId={state.confirmedPlanId} />
           ) : null}
-          </AnimatePresence>
         </div>
       </main>
     </MotionConfig>

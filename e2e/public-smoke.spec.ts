@@ -73,10 +73,17 @@ test.describe("public experience", () => {
     try {
       await page.goto(`/invite/${token}`);
       await page.getByRole("button", { name: "Yes!" }).click();
+      await expect(page.getByRole("heading", { name: "What day feels sweet?" })).toBeVisible();
+      await expect(page.locator("main section")).toHaveCount(1);
+      await expect(page.locator("canvas")).toHaveCount(0);
       await page.getByRole("button", { name: /Soon would be cute/ }).click();
       await page.getByRole("button", { name: "continue" }).click();
+      await expect(page.getByRole("button", { name: /6:30 PM/ })).toBeVisible();
+      await expect(page.locator("main section")).toHaveCount(1);
       await page.getByRole("button", { name: /6:30 PM/ }).click();
       await page.getByRole("button", { name: "continue" }).click();
+      await expect(page.getByRole("button", { name: /Bookstore/ })).toBeVisible();
+      await expect(page.locator("main section")).toHaveCount(1);
       await page.getByRole("button", { name: /Bookstore/ }).click();
       await page.getByRole("button", { name: /Photo booth/ }).click();
       await page.getByRole("button", { name: /Bookstore.*Photo booth.*→/ }).click();
