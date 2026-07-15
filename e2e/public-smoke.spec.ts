@@ -215,7 +215,28 @@ test.describe("invite celebration", () => {
 
   test("uses confetti only on desktop when motion is allowed", async ({ page }) => {
     await page.goto("/invite/Playwright");
-    await page.getByRole("button", { name: "Yes!" }).click();
+
+    const accept = page.getByRole("button", { name: "Yes!" });
+    const decline = page.getByRole("button", { name: "No", exact: true });
+    const expectSeparatedControls = async () => {
+      const [acceptBounds, declineBounds] = await Promise.all([
+        accept.boundingBox(),
+        decline.boundingBox(),
+      ]);
+      expect(acceptBounds).not.toBeNull();
+      expect(declineBounds).not.toBeNull();
+      expect(
+        acceptBounds!.x + acceptBounds!.width <= declineBounds!.x ||
+          declineBounds!.x + declineBounds!.width <= acceptBounds!.x ||
+          acceptBounds!.y + acceptBounds!.height <= declineBounds!.y ||
+          declineBounds!.y + declineBounds!.height <= acceptBounds!.y,
+      ).toBe(true);
+    };
+
+    await expectSeparatedControls();
+    await decline.dispatchEvent("touchstart");
+    await expectSeparatedControls();
+    await accept.click();
 
     await expect(
       page.getByRole("heading", { level: 1, name: "What day feels sweet?" }),

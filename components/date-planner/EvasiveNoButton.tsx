@@ -15,6 +15,17 @@ const FALLBACK_YES_HALF_SIZE = {
   y: 40,
 };
 
+const FALLBACK_NO_HALF_SIZE = {
+  x: 40,
+  y: 32,
+};
+
+const CONTROL_GAP = 8;
+const INITIAL_POSITION: Point = {
+  x: -(FALLBACK_YES_HALF_SIZE.x + FALLBACK_NO_HALF_SIZE.x + CONTROL_GAP),
+  y: 0,
+};
+
 const RAY_EPSILON = 0.001;
 const MIN_DODGE_DISTANCE = 34;
 
@@ -29,16 +40,22 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getYesHalfSize(yesButtonRef: RefObject<HTMLButtonElement | null>) {
-  const rect = yesButtonRef.current?.getBoundingClientRect();
-
-  if (!rect) {
-    return FALLBACK_YES_HALF_SIZE;
-  }
+function getDodgeHalfSize(
+  yesButtonRef: RefObject<HTMLButtonElement | null>,
+  noButton: HTMLButtonElement | null,
+) {
+  const yesRect = yesButtonRef.current?.getBoundingClientRect();
+  const noRect = noButton?.getBoundingClientRect();
 
   return {
-    x: rect.width / 2,
-    y: rect.height / 2,
+    x:
+      (yesRect?.width ?? FALLBACK_YES_HALF_SIZE.x * 2) / 2 +
+      (noRect?.width ?? FALLBACK_NO_HALF_SIZE.x * 2) / 2 +
+      CONTROL_GAP,
+    y:
+      (yesRect?.height ?? FALLBACK_YES_HALF_SIZE.y * 2) / 2 +
+      (noRect?.height ?? FALLBACK_NO_HALF_SIZE.y * 2) / 2 +
+      CONTROL_GAP,
   };
 }
 
@@ -122,7 +139,7 @@ export function EvasiveNoButton({
 }: EvasiveNoButtonProps) {
   const reduceMotion = useHydratedReducedMotion();
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const [position, setPosition] = useState<Point>({ x: -88, y: 0 });
+  const [position, setPosition] = useState<Point>(INITIAL_POSITION);
   const [remainingLabels, setRemainingLabels] = useState<string[]>(
     noButtonLabels.slice(1),
   );
@@ -146,7 +163,10 @@ export function EvasiveNoButton({
     }
 
     setPosition((currentPosition) =>
-      choosePerimeterDodgeTarget(currentPosition, getYesHalfSize(yesButtonRef)),
+      choosePerimeterDodgeTarget(
+        currentPosition,
+        getDodgeHalfSize(yesButtonRef, buttonRef.current),
+      ),
     );
   }
 
