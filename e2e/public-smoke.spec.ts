@@ -49,7 +49,29 @@ test.describe("public experience", () => {
     ).toBeVisible();
 
     const accept = page.getByRole("button", { name: "Yes!" });
+    const decline = page.getByRole("button", { name: "No", exact: true });
     await expect(accept).toBeEnabled();
+    const [acceptBounds, declineBounds] = await Promise.all([
+      accept.boundingBox(),
+      decline.boundingBox(),
+    ]);
+    expect(acceptBounds).not.toBeNull();
+    expect(declineBounds).not.toBeNull();
+    expect(
+      acceptBounds!.x + acceptBounds!.width <= declineBounds!.x ||
+        declineBounds!.x + declineBounds!.width <= acceptBounds!.x ||
+        acceptBounds!.y + acceptBounds!.height <= declineBounds!.y ||
+        declineBounds!.y + declineBounds!.height <= acceptBounds!.y,
+    ).toBe(true);
+    expect(
+      await accept.evaluate((button) => {
+        const bounds = button.getBoundingClientRect();
+        return document.elementFromPoint(
+          bounds.left + bounds.width / 2,
+          bounds.top + bounds.height / 2,
+        ) === button;
+      }),
+    ).toBe(true);
     await accept.click();
 
     await expect(

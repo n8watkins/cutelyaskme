@@ -153,9 +153,13 @@ export function EvasiveNoButton({
   const scale = Math.max(0.86, 1 - attempts * 0.035);
   return (
     <motion.div
-      className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-      initial={{ x: position.x, y: position.y }}
-      animate={{ x: position.x, y: position.y, scale }}
+      className={
+        reduceMotion
+          ? "absolute bottom-0 left-1/2 -translate-x-1/2"
+          : "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+      }
+      initial={reduceMotion ? false : { x: position.x, y: position.y }}
+      animate={reduceMotion ? undefined : { x: position.x, y: position.y, scale }}
       transition={{ type: "spring", stiffness: 420, damping: 26 }}
     >
       <button
