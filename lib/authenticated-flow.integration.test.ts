@@ -42,6 +42,10 @@ vi.mock("./notification-delivery", () => ({
     return { sent: 0, failed: 0 };
   },
 }));
+vi.mock("./notification-queue", () => ({
+  NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS: 10,
+  scheduleNotificationDelivery: async () => true,
+}));
 vi.mock("./cloudinary", () => ({ destroyCloudinaryImage: async () => undefined }));
 vi.mock("./after-response", () => ({
   afterResponse: (task: () => Promise<void> | void) => {

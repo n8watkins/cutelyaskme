@@ -14,6 +14,10 @@ import {
 import { isValidTimeZone, resolveZonedDateTime } from "@/lib/plan-time";
 import { reserveGeminiCall } from "@/lib/gemini-budget";
 import { deliverPlanNotificationJobs } from "@/lib/notification-delivery";
+import {
+  NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  scheduleNotificationDelivery,
+} from "@/lib/notification-queue";
 import { hasVerifiedEmailAddress } from "@/lib/user-email";
 import { afterResponse } from "@/lib/after-response";
 
@@ -171,6 +175,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Failed to save plan" }, { status: 500 });
   }
 
+  await scheduleNotificationDelivery({
+    idempotencyKey: `sender-plan-completed:${planId}`,
+    reason: "new",
+    delaySeconds: NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  });
   afterResponse(async () => {
     const canGenerateItinerary = await reserveGeminiCall(
       "itinerary",

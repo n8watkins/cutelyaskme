@@ -22,14 +22,29 @@ function request(authorization?: string): NextRequest {
 }
 
 describe.sequential("notification worker route", () => {
-  it("runs often enough for the shortest retry delay", async () => {
+  it("uses the queue for prompt delivery and a Hobby-compatible daily reconciliation", async () => {
     const deployment = JSON.parse(
       await readFile("vercel.json", "utf8"),
-    ) as { crons: Array<{ path: string; schedule: string }> };
+    ) as {
+      crons: Array<{ path: string; schedule: string }>;
+      functions: Record<
+        string,
+        { experimentalTriggers: Array<Record<string, string | number>> }
+      >;
+    };
 
     expect(deployment.crons).toContainEqual({
       path: "/api/notifications/process",
-      schedule: "*/2 * * * *",
+      schedule: "0 3 * * *",
+    });
+    expect(
+      deployment.functions["src/app/api/queues/notifications/route.ts"]
+        ?.experimentalTriggers,
+    ).toContainEqual({
+      type: "queue/v2beta",
+      topic: "notification-delivery",
+      retryAfterSeconds: 120,
+      initialDelaySeconds: 0,
     });
   });
 

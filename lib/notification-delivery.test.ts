@@ -8,7 +8,9 @@ const state = vi.hoisted(() => ({
 const mocks = vi.hoisted(() => ({
   sendSpotReadyEmail: vi.fn(),
   sendPushToSubscription: vi.fn(),
+  markFailed: vi.fn(),
   markSent: vi.fn(),
+  schedule: vi.fn(),
 }));
 
 vi.mock("@clerk/nextjs/server", () => ({
@@ -48,8 +50,12 @@ vi.mock("@/lib/notification-outbox", () => ({
   claimInviteNotificationJobs: vi.fn(),
   claimPlanNotificationJobs: vi.fn(),
   markNotificationCanceled: vi.fn(),
-  markNotificationFailed: vi.fn(),
+  markNotificationFailed: mocks.markFailed,
   markNotificationSent: mocks.markSent,
+}));
+
+vi.mock("@/lib/notification-queue", () => ({
+  scheduleNotificationDelivery: mocks.schedule,
 }));
 
 vi.mock("@/lib/push", () => ({
@@ -86,6 +92,7 @@ beforeEach(() => {
   state.jobs = [];
   state.selections = [];
   vi.clearAllMocks();
+  mocks.schedule.mockResolvedValue(true);
 });
 
 describe("notification delivery policy", () => {
@@ -138,5 +145,40 @@ describe("notification delivery policy", () => {
       }),
     );
     expect(mocks.markSent).toHaveBeenCalledWith({}, "push-job");
+  });
+
+  it("schedules a durable wake-up at the outbox retry time", async () => {
+    state.jobs = [{
+      id: "failed-push-job",
+      planId: "plan-1",
+      inviteId: null,
+      channel: "push",
+      targetId: "subscription-1",
+      kind: "plan_ready",
+      attempts: 2,
+    }];
+    state.selections = [[plan("recipient-1")], [invite]];
+    mocks.sendPushToSubscription.mockResolvedValue("transient_failure");
+    mocks.markFailed.mockResolvedValue("failed");
+
+    await expect(deliverPendingNotificationJobs()).resolves.toEqual({
+      sent: 0,
+      failed: 1,
+      exhausted: 0,
+      canceled: 0,
+    });
+
+    expect(mocks.markFailed).toHaveBeenCalledWith(
+      {},
+      "failed-push-job",
+      "push_provider_failed",
+      4,
+      2,
+    );
+    expect(mocks.schedule).toHaveBeenCalledWith({
+      idempotencyKey: "notification-retry:failed-push-job:2",
+      reason: "retry",
+      delaySeconds: 240,
+    });
   });
 });

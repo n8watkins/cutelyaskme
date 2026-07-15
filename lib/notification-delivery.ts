@@ -18,6 +18,7 @@ import {
   type PlanNotificationKind,
   type ClaimedNotificationJob,
 } from "@/lib/notification-outbox";
+import { scheduleNotificationDelivery } from "@/lib/notification-queue";
 import { sendPushToSubscription } from "@/lib/push";
 import type { Venue } from "@/lib/venues";
 import { readPlanStops } from "@/lib/plan-stops";
@@ -224,15 +225,23 @@ async function deliverClaimedNotificationJobs(
         error instanceof Error && /^[a-z0-9_-]{1,64}$/i.test(error.message)
           ? error.message
           : "delivery_failed";
+      const retryDelayMinutes = Math.min(60, 2 ** Math.min(job.attempts, 5));
       const status = await markNotificationFailed(
         client,
         job.id,
         errorCode,
-        Math.min(60, 2 ** Math.min(job.attempts, 5)),
+        retryDelayMinutes,
         job.attempts,
       );
       if (status === "exhausted") exhausted += 1;
-      else failed += 1;
+      else {
+        failed += 1;
+        await scheduleNotificationDelivery({
+          idempotencyKey: `notification-retry:${job.id}:${job.attempts}`,
+          reason: "retry",
+          delaySeconds: retryDelayMinutes * 60,
+        });
+      }
     }
   }
 

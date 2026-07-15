@@ -150,10 +150,11 @@ test.describe("public experience", () => {
       );
       await lockIn.click();
       const createResponse = await createResponsePromise;
+      expect(createResponse.ok()).toBe(true);
 
       await expect(
         page.getByRole("heading", { level: 1, name: "It's a date! 🎉" }),
-      ).toBeVisible();
+      ).toBeVisible({ timeout: 10_000 });
       const plan = await client.execute({
         sql: `
           SELECT date_plans.id, date_plans.timezone, invites.status

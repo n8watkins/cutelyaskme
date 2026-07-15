@@ -5,6 +5,10 @@ import { eq, desc } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { deliverInviteNotificationJobs } from "@/lib/notification-delivery";
+import {
+  NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  scheduleNotificationDelivery,
+} from "@/lib/notification-queue";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -65,6 +69,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Failed to create invite" }, { status: 500 });
   }
 
+  await scheduleNotificationDelivery({
+    idempotencyKey: `invite-created:${id}`,
+    reason: "new",
+    delaySeconds: NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  });
   await deliverInviteNotificationJobs(id).catch(() => null);
 
   return NextResponse.json({ token });

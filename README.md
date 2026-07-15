@@ -66,7 +66,11 @@ npm run dev                  # http://localhost:1437
 
 ### Environment variables
 
-`.env.example` is the authoritative environment-variable reference, including which values are server-only and which are required for migrations, anonymous plan access, scheduled notification retries, maps, uploads, and optional service integrations.
+`.env.example` is the authoritative environment-variable reference, including which values are server-only and which are required for migrations, anonymous plan access, notification recovery, maps, uploads, and optional service integrations.
+
+Notification email and push work is stored in an idempotent database outbox.
+Vercel Queue provides prompt delivery and delayed retries, while a once-daily Vercel Cron invocation reconciles any work missed during a database-to-queue handoff.
+The daily schedule is compatible with the Vercel Hobby plan and is a safety net rather than the primary worker.
 
 ### Database schema
 

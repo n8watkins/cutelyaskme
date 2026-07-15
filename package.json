@@ -1,5 +1,5 @@
 {
-  "name": "date-planner-mini-site",
+  "name": "cutelyaskme",
   "version": "0.1.0",
   "private": true,
   "overrides": {
@@ -23,6 +23,7 @@
     "@clerk/nextjs": "^7.4.3",
     "@googlemaps/js-api-loader": "^2.1.1",
     "@libsql/client": "^0.17.3",
+    "@vercel/queue": "^0.4.0",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",

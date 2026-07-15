@@ -5,6 +5,10 @@ import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { deliverPlanNotificationJobs } from "@/lib/notification-delivery";
 import { enqueuePlanNotifications } from "@/lib/notification-outbox";
+import {
+  NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  scheduleNotificationDelivery,
+} from "@/lib/notification-queue";
 import { requireRouteSender } from "@/lib/plan-route-access";
 
 // F4: the sender calls the date off. Freezes the plan (canceledAt) and, if it
@@ -73,6 +77,13 @@ export async function POST(
     return NextResponse.json({ ok: true, alreadyCanceled: true });
   }
 
+  if (wasShared) {
+    await scheduleNotificationDelivery({
+      idempotencyKey: `date-canceled:${id}`,
+      reason: "new",
+      delaySeconds: NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+    });
+  }
   const delivery = wasShared
     ? await deliverPlanNotificationJobs(id, "date_canceled")
     : { sent: 0, failed: 0, exhausted: 0, canceled: 0 };

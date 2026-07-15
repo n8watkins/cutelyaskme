@@ -5,6 +5,10 @@ import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { deliverPlanNotificationJobs } from "@/lib/notification-delivery";
 import { enqueuePlanNotifications } from "@/lib/notification-outbox";
+import {
+  NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  scheduleNotificationDelivery,
+} from "@/lib/notification-queue";
 import { requireRouteSender } from "@/lib/plan-route-access";
 
 export async function POST(
@@ -77,6 +81,11 @@ export async function POST(
     transaction.close();
   }
 
+  await scheduleNotificationDelivery({
+    idempotencyKey: `plan-ready:${id}`,
+    reason: "new",
+    delaySeconds: NOTIFICATION_QUEUE_INITIAL_DELAY_SECONDS,
+  });
   const delivery = await deliverPlanNotificationJobs(id, "plan_ready");
   return NextResponse.json({ ok: true, delivery });
 }
