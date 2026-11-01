@@ -123,7 +123,9 @@ test.describe("public experience", () => {
       ).toBe(true);
       await expect(page.locator("main section")).toHaveCount(1);
       await expect(page.locator("canvas")).toHaveCount(0);
-      await page.getByRole("button", { name: /Soon would be cute/ }).click();
+      // The first suggestion is "Today is actually open" on Fri-Sun and its evening slots
+      // disappear as the day goes on; the second is always a later weekend day.
+      await page.getByRole("button", { name: /Weekend energy/ }).click();
       await page.getByRole("button", { name: "continue" }).click();
       await expect(page.getByRole("button", { name: /6:30 PM/ })).toBeVisible();
       await expect(page.locator("main section")).toHaveCount(1);
