@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { entreeIcons } from "@/lib/food-options";
 import { StepCard } from "./StepCard";
@@ -50,6 +51,7 @@ export function SummaryStep({
   onEditLineup,
   onEditDress,
 }: SummaryStepProps) {
+  const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [timezone, setTimezone] = useState("");
@@ -91,7 +93,7 @@ export function SummaryStep({
 
     if (res.status === 401) {
       setSubmitting(false);
-      window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+      router.push(`/login?redirect=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
 
