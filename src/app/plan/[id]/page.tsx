@@ -308,6 +308,14 @@ export default async function PlanPage({ params }: PlanPageProps) {
           planId={id}
           settings={settings}
           settingsPersisted={persisted}
+          shared={
+            plan.confirmedAt
+              ? {
+                  mode: plan.notificationMode === "share" ? "share" : "surprise",
+                  confirmedAt: plan.confirmedAt,
+                }
+              : null
+          }
           plan={{
             selectedDate: plan.selectedDate,
             selectedDateLabel: plan.selectedDateLabel,
@@ -316,7 +324,7 @@ export default async function PlanPage({ params }: PlanPageProps) {
             selectedEntree: plan.selectedEntree,
             selectedActivities: activities,
             dressVibe: plan.dressVibe,
-            recipientName: invite?.recipientName ?? "her",
+            recipientName: invite?.recipientName ?? "your date",
             location: invite?.location ?? null,
             selectedEntreeVenue: entreeVenue,
             selectedActivityVenues: activityVenues,

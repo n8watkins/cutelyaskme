@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { db, getDbClient } from "@/lib/db";
-import { datePlans, invites } from "@/lib/db/schema";
+import { datePlans, invites, planStops } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { deliverPlanNotificationJobs } from "@/lib/notification-delivery";
@@ -10,6 +10,8 @@ import {
   scheduleNotificationDelivery,
 } from "@/lib/notification-queue";
 import { requireRouteSender } from "@/lib/plan-route-access";
+import { readPlanStops } from "@/lib/plan-stops";
+import { missingVenuesMessage, stopsMissingVenues } from "@/lib/share-readiness";
 
 export async function POST(
   request: NextRequest,
@@ -42,6 +44,31 @@ export async function POST(
   // F4: never share or notify a canceled plan.
   if (plan.canceledAt) {
     return NextResponse.json({ message: "This date was canceled" }, { status: 409 });
+  }
+
+  // Never send a plan with empty stops: the person invited would get an
+  // activity with no place, address or directions. Only enforced before the
+  // first share, so a retried request for an already-shared plan stays
+  // idempotent.
+  if (!plan.confirmedAt) {
+    const stopRows = await db
+      .select()
+      .from(planStops)
+      .where(eq(planStops.planId, id))
+      .orderBy(planStops.position);
+    const missing = stopsMissingVenues(
+      readPlanStops(plan, stopRows).map((stop) => ({
+        label: stop.activity,
+        activity: stop.activity,
+        hasVenue: stop.venue !== null,
+      })),
+    );
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { message: missingVenuesMessage(missing), missing },
+        { status: 422 },
+      );
+    }
   }
 
   if (!plan.inviteId) {
