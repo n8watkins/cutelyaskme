@@ -4,7 +4,10 @@
   "private": true,
   "overrides": {
     "next": {
-      "postcss": "8.5.19"
+      "postcss": "8.5.32"
+    },
+    "@vercel/queue": {
+      "minimatch": "11.0.4"
     }
   },
   "scripts": {
