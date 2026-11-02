@@ -25,7 +25,15 @@ describe("security response headers", () => {
     expect(contentSecurityPolicy).toContain("default-src 'self'");
     expect(contentSecurityPolicy).toContain("script-src 'self' 'nonce-test-nonce' 'strict-dynamic'");
     expect(contentSecurityPolicy).toContain("script-src-attr 'none'");
-    expect(contentSecurityPolicy).toContain("style-src 'self' 'nonce-test-nonce'");
+    // Styles: the request nonce plus two exact hashes Clerk needs (an empty
+    // stylesheet and the one-time-code caret keyframes), nothing broader.
+    const styleSrc = contentSecurityPolicy.split("; ").find((d) => d.startsWith("style-src "));
+    expect(styleSrc).toBe(
+      "style-src 'self' 'nonce-test-nonce' " +
+        "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=' " +
+        "'sha256-KQDhUccuEkZUQDnfbVDeY+ev2LZ+73AQR7ro4JppAY8=' " +
+        "https://fonts.googleapis.com",
+    );
     expect(contentSecurityPolicy).toContain("object-src 'none'");
     expect(contentSecurityPolicy).toContain("frame-ancestors 'none'");
     expect(contentSecurityPolicy).toContain("https://*.clerk.accounts.dev");

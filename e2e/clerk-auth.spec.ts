@@ -13,7 +13,7 @@ function collectCspViolations(page: Page): string[] {
   const violations: string[] = [];
   page.on("console", (message) => {
     if (/Content Security Policy/i.test(message.text())) {
-      violations.push(message.text());
+      violations.push(`${new URL(page.url()).pathname}: ${message.text()}`);
     }
   });
   return violations;
