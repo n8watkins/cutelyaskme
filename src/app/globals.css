@@ -21,11 +21,6 @@ body {
   font-family: var(--font-nunito), Arial, Helvetica, sans-serif;
 }
 
-button,
-input {
-  font: inherit;
-}
-
 ::selection {
   background: #ffd6e8;
   color: #3a2530;

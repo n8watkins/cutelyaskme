@@ -1,0 +1,103 @@
+import { expect, test, type Page } from "@playwright/test";
+
+// These specs need a Clerk development instance (see playwright.config.ts).
+// They guard the two launch blockers from the November 2026 review: the
+// sign-in widget rendering unstyled under the CSP, and "Sign up" looping back
+// to the sign-in page.
+const clerkEnabled = process.env.PLAYWRIGHT_E2E === "0";
+const clerkSecretKey = process.env.CLERK_SECRET_KEY ?? "";
+
+test.skip(!clerkEnabled, "Set E2E_CLERK_PUBLISHABLE_KEY and E2E_CLERK_SECRET_KEY to run");
+
+function collectCspViolations(page: Page): string[] {
+  const violations: string[] = [];
+  page.on("console", (message) => {
+    if (/Content Security Policy/i.test(message.text())) {
+      violations.push(message.text());
+    }
+  });
+  return violations;
+}
+
+// Clerk's documented testing-token flow (what @clerk/testing does): append
+// the token to Frontend API calls and mark the client as captcha-exempt, so
+// the bot-protection challenge does not block an automated sign-up.
+async function bypassClerkBotProtection(page: Page) {
+  const response = await fetch("https://api.clerk.com/v1/testing_tokens", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${clerkSecretKey}` },
+  });
+  expect(response.ok).toBe(true);
+  const { token } = (await response.json()) as { token: string };
+  await page.route(/\.clerk\.accounts\.dev\/v1\//, async (route) => {
+    const url = new URL(route.request().url());
+    url.searchParams.set("__clerk_testing_token", token);
+    const upstream = await route.fetch({ url: url.toString() });
+    let json: { response?: { captcha_bypass?: boolean }; client?: { captcha_bypass?: boolean } };
+    try {
+      json = await upstream.json();
+    } catch {
+      await route.fulfill({ response: upstream });
+      return;
+    }
+    if (json.response?.captcha_bypass === false) json.response.captcha_bypass = true;
+    if (json.client?.captcha_bypass === false) json.client.captcha_bypass = true;
+    await route.fulfill({ response: upstream, json });
+  });
+}
+
+async function deleteClerkUsersByEmail(email: string) {
+  const headers = { Authorization: `Bearer ${clerkSecretKey}` };
+  const list = await fetch(
+    `https://api.clerk.com/v1/users?email_address=${encodeURIComponent(email)}`,
+    { headers },
+  );
+  const users = (await list.json()) as { id: string }[];
+  for (const user of users) {
+    await fetch(`https://api.clerk.com/v1/users/${user.id}`, { method: "DELETE", headers });
+  }
+}
+
+test("sign-in widget is styled and the page has no CSP violations", async ({ page }) => {
+  const violations = collectCspViolations(page);
+  await page.goto("/login");
+  const card = page.locator(".cl-card").first();
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  // Unstyled Clerk markup has no box: the card only gets a background,
+  // radius and shadow from Clerk's injected (nonce-carrying) styles.
+  const cardStyle = await card.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return { radius: style.borderRadius, shadow: style.boxShadow };
+  });
+  expect(cardStyle.radius).not.toBe("0px");
+  expect(cardStyle.shadow).not.toBe("none");
+  await expect(page.getByRole("link", { name: "Sign up" })).toHaveAttribute(
+    "href",
+    /\/sign-up$/,
+  );
+  expect(violations).toEqual([]);
+});
+
+test("a visitor can create an account with email and password", async ({ page }) => {
+  const violations = collectCspViolations(page);
+  const email = `cutely-e2e-${Date.now()}+clerk_test@example.com`;
+  await bypassClerkBotProtection(page);
+  try {
+    await page.goto("/login");
+    await page.getByRole("link", { name: "Sign up" }).click();
+    await expect(page).toHaveURL(/\/sign-up/);
+    await expect(page.getByRole("heading", { level: 1, name: "Join Cutely Ask Me" })).toBeVisible();
+    await page.getByLabel("Email address").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(`Cutely-${crypto.randomUUID()}`);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    // Clerk test addresses (+clerk_test) accept the fixed code 424242.
+    const code = page.locator('input[autocomplete="one-time-code"]').first();
+    await expect(code).toBeVisible({ timeout: 15_000 });
+    await code.click();
+    await page.keyboard.type("424242");
+    await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
+    expect(violations).toEqual([]);
+  } finally {
+    await deleteClerkUsersByEmail(email);
+  }
+});
