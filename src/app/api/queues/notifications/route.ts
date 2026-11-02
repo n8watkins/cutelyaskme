@@ -20,6 +20,14 @@ export async function processNotificationQueueMessage(
   }
 }
 
-export const POST = handleCallback(async (_message, metadata) => {
-  await processNotificationQueueMessage(metadata);
-});
+// Built on the first request rather than at import: the default queue client
+// reads VERCEL_REGION when it is created, which is only set at runtime (at
+// build time it logs a "Region not detected" warning and guesses iad1).
+let callbackHandler: ((request: Request) => Promise<Response>) | null = null;
+
+export async function POST(request: Request): Promise<Response> {
+  callbackHandler ??= handleCallback(async (_message, metadata) => {
+    await processNotificationQueueMessage(metadata);
+  });
+  return callbackHandler(request);
+}
