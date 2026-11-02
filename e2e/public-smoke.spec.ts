@@ -2,6 +2,9 @@ import { expect, test } from "@playwright/test";
 import { createClient } from "@libsql/client";
 
 test.describe("public experience", () => {
+  // Fixed device timezone so the detected-timezone default is deterministic.
+  test.use({ timezoneId: "America/Los_Angeles" });
+
   test.beforeEach(async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
   });
@@ -51,6 +54,14 @@ test.describe("public experience", () => {
     const accept = page.getByRole("button", { name: "Yes!" });
     const decline = page.getByRole("button", { name: "No", exact: true });
     await expect(accept).toBeEnabled();
+    // Buttons keep their Tailwind type scale: no global rule may override
+    // the "text-2xl font-black" on the main call to action.
+    expect(
+      await accept.evaluate((button) => {
+        const style = getComputedStyle(button);
+        return { size: style.fontSize, weight: style.fontWeight };
+      }),
+    ).toEqual({ size: "24px", weight: "900" });
     const [acceptBounds, declineBounds] = await Promise.all([
       accept.boundingBox(),
       decline.boundingBox(),
@@ -83,7 +94,7 @@ test.describe("public experience", () => {
     ).toEqual([]);
   });
 
-  test("anonymous invite completes with an explicit event timezone", async ({ page, baseURL }) => {
+  test("anonymous invite completes with the detected event timezone", async ({ page, baseURL }) => {
     const token = crypto.randomUUID();
     const inviteId = crypto.randomUUID();
     const client = createClient({
@@ -141,10 +152,21 @@ test.describe("public experience", () => {
       await page.getByRole("button", { name: /Keep it casual/ }).click();
       await page.getByRole("button", { name: "Almost there →" }).click();
 
+      // The date's timezone defaults to the device zone (this context runs
+      // in Los Angeles); the search is only an override.
       const lockIn = page.getByRole("button", { name: "Lock it in 🔒" });
-      await expect(lockIn).toBeDisabled();
-      await page.getByLabel("Date timezone").selectOption("America/Los_Angeles");
+      await expect(page.getByTestId("timezone-value")).toContainText(
+        "Los Angeles - Pacific",
+      );
       await expect(lockIn).toBeEnabled();
+      await page.getByRole("button", { name: "Change the date timezone" }).click();
+      await page.getByRole("combobox", { name: "Date timezone" }).fill("new yo");
+      await page.getByRole("option", { name: /New York - Eastern/ }).click();
+      await expect(page.getByTestId("timezone-value")).toContainText("New York - Eastern");
+      await page.getByRole("button", { name: "Change the date timezone" }).click();
+      await page.getByRole("combobox", { name: "Date timezone" }).fill("los angeles");
+      await page.keyboard.press("Enter");
+      await expect(page.getByTestId("timezone-value")).toContainText("Los Angeles - Pacific");
       const createResponsePromise = page.waitForResponse(
         (response) =>
           response.url().endsWith("/api/plans") &&
