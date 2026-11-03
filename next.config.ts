@@ -23,12 +23,6 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: [...securityHeaders],
       },
-      {
-        // The UX prototype (src/app/proposal) 404s in production builds; this
-        // keeps it out of search indexes wherever it is turned on.
-        source: "/proposal/:path*",
-        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
-      },
     ];
   },
 };
