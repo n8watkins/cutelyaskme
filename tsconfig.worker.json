@@ -1,0 +1,16 @@
+{
+  // worker/ runs on the Workers runtime, so it is checked against the runtime
+  // types from `npm run cf-typegen` instead of the DOM types the Next app uses.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "isolatedModules": true
+  },
+  "include": ["worker", "cloudflare-env.d.ts"]
+}

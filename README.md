@@ -51,7 +51,7 @@ gracefully. Per-user defaults live at `/settings`.
 | Photos | Cloudinary (signed direct uploads) |
 | Notifications | Durable Resend email + web-push (VAPID) delivery queue |
 | Tests | Vitest (`npm test`) + Playwright (`npm run test:e2e`) |
-| Hosting | Vercel |
+| Hosting | Cloudflare Workers via OpenNext (Vercel until the domain cutover) |
 
 Every service runs on a free tier — see [`COSTS.md`](./COSTS.md).
 
@@ -69,8 +69,28 @@ npm run dev                  # http://localhost:1437
 `.env.example` is the authoritative environment-variable reference, including which values are server-only and which are required for migrations, anonymous plan access, notification recovery, maps, uploads, and optional service integrations.
 
 Notification email and push work is stored in an idempotent database outbox.
-Vercel Queue provides prompt delivery and delayed retries, while a once-daily Vercel Cron invocation reconciles any work missed during a database-to-queue handoff.
-The daily schedule is compatible with the Vercel Hobby plan and is a safety net rather than the primary worker.
+A queue provides prompt delivery and delayed retries, while a once-daily cron run reconciles any work missed during a database-to-queue handoff.
+On Cloudflare that is the `cutelyaskme-notification-delivery` queue and a Cron Trigger (see Hosting); the Vercel deployment uses Vercel Queue and Vercel Cron until it is retired.
+
+### Hosting
+
+The app runs on Cloudflare Workers, built with [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare), at https://cutelyaskme.nathancwatkins23.workers.dev until a custom domain is chosen.
+[`wrangler.jsonc`](./wrangler.jsonc) holds the Worker config: bindings, the queue consumer, the daily Cron Trigger, plain variables and the list of required secrets.
+[`worker/index.ts`](./worker/index.ts) is the entry point.
+It serves the Next.js app and adds the queue and cron handlers from [`worker/handlers.ts`](./worker/handlers.ts), which call `/api/notifications/process` in-process with `CRON_SECRET`.
+A failed drain is retried after 120 seconds, and after 10 attempts the message moves to `cutelyaskme-notification-delivery-dlq`; the outbox rows stay in the database either way, so the daily run still picks them up.
+
+```bash
+npm run build:worker     # OpenNext build into .open-next/
+npm run preview:worker   # build, then serve it locally in workerd (reads .dev.vars)
+npm run deploy:worker    # build, then deploy
+npm run cf-typegen       # regenerate cloudflare-env.d.ts after changing wrangler.jsonc
+```
+
+`NEXT_PUBLIC_*` values are inlined by `next build`, so a deploy build needs them in its environment (the shell for a manual deploy, or the Workers Builds build variables).
+Keep `.env*` files with secrets out of the working tree when building for a deploy: OpenNext copies Next.js `.env` files into the Worker bundle.
+Server secrets live in Worker secrets (`wrangler secret put NAME`); local workerd runs read them from `.dev.vars`.
+`PLAYWRIGHT_BASE_URL=<url>` runs the end-to-end suite against a running deployment instead of a local build (see [`playwright.config.ts`](./playwright.config.ts)).
 
 ### Tests and CI
 
@@ -87,7 +107,7 @@ It needs no real credentials: no email, push, maps, Places, Gemini or Cloudinary
 Pages behind sign-in are not covered end to end yet, because the placeholder Clerk keys cannot sign anyone in.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on GitHub-hosted runners for every pull request and every push to `main`.
-Lint, types, unit tests (plus migrations against an empty database), and the build with its bundle-size check run as parallel jobs, and Playwright runs once per browser engine (Chromium desktop and mobile, WebKit mobile).
+Lint, types, unit tests (plus migrations against an empty database), the build with its bundle-size check, and the Worker build (binding types, OpenNext build and a dry-run bundle) run as parallel jobs, and Playwright runs once per browser engine (Chromium desktop and mobile, WebKit mobile).
 A docs-only change skips them, and a dev-dependency-only change skips the end-to-end jobs (see release-kit's CI lanes).
 `CI result` is the one required check.
 The release-kit workflows also check every commit message and pull request title (`Commit messages`) and scan the lock file with OSV (`Security scan`, weekly and when the lock file changes).
