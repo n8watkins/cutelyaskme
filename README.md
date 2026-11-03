@@ -72,6 +72,31 @@ Notification email and push work is stored in an idempotent database outbox.
 Vercel Queue provides prompt delivery and delayed retries, while a once-daily Vercel Cron invocation reconciles any work missed during a database-to-queue handoff.
 The daily schedule is compatible with the Vercel Hobby plan and is a safety net rather than the primary worker.
 
+### Tests and CI
+
+```bash
+npm run lint && npm run typecheck && npm test   # ESLint, TypeScript, Vitest
+npm run build && npm run size                   # production build, then first-load JS per page vs bundle-budget.json
+npm run test:e2e:install                        # once: Chromium and WebKit for Playwright
+npm run test:e2e                                # Playwright, including axe accessibility checks
+PLAYWRIGHT_PORT=1447 npm run test:e2e           # the same, beside a dev server on 1437
+```
+
+The end-to-end suite builds the app and runs `next start` against a fresh SQLite file (`.playwright-e2e.db`) with placeholder Clerk keys.
+It needs no real credentials: no email, push, maps, Places, Gemini or Cloudinary call is made, so every test runs in CI and none is skipped.
+Pages behind sign-in are not covered end to end yet, because the placeholder Clerk keys cannot sign anyone in.
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on GitHub-hosted runners for every pull request and every push to `main`.
+Lint, types, unit tests (plus migrations against an empty database), and the build with its bundle-size check run as parallel jobs, and Playwright runs once per browser engine (Chromium desktop and mobile, WebKit mobile).
+A docs-only change skips them, and a dev-dependency-only change skips the end-to-end jobs (see release-kit's CI lanes).
+`CI result` is the one required check.
+The release-kit workflows also check every commit message and pull request title (`Commit messages`) and scan the lock file with OSV (`Security scan`, weekly and when the lock file changes).
+
+### Releases
+
+Commits follow Conventional Commits, and [release-kit](https://github.com/n8watkins/release-kit) turns them into versions, `CHANGELOG.md` and GitHub Releases.
+See [`RELEASING.md`](./RELEASING.md).
+
 ### Database schema
 
 Drizzle schema lives in `lib/db/schema.ts`, and durable ordered SQL migrations live in `drizzle/`.
