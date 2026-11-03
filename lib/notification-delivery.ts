@@ -22,6 +22,15 @@ import { scheduleNotificationDelivery } from "@/lib/notification-queue";
 import { sendPushToSubscription } from "@/lib/push";
 import type { Venue } from "@/lib/venues";
 import { readPlanStops } from "@/lib/plan-stops";
+import { errorSummary, logError, logWarn, safeCode } from "@/lib/log";
+
+const ROUTE = "/api/notifications/process";
+
+/** The HTTP status on a Clerk API error, if it has one. */
+function clerkStatus(error: unknown): number | undefined {
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" ? status : undefined;
+}
 
 function safeParse<T>(value: string | null, fallback: T): T {
   if (!value) return fallback;
@@ -41,7 +50,14 @@ async function senderDisplayName(senderId: string): Promise<string> {
       sender.emailAddresses[0]?.emailAddress?.split("@")[0] ??
       "Someone special"
     );
-  } catch {
+  } catch (error) {
+    logWarn({
+      event: "clerk_lookup_failed",
+      reason: "sender_name",
+      route: ROUTE,
+      clerkStatus: clerkStatus(error),
+      error: errorSummary(error),
+    });
     return "Someone special";
   }
 }
@@ -233,6 +249,21 @@ async function deliverClaimedNotificationJobs(
         retryDelayMinutes,
         job.attempts,
       );
+      // One line per failed job: what it was, why, and whether it retries.
+      // Errors are masked (Clerk and email errors can quote addresses).
+      logError({
+        event: "notification_delivery_failed",
+        reason: errorCode,
+        route: ROUTE,
+        jobId: safeCode(job.id),
+        kind: job.kind,
+        channel: job.channel,
+        attempt: job.attempts,
+        outcome: status === "exhausted" ? "exhausted" : "retry",
+        retryInMinutes: status === "exhausted" ? undefined : retryDelayMinutes,
+        clerkStatus: clerkStatus(error),
+        error: errorCode === "delivery_failed" ? errorSummary(error) : undefined,
+      });
       if (status === "exhausted") exhausted += 1;
       else {
         failed += 1;

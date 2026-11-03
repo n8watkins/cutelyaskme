@@ -92,6 +92,15 @@ Keep `.env*` files with secrets out of the working tree when building for a depl
 Server secrets live in Worker secrets (`wrangler secret put NAME`); local workerd runs read them from `.dev.vars`.
 `PLAYWRIGHT_BASE_URL=<url>` runs the end-to-end suite against a running deployment instead of a local build (see [`playwright.config.ts`](./playwright.config.ts)).
 
+### Reading the logs
+
+Workers Logs keeps every request (`observability` in `wrangler.jsonc`, `head_sampling_rate: 1`).
+In the Cloudflare dashboard, open Workers & Pages, then the `cutelyaskme` Worker, then Logs.
+To stream them live, run `npx wrangler tail cutelyaskme --format pretty`.
+`--search` matches log messages only, not request URLs, so use `--status error` or no filter to see requests.
+Failures log one JSON line with `event`, `reason` and `route`: `notification_delivery_failed` per failed job (kind, channel, attempt, and `retry` or `exhausted`), `clerk_lookup_failed` with Clerk's HTTP status, `notification_queue_drain_failed` with the batch's attempt and retry delay, `notification_reconciliation_failed` for the daily cron, and `unhandled_exception` with the route for errors thrown in pages, route handlers or the proxy (`src/instrumentation.ts`).
+They never carry secrets, tokens, cookies, emails or other personal data; error messages are masked.
+
 ### Tests and CI
 
 ```bash

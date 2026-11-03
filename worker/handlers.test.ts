@@ -88,6 +88,15 @@ describe("Worker queue consumer", () => {
 
     expect(batch.retryAll).toHaveBeenCalledWith({ delaySeconds: 120 });
     expect(batch.ackAll).not.toHaveBeenCalled();
+    expect(JSON.parse(String(vi.mocked(console.error).mock.calls.at(-1)?.[0]))).toEqual({
+      event: "notification_queue_drain_failed",
+      reason: "drain_failed",
+      route: "queue:cutelyaskme-notification-delivery",
+      messages: 1,
+      attempt: 1,
+      retryInSeconds: 120,
+      error: "Error: notification drain failed with status 503",
+    });
   });
 
   it("retries rather than calling the route when CRON_SECRET is missing", async () => {
