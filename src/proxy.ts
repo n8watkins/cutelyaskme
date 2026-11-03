@@ -4,6 +4,7 @@ import {
   buildContentSecurityPolicy,
   generateCspNonce,
 } from "@/lib/content-security-policy";
+import { isPrototypeEnabled, isPrototypePath } from "@/lib/prototype";
 
 // Next 16 "proxy" file convention (formerly middleware.ts — identical behavior).
 // Only the sender's own pages require auth. /invite and /plan must stay public
@@ -20,9 +21,17 @@ export default clerkMiddleware(async (auth, request) => {
   requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
   requestHeaders.set("X-Nonce", nonce);
 
-  const response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  // The UX prototype never reaches a production visitor: render the 404 page.
+  const hidePrototype =
+    isPrototypePath(request.nextUrl.pathname) && !isPrototypeEnabled();
+  const response = hidePrototype
+    ? NextResponse.rewrite(new URL("/_prototype-not-served", request.url), {
+        status: 404,
+        request: { headers: requestHeaders },
+      })
+    : NextResponse.next({
+        request: { headers: requestHeaders },
+      });
   response.headers.set("Content-Security-Policy", contentSecurityPolicy);
   return response;
 });
