@@ -20,7 +20,12 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:install": "playwright install chromium webkit"
+    "test:e2e:install": "playwright install chromium webkit",
+    "typecheck": "tsc --noEmit",
+    "size": "node scripts/check-bundle-size.mjs",
+    "release": "release-kit release",
+    "release:check": "release-kit check && npm run lint && npm run typecheck && npm test && npm run build",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.4.3",
@@ -40,6 +45,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/canvas-confetti": "^1.9.0",
@@ -52,6 +58,7 @@
     "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "^16.4.3",
+    "release-kit": "github:n8watkins/release-kit#v2.3.3",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.8"
