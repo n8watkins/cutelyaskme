@@ -11,6 +11,21 @@
   --font-sans: var(--font-nunito);
 }
 
+/* Proposed design tokens (docs/UX_PLAN_2026-11.md). Every text pairing below
+   meets WCAG AA on blush or white. */
+@theme {
+  --color-ink: #3a2530;
+  --color-muted: #7a5a68;
+  --color-blush: #fff7fb;
+  --color-petal: #ffd6e8;
+  --color-pink: #ff7aaa;
+  --color-pink-strong: #c93a73;
+  --color-lavender: #7c5aa0;
+  --color-lilac: #e7d9ff;
+  --color-mist: #f5f0ff;
+  --color-sunny: #fff3d6;
+}
+
 * {
   box-sizing: border-box;
 }
