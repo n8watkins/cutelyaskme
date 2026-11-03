@@ -1,0 +1,22 @@
+{
+  "versionFiles": [],
+  "node": "24",
+  "timeZone": "America/Los_Angeles",
+  "workflows": "package",
+  "repository": "n8watkins/cutelyaskme",
+  "lanes": {
+    "fullFor": [
+      "@playwright/test",
+      "@axe-core/playwright",
+      "typescript",
+      "tailwindcss",
+      "@tailwindcss/postcss"
+    ]
+  },
+  "protect": {
+    "checks": [
+      "CI result",
+      "check / check"
+    ]
+  }
+}

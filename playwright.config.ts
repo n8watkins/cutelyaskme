@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 
-const port = 1437;
+// PLAYWRIGHT_PORT lets a local run sit beside `npm run dev`, which uses 1437.
+const port = Number(process.env.PLAYWRIGHT_PORT ?? 1437);
 const baseURL = `http://127.0.0.1:${port}`;
 const artifactsDirectory = "node_modules/.cache/playwright";
 const databasePath = path.join(process.cwd(), ".playwright-e2e.db");
@@ -40,11 +41,11 @@ export default defineConfig({
   projects: [
     {
       name: "chromium-desktop",
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], launchOptions: { args: ["--mute-audio"] } },
     },
     {
       name: "chromium-mobile",
-      use: { ...devices["Pixel 7"] },
+      use: { ...devices["Pixel 7"], launchOptions: { args: ["--mute-audio"] } },
     },
     {
       name: "webkit-mobile",
