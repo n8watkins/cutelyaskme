@@ -8,6 +8,9 @@
     },
     "@vercel/queue": {
       "minimatch": "11.0.4"
+    },
+    "@node-minify/core": {
+      "glob": "10.5.0"
     }
   },
   "scripts": {
