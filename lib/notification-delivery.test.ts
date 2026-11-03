@@ -181,4 +181,36 @@ describe("notification delivery policy", () => {
       delaySeconds: 240,
     });
   });
+
+  it("logs one JSON line per failed job with the reason and whether it retries", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    state.jobs = [{
+      id: "failed-email-job",
+      planId: "plan-1",
+      inviteId: null,
+      channel: "email",
+      targetId: "recipient@example.test",
+      kind: "plan_ready",
+      attempts: 6,
+    }];
+    state.selections = [[plan("recipient-1")], [invite], []];
+    mocks.sendSpotReadyEmail.mockRejectedValue(new Error("Resend refused recipient@example.test"));
+    mocks.markFailed.mockResolvedValue("exhausted");
+
+    await deliverPendingNotificationJobs();
+
+    const line = String(error.mock.calls[0]?.[0]);
+    expect(JSON.parse(line)).toEqual({
+      event: "notification_delivery_failed",
+      reason: "delivery_failed",
+      route: "/api/notifications/process",
+      jobId: "failed-email-job",
+      kind: "plan_ready",
+      channel: "email",
+      attempt: 6,
+      outcome: "exhausted",
+      error: "Error: Resend refused [email]",
+    });
+    expect(line).not.toContain("recipient@example.test");
+  });
 });

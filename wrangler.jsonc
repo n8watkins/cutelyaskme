@@ -22,7 +22,8 @@
     "binding": "IMAGES"
   },
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 1
   },
   "queues": {
     // lib/notification-queue.ts wakes the notification outbox through this queue.

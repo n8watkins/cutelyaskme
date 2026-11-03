@@ -15,6 +15,7 @@ import {
   NOTIFICATION_QUEUE_RETRY_DELAY_SECONDS,
   type NotificationWakeMessage,
 } from "../lib/notification-wake";
+import { errorSummary, logError, pathOf } from "../lib/log";
 
 export type FetchHandler = {
   fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext): Promise<Response>;
@@ -61,8 +62,22 @@ async function drainOutbox(
 
 export function createWorker(app: FetchHandler) {
   return {
-    fetch(request, env, ctx) {
-      return app.fetch(request, env, ctx);
+    async fetch(request, env, ctx) {
+      try {
+        return await app.fetch(request, env, ctx);
+      } catch (err) {
+        // Next reports its own errors (src/instrumentation.ts); this is for a
+        // throw that escapes OpenNext itself.
+        logError({
+          event: "unhandled_exception",
+          reason: "worker_fetch_threw",
+          route: pathOf(request.url),
+          method: request.method,
+          status: 500,
+          error: errorSummary(err),
+        });
+        throw err;
+      }
     },
 
     async queue(batch, env, ctx) {
@@ -84,15 +99,31 @@ export function createWorker(app: FetchHandler) {
         }
         batch.ackAll();
       } catch (error) {
-        console.error(
-          JSON.stringify({ event: "notification_queue_drain_failed", error: String(error) }),
-        );
+        // Cloudflare retries the batch, and after max_retries (wrangler.jsonc)
+        // moves it to the dead-letter queue; the outbox rows stay either way.
+        logError({
+          event: "notification_queue_drain_failed",
+          reason: "drain_failed",
+          route: `queue:${batch.queue}`,
+          messages: batch.messages.length,
+          attempt: Math.max(0, ...batch.messages.map((message) => message.attempts)),
+          retryInSeconds: NOTIFICATION_QUEUE_RETRY_DELAY_SECONDS,
+          error: errorSummary(error),
+        });
         batch.retryAll({ delaySeconds: NOTIFICATION_QUEUE_RETRY_DELAY_SECONDS });
       }
     },
 
     async scheduled(controller, env, ctx) {
-      const summary = await drainOutbox(app, env, ctx, `cron:${controller.cron}`);
+      const summary = await drainOutbox(app, env, ctx, `cron:${controller.cron}`).catch((error: unknown) => {
+        logError({
+          event: "notification_reconciliation_failed",
+          reason: "drain_failed",
+          route: `cron:${controller.cron}`,
+          error: errorSummary(error),
+        });
+        throw error;
+      });
       console.log(JSON.stringify({ event: "notification_reconciliation", ...summary }));
     },
   } satisfies ExportedHandler<CloudflareEnv, NotificationWakeMessage>;
