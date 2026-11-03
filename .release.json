@@ -15,7 +15,8 @@
   },
   "protect": {
     "checks": [
-      "CI result"
+      "CI result",
+      "check / check"
     ]
   }
 }
