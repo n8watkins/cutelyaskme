@@ -1,0 +1,9 @@
+{
+  "$comment": "Gzipped first-load JS budget per page in kB, checked by `npm run size` after a build. About 10% above the size when set (2026-11-02).",
+  "defaultKb": 210,
+  "routes": {
+    "/dashboard": 260,
+    "/invite/[recipient]": 285,
+    "/plan/[id]": 230
+  }
+}
