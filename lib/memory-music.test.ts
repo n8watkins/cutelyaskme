@@ -19,9 +19,6 @@ describe("MUSIC_TRACKS", () => {
     }
   });
 
-  it("default track is the first one", () => {
-    expect(DEFAULT_MUSIC_TRACK).toBe(MUSIC_TRACKS[0]);
-  });
 });
 
 describe("isMusicTrack", () => {

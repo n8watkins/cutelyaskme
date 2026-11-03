@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { entreeIcons } from "@/lib/food-options";
 import { StepCard } from "./StepCard";
 import { SharePlanButton } from "./SharePlanButton";
+import { TimeZoneField } from "./TimeZoneField";
+import { detectBrowserTimeZone } from "@/lib/timezones";
 import type { DressVibe, EntreeOption } from "./types";
 
 const DRESS_LABELS: Record<DressVibe, string> = {
@@ -54,15 +56,14 @@ export function SummaryStep({
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [timezone, setTimezone] = useState("");
-  const [timezones, setTimezones] = useState(["UTC"]);
+  // null until the device zone has been read on the client (the server has
+  // no idea where the recipient is), then the detected zone or "".
+  const [timezone, setTimezone] = useState<string | null>(null);
+  const [timezoneDetected, setTimezoneDetected] = useState(true);
 
   useEffect(() => {
-    const supported = Intl.supportedValuesOf?.("timeZone") ?? [];
-    const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    Promise.resolve().then(() => {
-      setTimezones(Array.from(new Set([browserZone, "UTC", ...supported])).filter(Boolean));
-    });
+    const browserZone = detectBrowserTimeZone();
+    Promise.resolve().then(() => setTimezone(browserZone ?? ""));
   }, []);
 
   const foodIcon =
@@ -161,28 +162,15 @@ export function SummaryStep({
         </dl>
       </div>
       {inviteToken ? (
-        <label className="mt-4 block rounded-[24px] border-2 border-[#e7d9ff] bg-white/90 p-4 text-left shadow-sm">
-          <span className="block text-xs font-black uppercase tracking-[0.16em] text-[#8a6a78]">
-            Date timezone
-          </span>
-          <span className="mt-1 block text-sm font-bold text-[#8a6a78]">
-            Choose the timezone where the date takes place{location ? ` near ${location}` : ""}.
-          </span>
-          <select
-            aria-label="Date timezone"
-            required
-            value={timezone}
-            onChange={(event) => setTimezone(event.target.value)}
-            className="mt-3 min-h-12 w-full rounded-2xl border-2 border-[#ffd6e8] bg-white px-3 text-sm font-black text-[#3a2530] outline-none focus-visible:ring-4 focus-visible:ring-[#e7d9ff]"
-          >
-            <option value="">Choose the date&apos;s timezone</option>
-            {timezones.map((zone) => (
-              <option key={zone} value={zone}>
-                {zone.replaceAll("_", " ")}
-              </option>
-            ))}
-          </select>
-        </label>
+        <TimeZoneField
+          value={timezone}
+          detected={timezoneDetected}
+          location={location}
+          onChange={(zone) => {
+            setTimezone(zone);
+            setTimezoneDetected(false);
+          }}
+        />
       ) : null}
       <div className="mt-5">
         {inviteToken ? (

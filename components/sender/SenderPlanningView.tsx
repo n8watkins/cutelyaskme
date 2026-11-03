@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { plannerErrorMessage, readServerMessage } from "@/lib/planner-errors";
+import { formatStopList, stopsMissingVenues } from "@/lib/share-readiness";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SunCalc from "suncalc";
 import { parseTimeToMinutes, formatTime, formatDuration } from "@/lib/datetime";
@@ -152,9 +154,16 @@ export function SenderPlanningView({
   plan,
   settings = DEFAULT_SETTINGS,
   settingsPersisted = true,
+  shared = null,
 }: {
   planId: string;
   plan: PlanData;
+  /**
+   * Set once the plan was shared or locked in as a surprise. The server
+   * freezes confirmed plans, so the planner turns read-only instead of
+   * offering edits that can only fail.
+   */
+  shared?: { mode: "share" | "surprise"; confirmedAt: string } | null;
   /** B4: the sender's saved settings; defaults when rendered without them. */
   settings?: UserSettings;
   /** False when the user has no settings row yet → legacy `ca:` prefs migrate up once. */
@@ -196,7 +205,6 @@ export function SenderPlanningView({
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(() =>
     plan.pickupPoint?.lat ? { lat: plan.pickupPoint.lat, lng: plan.pickupPoint.lng } : null,
@@ -264,6 +272,7 @@ export function SenderPlanningView({
   // C7: today's outbound API call counts by service (places-search, routes, …).
   const [usage, setUsage] = useState<Record<string, number> | null>(null);
   const [notifyStatus, setNotifyStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
+  const [notifyError, setNotifyError] = useState<string | null>(null);
 
   // Venues the sender has 👍'd on past dates, grouped by activity ("Places you loved").
   const [lovedByActivity, setLovedByActivity] = useState<Record<string, Venue[]>>({});
@@ -494,7 +503,6 @@ export function SenderPlanningView({
     if (swap < 0 || swap >= next.length) return;
     [next[index], next[swap]] = [next[swap], next[index]];
     setStopOrder(next);
-    setSaved(false);
   }
 
   function isPlacesVenue(v: Venue): boolean {
@@ -537,26 +545,48 @@ export function SenderPlanningView({
         return n;
       });
     }
-    setSaved(false);
     // C4: selecting a Places venue pulls its hours + reviews (server-cached 7-30d).
     if (venue) void loadDetails(venue);
   }
 
   function setDuration(key: string, minutes: number) {
     setStopDurations((p) => ({ ...p, [key]: minutes }));
-    setSaved(false);
   }
 
-  const initialStops = buildStops(plan);
-  const initialStopDurations = buildStopDurations(plan);
-  const isDirty =
-    JSON.stringify(stopOrder) !== JSON.stringify(initialStops) ||
-    JSON.stringify(stopDurations) !== JSON.stringify(initialStopDurations) ||
-    JSON.stringify(activityVenues) !== JSON.stringify(plan.selectedActivityVenues) ||
-    entreeVenue?.id !== plan.selectedEntreeVenue?.id ||
-    JSON.stringify(startPoint) !== JSON.stringify(plan.startPoint) ||
-    JSON.stringify(pickupPoint) !== JSON.stringify(plan.pickupPoint) ||
-    JSON.stringify(legModes) !== JSON.stringify(plan.legModes);
+  // Compare against what the server last stored (the props on load, then
+  // each successful save), so "saved" stays true after a save even when the
+  // page does not refresh its props.
+  const currentSnapshot = JSON.stringify([
+    stopOrder,
+    stopDurations,
+    activityVenues,
+    entreeVenue?.id ?? null,
+    startPoint,
+    pickupPoint,
+    legModes,
+  ]);
+  const [savedSnapshot, setSavedSnapshot] = useState(() =>
+    JSON.stringify([
+      buildStops(plan),
+      buildStopDurations(plan),
+      plan.selectedActivityVenues,
+      plan.selectedEntreeVenue?.id ?? null,
+      plan.startPoint,
+      plan.pickupPoint,
+      plan.legModes,
+    ]),
+  );
+  const isDirty = currentSnapshot !== savedSnapshot;
+  const locked = shared !== null;
+  // Every stop that happens somewhere needs a place before the plan can go out.
+  const missingStops = stopsMissingVenues(
+    stopOrder.map((key) => ({
+      label: stopLabel(key),
+      activity: key === ENTREE_KEY ? (plan.selectedEntree ?? "") : key,
+      hasVenue: getSelectedVenue(key) !== null,
+    })),
+  );
+  const readyToShare = missingStops.length === 0 && !isDirty;
 
   // Compute timeline — running accumulator via reduce (no render-time reassignment)
   const startOfDay = parseTimeToMinutes(plan.selectedTime);
@@ -646,7 +676,6 @@ export function SenderPlanningView({
 
   function pickLegMode(legKey: string, mode: LegMode) {
     setLegModes((p) => ({ ...p, [legKey]: mode }));
-    setSaved(false);
   }
 
   async function handlePinMove(lat: number, lng: number) {
@@ -664,7 +693,9 @@ export function SenderPlanningView({
   }
 
   async function handleNotify(mode: "share" | "surprise") {
+    if (!readyToShare) return;
     setNotifyStatus("loading");
+    setNotifyError(null);
     try {
       const res = await fetch(`/api/plans/${planId}/notify`, {
         method: "POST",
@@ -673,12 +704,14 @@ export function SenderPlanningView({
       });
       if (res.ok) {
         setNotifyStatus("sent");
-        router.refresh(); // plan is now confirmed → reveal the post-date review section
+        router.refresh(); // plan is now confirmed → the page re-renders it read-only
       } else {
         setNotifyStatus("error");
+        setNotifyError(plannerErrorMessage("share", res.status, await readServerMessage(res)));
       }
     } catch {
       setNotifyStatus("error");
+      setNotifyError(plannerErrorMessage("share", 0));
     }
   }
 
@@ -718,16 +751,16 @@ export function SenderPlanningView({
         }),
       });
       if (res.ok) {
-        setSaved(true);
+        setSavedSnapshot(currentSnapshot);
         const data = (await res.json().catch(() => null)) as { itineraryUpdated?: boolean } | null;
         // The plan page renders the itinerary server-side, so refresh to show the
         // version that was just regenerated from the chosen venues.
         if (data?.itineraryUpdated) router.refresh();
       } else {
-        setSaveError("Couldn't save. Try again.");
+        setSaveError(plannerErrorMessage("save", res.status, await readServerMessage(res)));
       }
     } catch {
-      setSaveError("Couldn't save. Try again.");
+      setSaveError(plannerErrorMessage("save", 0));
     } finally {
       setSaving(false);
     }
@@ -862,6 +895,14 @@ export function SenderPlanningView({
       <h1 className="mb-1 text-2xl font-black text-[#3a2530] sm:text-3xl">Your date plan ✨</h1>
       <p className="mb-5 text-[#8a6a78]">Here&apos;s what {plan.recipientName} chose.</p>
 
+      {shared && (
+        <SharedBanner
+          mode={shared.mode}
+          confirmedAt={shared.confirmedAt}
+          recipientName={plan.recipientName}
+        />
+      )}
+
       {/* Date details — full-width banner (A3) */}
       <section className="mb-4 rounded-[24px] border-2 border-[#ffd6e8] bg-white px-5 py-4">
         <div className="flex flex-wrap items-center gap-x-10 gap-y-3">
@@ -870,7 +911,7 @@ export function SenderPlanningView({
           {plan.dressVibe && (
             <BannerItem
               icon="👗"
-              label="Her vibe"
+              label="Their vibe"
               value={DRESS_VIBE_LABELS[plan.dressVibe] ?? plan.dressVibe}
             />
           )}
@@ -896,6 +937,12 @@ export function SenderPlanningView({
       <div className="grid gap-6 lg:gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         {/* Left column */}
         <div className="space-y-6">
+          {locked ? (
+            <LockedStops
+              stops={timeline}
+              routeUrl={routeUrl}
+            />
+          ) : (
           <section className="rounded-[24px] border-2 border-[#ffd6e8] bg-white p-4 sm:p-5">
             <h2 className="mb-4 text-sm font-black uppercase tracking-widest text-[#c0a0b0]">
               Plan the stops
@@ -1160,15 +1207,23 @@ export function SenderPlanningView({
               })}
             </div>
 
-            {saveError && <p className="mt-3 text-sm text-red-500">{saveError}</p>}
+            {saveError && (
+              <p role="alert" className="mt-3 text-sm font-bold text-[#c0264f]">
+                {saveError}
+              </p>
+            )}
 
             <button
               type="button"
               onClick={() => void handleSave()}
-              disabled={saving || (!isDirty && saved)}
-              className="mt-5 w-full rounded-full bg-[#ff7aaa] py-3 font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] transition disabled:opacity-60 hover:brightness-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
+              disabled={saving || !isDirty}
+              className={`mt-5 w-full rounded-full py-3 font-black transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffd6e8] ${
+                !isDirty && hasAnyVenue
+                  ? "border-2 border-[#ffd6e8] bg-white text-[#b0386a]"
+                  : "bg-[#ff7aaa] text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105 disabled:opacity-60"
+              }`}
             >
-              {saving ? "Saving…" : saved && !isDirty ? "Spots saved ✓" : "Save spots"}
+              {saving ? "Saving…" : !isDirty && hasAnyVenue ? "Spots saved ✓" : "Save spots"}
             </button>
 
             {routeUrl && (
@@ -1182,7 +1237,63 @@ export function SenderPlanningView({
               </a>
             )}
           </section>
+          )}
 
+          {/* Share: gated on every stop having a place and the spots being saved */}
+          {!locked && (
+            <section
+              aria-labelledby="share-heading"
+              className="rounded-[24px] border-2 border-[#e7d9ff] bg-[#f5f0ff] p-4 sm:p-5"
+            >
+              <h2 id="share-heading" className="text-base font-black text-[#3a2530]">
+                Ready to send it to {plan.recipientName}?
+              </h2>
+              <ul className="mt-2 grid gap-1.5" aria-label="Before you share">
+                <ChecklistItem done={missingStops.length === 0}>
+                  {missingStops.length === 0
+                    ? "Every stop has a spot"
+                    : `Pick a spot for ${formatStopList(missingStops)}`}
+                </ChecklistItem>
+                <ChecklistItem done={!isDirty}>
+                  {isDirty ? "Save your spots" : "Spots saved"}
+                </ChecklistItem>
+              </ul>
+              <p className="mt-2 text-xs font-bold text-[#6b5a80]">
+                Sharing locks the plan so it can&apos;t change under them.
+              </p>
+
+              {notifyStatus === "sent" ? (
+                <p role="status" className="mt-3 text-center font-black text-[#6b4a99]">
+                  Sent ✓
+                </p>
+              ) : (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleNotify("share")}
+                    disabled={!readyToShare || notifyStatus === "loading"}
+                    className="min-h-11 rounded-full bg-[#7c5aa0] px-3 py-2.5 text-sm font-black text-white shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e7d9ff]"
+                  >
+                    Share plan 💌
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleNotify("surprise")}
+                    disabled={!readyToShare || notifyStatus === "loading"}
+                    className="min-h-11 rounded-full border-2 border-[#7c5aa0] bg-white px-3 py-2.5 text-sm font-black text-[#6b4a99] transition hover:bg-[#e7d9ff] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#e7d9ff]"
+                  >
+                    Keep it a surprise 🎁
+                  </button>
+                </div>
+              )}
+
+              {notifyError && (
+                <p role="alert" className="mt-2 text-center text-sm font-bold text-[#c0264f]">
+                  {notifyError}
+                </p>
+              )}
+            </section>
+          )}
           {/* Timeline section */}
           {timeline.length > 0 && (
             <section className="rounded-[24px] border-2 border-[#e7d9ff] bg-white p-5">
@@ -1203,7 +1314,7 @@ export function SenderPlanningView({
               </div>
 
               {/* D2: sunset-aware ordering — one-tap fix when a sun stop misses its window */}
-              {orderSuggestion && (
+              {orderSuggestion && !locked && (
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 border-[#ffd6a5] bg-[#fff8ec] px-3.5 py-2.5">
                   <p className="min-w-0 flex-1 text-xs font-black leading-snug text-[#b06a1f]">
                     {orderSuggestion.message}
@@ -1212,7 +1323,6 @@ export function SenderPlanningView({
                     type="button"
                     onClick={() => {
                       setStopOrder(orderSuggestion.order);
-                      setSaved(false);
                     }}
                     className="shrink-0 rounded-full bg-[#d98a3a] px-3 py-1 text-xs font-black text-white transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#ffd6a5]"
                   >
@@ -1232,7 +1342,7 @@ export function SenderPlanningView({
                           legKey={travelIn.legKey}
                           mode={travelIn.mode}
                           leg={travelIn.leg}
-                          onMode={pickLegMode}
+                          onMode={locked ? undefined : pickLegMode}
                           navUrl={legNavUrl(stop.key)}
                         />
                       )}
@@ -1269,7 +1379,7 @@ export function SenderPlanningView({
                 searchRadius={parseInt(radius, 10)}
                 onCenterChange={(lat, lng) => void handlePinMove(lat, lng)}
                 viewCenter={mapCenter}
-                candidates={activeCandidates}
+                candidates={locked ? [] : activeCandidates}
                 selectedId={activeSelectedId}
                 onCandidateSelect={(v) => {
                   if (activeStopKey) selectVenue(activeStopKey, v);
@@ -1290,7 +1400,7 @@ export function SenderPlanningView({
               {mapExpanded ? "▲ Shrink map" : "▼ Expand map"}
             </button>
 
-            <div className="flex gap-2">
+            <div className={locked ? "hidden" : "flex gap-2"}>
               <button
                 type="button"
                 onClick={() => setPinMode((p) => !p)}
@@ -1327,52 +1437,12 @@ export function SenderPlanningView({
               </div>
             </div>
 
-            {!mapStops.some(Boolean) && !pinMode && (
+            {!mapStops.some(Boolean) && !pinMode && !locked && (
               <p className="text-center text-sm text-[#c0a0b0]">
                 Select a spot for each stop and it&apos;ll appear on the map.
               </p>
             )}
 
-            {/* Notify section */}
-            {saved && !isDirty && (
-              <div className="rounded-[20px] border-2 border-[#e7d9ff] bg-[#f5f0ff] p-4">
-                <p className="mb-1 text-sm font-black text-[#7c5aa0]">
-                  Loop in {plan.recipientName}?
-                </p>
-                <p className="mb-3 text-xs text-[#a088c0]">
-                  Send her a notification that the plan is locked.
-                </p>
-
-                {notifyStatus === "sent" ? (
-                  <p className="text-center font-black text-[#7c5aa0]">Notification sent ✓</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleNotify("share")}
-                      disabled={notifyStatus === "loading"}
-                      className="rounded-full bg-[#c7a6ff] py-2.5 text-sm font-black text-white shadow-sm transition hover:brightness-105 disabled:opacity-60"
-                    >
-                      Share plan 💌
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleNotify("surprise")}
-                      disabled={notifyStatus === "loading"}
-                      className="rounded-full border-2 border-[#c7a6ff] py-2.5 text-sm font-black text-[#7c5aa0] transition hover:bg-[#e7d9ff] disabled:opacity-60"
-                    >
-                      Surprise her 🎁
-                    </button>
-                  </div>
-                )}
-
-                {notifyStatus === "error" && (
-                  <p className="mt-2 text-center text-xs text-red-500">
-                    Couldn&apos;t send — try again.
-                  </p>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1536,17 +1606,18 @@ function TravelChip({
   legKey: string;
   mode: LegMode;
   leg: RouteLeg;
-  onMode: (legKey: string, mode: LegMode) => void;
+  /** Omitted when the plan is locked: the chosen leg shows as plain text. */
+  onMode?: (legKey: string, mode: LegMode) => void;
   navUrl: string | null;
 }) {
   const chosen = legInfoForMode(leg, mode);
   const estTitle = chosen.estimate ? "Straight-line estimate — live routing unavailable" : undefined;
 
-  if (!leg.walk) {
+  if (!leg.walk || !onMode) {
     return (
       <div className="ml-12 flex flex-wrap items-center gap-1.5" title={estTitle}>
         <span className="rounded-full bg-[#fff7fb] px-2.5 py-0.5 text-[11px] font-black text-[#8a6a78]">
-          🚗 {formatLeg(leg.drive)}
+          {mode === "walk" ? "🚶" : "🚗"} {formatLeg(chosen)}
         </span>
         {navUrl && <NavPill href={navUrl} />}
       </div>
@@ -2103,18 +2174,7 @@ function VenueCard({
           : "border-[#ffd6e8] bg-white/70 hover:bg-white"
       }`}
     >
-      {venue.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={venue.imageUrl}
-          alt=""
-          className="h-12 w-12 shrink-0 rounded-xl object-cover"
-        />
-      ) : (
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#ffd6e8]/50 text-xl">
-          📍
-        </div>
-      )}
+      <VenueThumb src={venue.imageUrl} />
 
       <button
         type="button"
@@ -2350,5 +2410,145 @@ function SunStrip({
         />
       </div>
     </section>
+  );
+}
+
+function ChecklistItem({ done, children }: { done: boolean; children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-2 text-sm font-bold text-[#3a2530]">
+      <span
+        aria-hidden
+        className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-black ${
+          done ? "bg-[#7c5aa0] text-white" : "border-2 border-[#c7a6ff] bg-white text-transparent"
+        }`}
+      >
+        ✓
+      </span>
+      <span>
+        <span className="sr-only">{done ? "Done: " : "To do: "}</span>
+        {children}
+      </span>
+    </li>
+  );
+}
+
+function SharedBanner({
+  mode,
+  confirmedAt,
+  recipientName,
+}: {
+  mode: "share" | "surprise";
+  confirmedAt: string;
+  recipientName: string;
+}) {
+  const when = new Date(confirmedAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  return (
+    <section
+      role="status"
+      className="mb-4 flex items-start gap-3 rounded-[24px] border-2 border-[#e7d9ff] bg-[#f5f0ff] px-5 py-4"
+    >
+      <span aria-hidden className="text-3xl leading-none">
+        {mode === "share" ? "💌" : "🎁"}
+      </span>
+      <div>
+        <p className="font-black text-[#3a2530]">
+          {mode === "share"
+            ? `Shared with ${recipientName} on ${when}`
+            : `Locked in as a surprise on ${when}`}
+        </p>
+        <p className="mt-0.5 text-sm font-bold text-[#6b5a80]">
+          {mode === "share"
+            ? `${recipientName} can see every stop. `
+            : `${recipientName} sees the day and time now, and the full plan when the date begins. `}
+          The plan is locked so nothing changes under them. Need a different plan? Cancel this
+          date below and send a new invite.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function LockedStops({ stops, routeUrl }: { stops: TimelineStop[]; routeUrl: string | null }) {
+  return (
+    <section className="rounded-[24px] border-2 border-[#ffd6e8] bg-white p-4 sm:p-5">
+      <h2 className="mb-4 text-sm font-black uppercase tracking-widest text-[#8a6a78]">
+        The stops
+      </h2>
+      <ol className="grid gap-3">
+        {stops.map((stop, index) => (
+          <li
+            key={stop.key}
+            className="flex items-start gap-3 rounded-[20px] border-2 border-[#fff0f6] bg-[#fffafc] p-3"
+          >
+            <span
+              aria-hidden
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white text-xl shadow-inner"
+            >
+              {stop.icon}
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-[#8a6a78]">
+                <span className="sr-only">Stop </span>
+                {index + 1}. {stop.label} · {formatTime(stop.startMinutes)}
+              </p>
+              {stop.venue ? (
+                <>
+                  <p className="font-black text-[#3a2530]">{stop.venue.name}</p>
+                  {stop.venue.address && (
+                    <p className="text-sm text-[#6b5560]">{stop.venue.address}</p>
+                  )}
+                </>
+              ) : (
+                <p className="font-bold text-[#6b5560]">No place needed</p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ol>
+      {routeUrl && (
+        <a
+          href={routeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-full border-2 border-[#c7a6ff] py-3 font-black text-[#6b4a99] transition hover:bg-[#f5f0ff]"
+        >
+          🧭 Navigate the whole route
+        </a>
+      )}
+    </section>
+  );
+}
+
+// Venue photo with a calm fallback: no photo, a spent daily photo quota or a
+// network hiccup all show the same pin tile, never a broken-image icon.
+function VenueThumb({ src }: { src?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) {
+    return (
+      <div
+        aria-hidden
+        data-venue-thumb="placeholder"
+        className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#ffeaf3] text-xl"
+      >
+        📍
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- proxied Places photo; next/image would re-proxy it
+    <img
+      src={src}
+      alt=""
+      width={48}
+      height={48}
+      loading="lazy"
+      decoding="async"
+      data-venue-thumb="photo"
+      onError={() => setFailed(true)}
+      className="h-12 w-12 shrink-0 rounded-xl bg-[#ffeaf3] object-cover"
+    />
   );
 }

@@ -11,6 +11,18 @@ const googleSources = [
   "https://*.gstatic.com",
 ];
 
+// SHA-256 of the empty string. Clerk's one-time-code input (input-otp) and
+// its UI framework append empty <style> elements and then fill them through
+// CSSOM insertRule, which CSP does not police. Allowing only the *empty*
+// stylesheet hash lets that work without permitting any inline CSS text.
+export const EMPTY_STYLE_HASH = "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='";
+
+// Clerk's one-time-code field renders one inline <style> with its blinking
+// caret keyframes ("@keyframes caret-blink-animation"). Clerk UI is loaded
+// from Clerk's CDN, so if they change that text the Clerk e2e spec reports
+// the new hash; the only cost of a stale hash is a caret that doesn't blink.
+export const CLERK_OTP_CARET_STYLE_HASH = "'sha256-KQDhUccuEkZUQDnfbVDeY+ev2LZ+73AQR7ro4JppAY8='";
+
 export function generateCspNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return btoa(String.fromCharCode(...bytes));
@@ -32,7 +44,7 @@ export function buildContentSecurityPolicy(
   ];
   const styleSources = [
     "'self'",
-    ...(isDevelopment ? ["'unsafe-inline'"] : [`'nonce-${nonce}'`]),
+    ...(isDevelopment ? ["'unsafe-inline'"] : [`'nonce-${nonce}'`, EMPTY_STYLE_HASH, CLERK_OTP_CARET_STYLE_HASH]),
     "https://fonts.googleapis.com",
   ];
 

@@ -324,6 +324,56 @@ describe.sequential("authenticated database-backed API flow", () => {
     ]);
   });
 
+  it("refuses to share a plan until every stop has a place", async () => {
+    await client.execute({
+      sql: `
+        INSERT INTO invites (
+          id, token, sender_id, recipient_name, recipient_email, status
+        ) VALUES (?, ?, ?, ?, ?, 'pending')
+      `,
+      args: ["invite-empty-stops", "token-empty-stops", "sender-1", "Recipient", "recipient@example.test"],
+    });
+    authState.userId = null;
+    const created = await routes.createPlan(
+      jsonRequest("http://localhost/api/plans", "POST", {
+        inviteToken: "token-empty-stops",
+        selectedDate: "2099-01-01",
+        selectedTime: "18:00",
+        selectedEntree: "Pizza",
+        selectedActivities: ["Bookstore", "Photo booth", "Surprise ending"],
+        timezone: "America/Los_Angeles",
+      }),
+    );
+    expect(created.status).toBe(200);
+    const { planId: emptyPlanId } = (await created.json()) as { planId: string };
+
+    authState.userId = "sender-1";
+    const saved = await routes.editPlan(
+      jsonRequest(`http://localhost/api/plans/${emptyPlanId}`, "PATCH", {
+        selectedActivityVenues: { Bookstore: { id: "books-1", name: "Book Nook" } },
+      }),
+      { params: Promise.resolve({ id: emptyPlanId }) },
+    );
+    expect(saved.status).toBe(200);
+
+    const refused = await routes.notifyPlan(
+      jsonRequest(`http://localhost/api/plans/${emptyPlanId}/notify`, "POST", { mode: "share" }),
+      { params: Promise.resolve({ id: emptyPlanId }) },
+    );
+    expect(refused.status).toBe(422);
+    expect(await refused.json()).toEqual({
+      message: "Pick a spot for Photo booth and Pizza before sharing.",
+      missing: ["Photo booth", "Pizza"],
+    });
+    const state = await client.execute({
+      sql: "SELECT confirmed_at, notification_mode FROM date_plans WHERE id = ?",
+      args: [emptyPlanId],
+    });
+    expect(state.rows[0]).toEqual(
+      expect.objectContaining({ confirmed_at: null, notification_mode: null }),
+    );
+  });
+
   it("opens post-date writes only to claimed participants and scopes photos", async () => {
     authState.userId = "stranger-1";
     const forbidden = await routes.ratePlan(

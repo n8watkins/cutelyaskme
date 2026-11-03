@@ -227,9 +227,11 @@ export default async function DashboardPage() {
         />
       )}
 
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-3xl font-black text-[#3a2530]">Your dates 💌</h1>
-        <div className="flex items-center gap-2">
+      <div className="mb-8 flex items-center justify-between gap-3">
+        <h1 className="whitespace-nowrap text-2xl font-black text-[#3a2530] sm:text-3xl">
+          Your dates 💌
+        </h1>
+        <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/settings"
             aria-label="Settings"
@@ -240,7 +242,7 @@ export default async function DashboardPage() {
           </Link>
           <Link
             href="/send"
-            className="rounded-full bg-[#ff7aaa] px-5 py-2.5 text-sm font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105"
+            className="whitespace-nowrap rounded-full bg-[#ff7aaa] px-4 py-2.5 text-sm font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105 sm:px-5"
           >
             + New invite
           </Link>

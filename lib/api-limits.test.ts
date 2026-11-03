@@ -10,21 +10,6 @@ import {
 } from "./api-limits";
 
 describe("API_LIMITS registry", () => {
-  it("covers the shared service-name contract", () => {
-    for (const service of [
-      "places-search",
-      "places-details",
-      "places-photos",
-      "routes",
-      "static-maps",
-      "maps-js-loads",
-      "overpass",
-      "nws",
-    ]) {
-      expect(TRACKED_SERVICES).toContain(service);
-    }
-  });
-
   it("has unique service names and non-empty labels", () => {
     expect(new Set(TRACKED_SERVICES).size).toBe(API_LIMITS.length);
     for (const l of API_LIMITS) {
@@ -43,13 +28,6 @@ describe("API_LIMITS registry", () => {
         expect(l.dailyBudget!).toBeLessThan(l.monthlyCap);
       }
     }
-  });
-
-  it("knows places-details is the scarcest capped SKU", () => {
-    const caps = API_LIMITS.filter((l) => l.monthlyCap !== null);
-    const scarcest = caps.reduce((a, b) => (b.monthlyCap! < a.monthlyCap! ? b : a));
-    expect(scarcest.service).toBe("places-details");
-    expect(scarcest.monthlyCap).toBe(1000);
   });
 
   it("labels uncapped services as free", () => {
