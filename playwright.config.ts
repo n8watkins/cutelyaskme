@@ -3,30 +3,39 @@ import path from "node:path";
 
 // PLAYWRIGHT_PORT lets a local run sit beside `npm run dev`, which uses 1437.
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 1437);
-const baseURL = `http://127.0.0.1:${port}`;
+// PLAYWRIGHT_BASE_URL runs the suite against a deployment that is already up
+// (for example the Worker at its workers.dev address) instead of starting a
+// production build. TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must then name that
+// deployment's database, which the timezone spec writes a test invite into.
+// PLAYWRIGHT_E2E=0 with the deployment's Clerk development CLERK_SECRET_KEY
+// also runs the sign-in specs.
+const externalBaseURL = process.env.PLAYWRIGHT_BASE_URL?.replace(/\/$/, "");
+const baseURL = externalBaseURL ?? `http://127.0.0.1:${port}`;
 const artifactsDirectory = "node_modules/.cache/playwright";
 const databasePath = path.join(process.cwd(), ".playwright-e2e.db");
 
-process.env.TURSO_DATABASE_URL = `file:${databasePath}`;
-process.env.TURSO_AUTH_TOKEN = "";
-process.env.PLAN_CAPABILITY_SECRET =
-  "playwright-plan-capability-secret-with-thirty-two-bytes";
+if (!externalBaseURL) {
+  process.env.TURSO_DATABASE_URL = `file:${databasePath}`;
+  process.env.TURSO_AUTH_TOKEN = "";
+  process.env.PLAN_CAPABILITY_SECRET =
+    "playwright-plan-capability-secret-with-thirty-two-bytes";
 
-// Optional: a Clerk *development* instance's keys turn on the auth specs
-// (e2e/clerk-auth.spec.ts), which render the real Clerk widgets under the
-// production CSP and create a throwaway email account. Without them the app
-// runs with placeholder keys and ClerkProvider is left out of the layout.
-const clerkTestPublishableKey = process.env.E2E_CLERK_PUBLISHABLE_KEY;
-const clerkTestSecretKey = process.env.E2E_CLERK_SECRET_KEY;
-if (clerkTestPublishableKey?.startsWith("pk_test_") && clerkTestSecretKey?.startsWith("sk_test_")) {
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = clerkTestPublishableKey;
-  process.env.CLERK_SECRET_KEY = clerkTestSecretKey;
-  process.env.PLAYWRIGHT_E2E = "0";
-} else {
-  process.env.PLAYWRIGHT_E2E = "1";
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ??=
-    "pk_live_Y2xlcmsuZXhhbXBsZS50ZXN0JA";
-  process.env.CLERK_SECRET_KEY ??= "sk_live_playwright-not-a-production-secret";
+  // Optional: a Clerk *development* instance's keys turn on the auth specs
+  // (e2e/clerk-auth.spec.ts), which render the real Clerk widgets under the
+  // production CSP and create a throwaway email account. Without them the app
+  // runs with placeholder keys and ClerkProvider is left out of the layout.
+  const clerkTestPublishableKey = process.env.E2E_CLERK_PUBLISHABLE_KEY;
+  const clerkTestSecretKey = process.env.E2E_CLERK_SECRET_KEY;
+  if (clerkTestPublishableKey?.startsWith("pk_test_") && clerkTestSecretKey?.startsWith("sk_test_")) {
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = clerkTestPublishableKey;
+    process.env.CLERK_SECRET_KEY = clerkTestSecretKey;
+    process.env.PLAYWRIGHT_E2E = "0";
+  } else {
+    process.env.PLAYWRIGHT_E2E = "1";
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ??=
+      "pk_live_Y2xlcmsuZXhhbXBsZS50ZXN0JA";
+    process.env.CLERK_SECRET_KEY ??= "sk_live_playwright-not-a-production-secret";
+  }
 }
 
 export default defineConfig({
@@ -45,12 +54,14 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  webServer: {
-    command: `node scripts/prepare-e2e-db.mjs && npm run build && npm run start -- -p ${port}`,
-    url: baseURL,
-    reuseExistingServer: false,
-    timeout: 180_000,
-  },
+  webServer: externalBaseURL
+    ? undefined
+    : {
+        command: `node scripts/prepare-e2e-db.mjs && npm run build && npm run start -- -p ${port}`,
+        url: baseURL,
+        reuseExistingServer: false,
+        timeout: 180_000,
+      },
   projects: [
     {
       name: "chromium-desktop",

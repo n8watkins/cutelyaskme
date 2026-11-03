@@ -101,7 +101,11 @@ test.describe("public experience", () => {
       url: process.env.TURSO_DATABASE_URL!,
       authToken: process.env.TURSO_AUTH_TOKEN,
     });
-    await client.execute("PRAGMA busy_timeout = 5000");
+    // The local SQLite file is shared with the app server; a remote libSQL
+    // database (PLAYWRIGHT_BASE_URL runs) handles its own locking.
+    if (process.env.TURSO_DATABASE_URL!.startsWith("file:")) {
+      await client.execute("PRAGMA busy_timeout = 5000");
+    }
     await client.execute({
       sql: `
         INSERT INTO invites (

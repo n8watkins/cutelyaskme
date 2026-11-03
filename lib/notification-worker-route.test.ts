@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { readFile } from "node:fs/promises";
+import { experimental_readRawConfig } from "wrangler";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const delivery = vi.hoisted(() => ({
@@ -46,6 +47,24 @@ describe.sequential("notification worker route", () => {
       retryAfterSeconds: 120,
       initialDelaySeconds: 0,
     });
+  });
+
+  it("gives the Cloudflare Worker the same queue retry and daily reconciliation", () => {
+    const { rawConfig } = experimental_readRawConfig({ config: "wrangler.jsonc" });
+    const queue = "cutelyaskme-notification-delivery";
+
+    expect(rawConfig.triggers?.crons).toEqual(["0 3 * * *"]);
+    expect(rawConfig.queues?.producers).toContainEqual({
+      binding: "NOTIFICATION_QUEUE",
+      queue,
+    });
+    expect(rawConfig.queues?.consumers).toContainEqual(
+      expect.objectContaining({
+        queue,
+        retry_delay: 120,
+        dead_letter_queue: `${queue}-dlq`,
+      }),
+    );
   });
 
   beforeEach(() => {
