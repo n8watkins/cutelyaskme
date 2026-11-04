@@ -71,7 +71,6 @@ test("sign-in modal is styled and the page has no CSP violations", async ({ page
   });
   expect(cardStyle.radius).not.toBe("0px");
   expect(cardStyle.shadow).not.toBe("none");
-  await expect(page.getByRole("link", { name: "Sign up" })).toBeVisible();
   expect(violations).toEqual([]);
 });
 
@@ -99,19 +98,26 @@ test("a visitor can create an account with email and password", async ({ page })
   await bypassClerkBotProtection(page);
   try {
     await page.goto("/dashboard");
-    await page.getByRole("link", { name: "Sign up" }).click();
-    // Sign-up continues inside the same modal, on the same page.
-    await expect(page.locator(".cl-modalContent .cl-signUp-root")).toBeVisible();
+    // The modal signs in or signs up from one email field; a new address
+    // continues to sign-up inside the same modal, on the same page.
+    const modal = page.locator(".cl-modalContent").first();
+    await modal.getByLabel("Email address").fill(email);
+    await modal.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(modal.getByText("Create your account")).toBeVisible({ timeout: 15_000 });
     await expect(page).toHaveURL(/\/dashboard$/);
-    await page.getByLabel("Email address").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(`Cutely-${crypto.randomUUID()}`);
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await modal.getByLabel("Password", { exact: true }).fill(`Cutely-${crypto.randomUUID()}`);
+    await modal.getByRole("button", { name: "Continue", exact: true }).click();
     // Clerk test addresses (+clerk_test) accept the fixed code 424242.
     const code = page.locator('input[autocomplete="one-time-code"]').first();
     await expect(code).toBeVisible({ timeout: 15_000 });
     await code.click();
     await page.keyboard.type("424242");
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
+    // Signed in, the same address reloads (through Clerk's handshake in a
+    // development instance) as the real dashboard.
+    await expect(page).toHaveURL(/^[^?]*\/dashboard$/, { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Sign in to keep going" })).toHaveCount(0, {
+      timeout: 30_000,
+    });
     expect(violations).toEqual([]);
   } finally {
     await deleteClerkUsersByEmail(email);
