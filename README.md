@@ -87,7 +87,8 @@ npm run deploy:worker    # build, then deploy
 npm run cf-typegen       # regenerate cloudflare-env.d.ts after changing wrangler.jsonc
 ```
 
-`NEXT_PUBLIC_*` values are inlined by `next build`, so a deploy build needs them in its environment (the shell for a manual deploy, or the Workers Builds build variables).
+Pushes to `main` deploy on their own: [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml) builds and deploys the commit once CI passes on it, using the `CLOUDFLARE_API_TOKEN` repository secret.
+`NEXT_PUBLIC_*` values are inlined by `next build`, so a deploy build needs them in its environment: GitHub repository variables for the Deploy workflow, the shell for a manual deploy.
 Keep `.env*` files with secrets out of the working tree when building for a deploy: OpenNext copies Next.js `.env` files into the Worker bundle.
 Server secrets live in Worker secrets (`wrangler secret put NAME`); local workerd runs read them from `.dev.vars`.
 `PLAYWRIGHT_BASE_URL=<url>` runs the end-to-end suite against a running deployment instead of a local build (see [`playwright.config.ts`](./playwright.config.ts)).
