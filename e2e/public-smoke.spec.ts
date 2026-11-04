@@ -31,6 +31,19 @@ test.describe("public experience", () => {
     ).toBe(true);
   });
 
+  test("unknown paths answer 404 with the app's not-found page", async ({ page }) => {
+    const response = await page.goto("/zz-no-such-page");
+    expect(response?.status()).toBe(404);
+    await expect(
+      page.getByRole("heading", { level: 1, name: "This page got lost in the mail." }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/");
+    await expect(page.getByRole("link", { name: "Plan a date" })).toHaveAttribute("href", "/send");
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+  });
+
   test("name-based invite starts the recipient journey", async ({ page }) => {
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];

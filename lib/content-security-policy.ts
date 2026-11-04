@@ -23,6 +23,14 @@ export const EMPTY_STYLE_HASH = "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3h
 // the new hash; the only cost of a stale hash is a caret that doesn't blink.
 export const CLERK_OTP_CARET_STYLE_HASH = "'sha256-KQDhUccuEkZUQDnfbVDeY+ev2LZ+73AQR7ro4JppAY8='";
 
+// Cloudflare Web Analytics: the beacon script (rendered with the request nonce
+// in src/app/layout.tsx) and the endpoint it reports to.
+const analyticsScript = "https://static.cloudflareinsights.com";
+const analyticsReport = "https://cloudflareinsights.com";
+
+// Sentry's ingest host, where browser error reports go (lib/error-reporting.ts).
+const sentryIngest = "https://o4507767562371072.ingest.us.sentry.io";
+
 export function generateCspNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   return btoa(String.fromCharCode(...bytes));
@@ -41,6 +49,7 @@ export function buildContentSecurityPolicy(
     "https://challenges.cloudflare.com",
     "https://clerk-telemetry.com",
     ...googleSources,
+    analyticsScript,
   ];
   const styleSources = [
     "'self'",
@@ -71,6 +80,8 @@ export function buildContentSecurityPolicy(
       ...googleSources,
       "https://api.cloudinary.com",
       "https://res.cloudinary.com",
+      analyticsReport,
+      sentryIngest,
     ].join(" ")}`,
     `frame-src 'self' ${[
       ...clerkSources,
