@@ -3,11 +3,11 @@ import { formatRecipientName } from "@/lib/planner-copy";
 
 // OG card for invite links so they unfurl cutely in texts/socials.
 // The [recipient] param is either an opaque invite token (UUID) or a plain
-// name slug. A name slug is already public — it's in the URL itself — so
+// name slug. A name slug is already public (it's in the URL itself), so
 // personalizing with it leaks nothing. For tokens we stay generic and never
 // touch the DB (an unfurl bot shouldn't trigger queries).
 
-export const alt = "You're invited on a date — CutelyAsk";
+export const alt = "You're invited on a date - Cutely Ask Me";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -86,7 +86,7 @@ export default async function Image({
       const formatted = formatRecipientName(recipient);
       if (formatted !== "Hey") name = formatted;
     } catch {
-      // Malformed percent-encoding — fall back to the generic card.
+      // Malformed percent-encoding: fall back to the generic card.
     }
   }
 
@@ -162,7 +162,7 @@ export default async function Image({
               display: "flex",
             }}
           >
-            CutelyAsk · open the link to answer
+            Cutely Ask Me · open the link to answer
           </div>
         </div>
       </div>
