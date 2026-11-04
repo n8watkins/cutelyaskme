@@ -78,6 +78,19 @@ test("sign-in widget is styled and the page has no CSP violations", async ({ pag
   expect(violations).toEqual([]);
 });
 
+test("signed-out visitors stay on the app's own sign-in page", async ({ page, baseURL }) => {
+  const violations = collectCspViolations(page);
+  // The home page prefetches /send; a redirect to Clerk's hosted page broke
+  // that prefetch under the CSP.
+  await page.goto("/");
+  await expect(page.getByRole("link", { name: "Plan a date" })).toBeVisible();
+  await page.getByRole("link", { name: "Plan a date" }).click();
+  await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
+  expect(new URL(page.url()).origin).toBe(new URL(baseURL ?? page.url()).origin);
+  await expect(page.locator(".cl-card").first()).toBeVisible({ timeout: 15_000 });
+  expect(violations).toEqual([]);
+});
+
 test("a visitor can create an account with email and password", async ({ page }) => {
   const violations = collectCspViolations(page);
   const email = `cutely-e2e-${Date.now()}+clerk_test@example.com`;

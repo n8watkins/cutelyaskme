@@ -4,6 +4,7 @@ import {
   buildContentSecurityPolicy,
   generateCspNonce,
 } from "@/lib/content-security-policy";
+import { SIGN_IN_PATH, SIGN_UP_PATH } from "@/lib/auth-routes";
 import { isPrototypeEnabled, isPrototypePath } from "@/lib/prototype";
 
 // Next 16 "proxy" file convention (formerly middleware.ts — identical behavior).
@@ -36,6 +37,12 @@ export default clerkMiddleware(async (auth, request) => {
   // Keep the prototype out of search indexes wherever it is turned on.
   if (prototypePath) response.headers.set("X-Robots-Tag", "noindex, nofollow");
   return response;
+}, {
+  // Send signed-out visitors of protected pages to the app's own sign-in page.
+  // Without these, auth.protect() redirects to Clerk's hosted page, which the
+  // CSP blocks for prefetches and which leaves the app's address.
+  signInUrl: SIGN_IN_PATH,
+  signUpUrl: SIGN_UP_PATH,
 });
 
 export const config = {
