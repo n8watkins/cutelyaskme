@@ -15,7 +15,7 @@ export default function GlobalError({ error, reset }: { error: Error & { digest?
           <div aria-hidden="true" style={{ fontSize: 60 }}>
             💌
           </div>
-          <h1 style={{ fontSize: 30, fontWeight: 900, margin: "16px 0 0" }}>Date Night didn&apos;t load.</h1>
+          <h1 style={{ fontSize: 30, fontWeight: 900, margin: "16px 0 0" }}>Cutely Ask Me didn&apos;t load.</h1>
           <p style={{ maxWidth: 320, color: "#7a5a68", lineHeight: 1.5, margin: "12px 0 0" }}>
             That one is on us, and we have been told. Your plans and invites are safe.
           </p>

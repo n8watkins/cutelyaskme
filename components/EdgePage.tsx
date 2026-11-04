@@ -20,7 +20,7 @@ export default function EdgePage({
     <main className="flex min-h-svh flex-col items-center justify-center px-4 py-12 text-center">
       <Link href="/" className="inline-flex items-center gap-2 text-sm font-black text-ink">
         <span aria-hidden="true">💌</span>
-        <span>Date Night</span>
+        <span>Cutely Ask Me</span>
       </Link>
       <div aria-hidden="true" className="mt-10 text-6xl">
         {emoji}

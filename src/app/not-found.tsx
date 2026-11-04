@@ -3,7 +3,7 @@ import Link from "next/link";
 import EdgePage, { primaryAction, secondaryAction } from "@/components/EdgePage";
 
 export const metadata: Metadata = {
-  title: "Page not found - Date Night",
+  title: "Page not found - Cutely Ask Me",
   robots: { index: false },
 };
 
