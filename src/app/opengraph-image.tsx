@@ -1,137 +1,122 @@
-import { ImageResponse } from "next/og";
+import { OG_SIZE, dataUrl, shareCard } from "@/lib/og-card";
+import { readPublicFile } from "@/lib/publicFile";
 
-// Site-wide default Open Graph card — pure JSX/CSS (no remote fetches, no
-// font files), so it stays fast and dependency-free. Route-specific cards
+// Site-wide share card (Open Graph and Twitter): the n8builds family layout in
+// Cutely Ask Me's pinks, with the invite card on the right. Route-specific cards
 // (e.g. /invite) override this one.
 
-export const alt = "CutelyAsk — plan the perfect date";
-export const size = { width: 1200, height: 630 };
+export const alt = "Cutely Ask Me: plan a date, send a cute invite, and keep the memory.";
+export const size = OG_SIZE;
 export const contentType = "image/png";
 
-// Satori has no emoji font by default, so hearts are drawn in CSS: a 45°-
-// rotated square with two circles for the lobes (the classic CSS heart).
-function Heart({
-  x,
-  y,
-  s,
-  color,
-  opacity = 1,
-  tilt = 0,
-}: {
-  x: number;
-  y: number;
-  s: number;
-  color: string;
-  opacity?: number;
-  tilt?: number;
-}) {
+const ink = "#3b1d2e";
+
+export default async function Image() {
+  // Nunito (OFL, public/og/Nunito-LICENSE.txt) and the marks, from public/.
+  const [semiBold, extraBold, mark, n8] = await Promise.all([
+    readPublicFile("/og/Nunito-SemiBold.ttf"),
+    readPublicFile("/og/Nunito-ExtraBold.ttf"),
+    readPublicFile("/og/invite-mark.png"),
+    readPublicFile("/og/n8-icon.png"),
+  ]);
+  const markUrl = dataUrl(mark, "image/png");
+
+  return shareCard({
+    colors: {
+      bg: "#fff7fb",
+      bgImage: "linear-gradient(135deg, #fff7fb 0%, #ffe3ef 55%, #ffc9df 100%)",
+      ink,
+      muted: "#a0647f",
+      body: "#7a4a60",
+      accent: "#ff7aaa",
+    },
+    font: "Nunito",
+    fonts: [
+      { name: "Nunito", data: semiBold, weight: 500 },
+      { name: "Nunito", data: extraBold, weight: 800 },
+    ],
+    logo: markUrl,
+    logoStyle: { background: "#ffffff" },
+    n8Icon: dataUrl(n8, "image/png"),
+    host: "cutelyaskme.n8builds.dev",
+    name: "Cutely Ask Me",
+    nameSize: 70,
+    nameTracking: -1.5,
+    tagline: "Plan a date, send a cute invite, and keep the memory.",
+    visual: <InviteCard mark={markUrl} />,
+  });
+}
+
+/** The invite a date receives: the envelope, the question and the two buttons. */
+function InviteCard({ mark }: { mark: string }) {
   return (
     <div
       style={{
-        position: "absolute",
-        left: x,
-        top: y,
-        width: s,
-        height: s,
-        transform: `rotate(${45 + tilt}deg)`,
-        opacity,
         display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        position: "absolute",
+        left: 676,
+        top: 70,
+        width: 460,
+        height: 600,
+        padding: "54px 40px",
+        borderRadius: 36,
+        background: "rgba(255,255,255,0.88)",
+        border: "2px solid #ffd6e8",
+        boxShadow: "0 30px 70px rgba(255,122,170,0.30)",
       }}
     >
-      <div
-        style={{ position: "absolute", left: 0, top: 0, width: s, height: s, backgroundColor: color }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: -s / 2,
-          top: 0,
-          width: s,
-          height: s,
-          backgroundColor: color,
-          borderRadius: 9999,
-        }}
-      />
+      <img src={mark} width={112} height={112} alt="" />
+      <div style={{ display: "flex", marginTop: 22, fontSize: 17, fontWeight: 800, letterSpacing: 3, color: "#c0607f" }}>
+        TINY DATE DELIVERY
+      </div>
+      <div style={{ display: "flex", marginTop: 10, fontSize: 48, fontWeight: 800, color: ink }}>Sam...</div>
+      <div style={{ display: "flex", marginTop: 4, fontSize: 21, color: "#8a5a70" }}>I made you a tiny little invitation.</div>
       <div
         style={{
-          position: "absolute",
-          left: 0,
-          top: -s / 2,
-          width: s,
-          height: s,
-          backgroundColor: color,
-          borderRadius: 9999,
-        }}
-      />
-    </div>
-  );
-}
-
-export default function Image() {
-  return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
           display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #fff0f6 0%, #ffd6e8 50%, #ffb7d3 100%)",
+          marginTop: 30,
+          width: 340,
+          fontSize: 34,
+          fontWeight: 800,
+          color: ink,
+          textAlign: "center",
+          lineHeight: 1.25,
         }}
       >
-        {/* Scattered background hearts */}
-        <Heart x={90} y={80} s={64} color="#ff9ec0" opacity={0.55} tilt={-14} />
-        <Heart x={1040} y={110} s={80} color="#ff8ab4" opacity={0.5} tilt={12} />
-        <Heart x={180} y={460} s={52} color="#ff8ab4" opacity={0.45} tilt={10} />
-        <Heart x={980} y={440} s={60} color="#ff9ec0" opacity={0.55} tilt={-10} />
-        <Heart x={560} y={60} s={40} color="#ffffff" opacity={0.6} tilt={6} />
-        <Heart x={300} y={180} s={30} color="#ffffff" opacity={0.5} tilt={-8} />
-        <Heart x={860} y={250} s={34} color="#ffffff" opacity={0.5} tilt={8} />
-
-        {/* Center card */}
+        Will you go on a date with me?
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 22, marginTop: 34 }}>
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            backgroundColor: "rgba(255,255,255,0.82)",
-            borderRadius: 48,
-            border: "5px solid #ffd6e8",
-            padding: "60px 96px",
-            boxShadow: "0 20px 60px rgba(255,122,170,0.35)",
+            padding: "10px 20px",
+            borderRadius: 999,
+            border: "1.5px solid #f3c5d8",
+            fontSize: 19,
+            color: "#a07888",
+            background: "#ffffff",
           }}
         >
-          {/* Inline heart "logo" above the wordmark */}
-          <div style={{ position: "relative", display: "flex", width: 72, height: 72 }}>
-            <Heart x={10} y={14} s={48} color="#ff7aaa" />
-          </div>
-          <div
-            style={{
-              fontSize: 104,
-              color: "#3a2530",
-              fontWeight: 700,
-              letterSpacing: -2,
-              marginTop: 8,
-              display: "flex",
-            }}
-          >
-            CutelyAsk
-          </div>
-          <div
-            style={{
-              fontSize: 34,
-              color: "#7c3653",
-              marginTop: 14,
-              display: "flex",
-            }}
-          >
-            Plan the perfect date — and keep the memory
-          </div>
+          No
+        </div>
+        <div
+          style={{
+            display: "flex",
+            padding: "18px 54px",
+            borderRadius: 999,
+            fontSize: 28,
+            fontWeight: 800,
+            color: "#ffffff",
+            background: "linear-gradient(180deg, #ff7aaa, #ff5c95)",
+            boxShadow: "0 12px 28px rgba(255,92,149,0.45)",
+          }}
+        >
+          Yes!
         </div>
       </div>
-    ),
-    size,
+    </div>
   );
 }
