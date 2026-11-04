@@ -54,7 +54,7 @@
     "crons": ["0 3 * * *"]
   },
   "vars": {
-    "EMAIL_FROM": "Date Night <onboarding@resend.dev>",
+    "EMAIL_FROM": "Cutely Ask Me <onboarding@resend.dev>",
     "VAPID_SUBJECT": "mailto:nathancwatkins23@gmail.com"
   },
   // Set with `wrangler secret put <NAME>`, never in this file. Deploys fail

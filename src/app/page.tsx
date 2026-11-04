@@ -9,7 +9,7 @@ export default async function Home() {
   return (
     <main className="flex min-h-svh flex-col items-center justify-center px-4 py-12 text-center">
       <div className="mb-4 text-6xl">💌</div>
-      <h1 className="text-4xl font-black text-[#3a2530]">Date Night</h1>
+      <h1 className="text-4xl font-black text-[#3a2530]">Cutely Ask Me</h1>
       <p className="mt-2 max-w-xs text-[#8a6a78]">
         Plan a date, send an invite, and let them pick what sounds good.
       </p>

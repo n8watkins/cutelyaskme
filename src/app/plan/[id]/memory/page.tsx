@@ -27,7 +27,7 @@ const playfair = Playfair_Display({
 });
 
 export const metadata = {
-  title: "Your keepsake 💌 — Cutely Ask",
+  title: "Your keepsake 💌 - Cutely Ask Me",
 };
 
 function safeParse<T>(json: string | null, fallback: T): T {
@@ -139,7 +139,7 @@ export default async function MemoryPage({
     <div className={playfair.variable}>
       <KeepsakeCard
         planId={id}
-        title={isPublicShare ? "A Date Night Keepsake" : (itinerary?.title ?? "Our Date")}
+        title={isPublicShare ? "A Cutely Ask Me keepsake" : (itinerary?.title ?? "Our Date")}
         dateLabel={isPublicShare ? null : plan.selectedDateLabel}
         poem={memory.poem}
         notes={memory.notes}

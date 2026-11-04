@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Cutely Ask — Date Night",
-    short_name: "Cutely Ask",
+    name: "Cutely Ask Me",
+    short_name: "Cutely Ask Me",
     description: "Plan the perfect date and keep the memory.",
     start_url: "/dashboard",
     display: "standalone",

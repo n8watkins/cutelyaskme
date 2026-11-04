@@ -5,10 +5,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "Date Night", body: event.data ? event.data.text() : "" };
+    data = { title: "Cutely Ask Me", body: event.data ? event.data.text() : "" };
   }
 
-  const title = data.title || "Date Night 💌";
+  const title = data.title || "Cutely Ask Me 💌";
   const options = {
     body: data.body || "",
     icon: "/icon-192.png",
