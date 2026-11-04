@@ -6,7 +6,7 @@ import { trackApiUsage } from "@/lib/api-usage";
 import { sanitizePlanId } from "@/lib/api-limits";
 
 // NWS asks for an identifying User-Agent (app + contact) instead of an API key.
-const NWS_UA = "cutelyaskme (https://cutelyaskme.vercel.app; nathancwatkins23@gmail.com)";
+const NWS_UA = "cutelyaskme (https://cutelyaskme.n8builds.dev; nathancwatkins23@gmail.com)";
 const HOUR_MS = 60 * 60 * 1000;
 
 /**
