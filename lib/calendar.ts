@@ -198,7 +198,7 @@ export function buildICS(
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//CutelyAsk//EN",
+    "PRODID:-//Cutely Ask Me//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
   ];

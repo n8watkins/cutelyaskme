@@ -13,7 +13,7 @@ test.describe("public experience", () => {
     await page.goto("/");
 
     await expect(
-      page.getByRole("heading", { level: 1, name: "Date Night" }),
+      page.getByRole("heading", { level: 1, name: "Cutely Ask Me" }),
     ).toBeVisible();
     await expect(
       page.getByText("Plan a date, send an invite, and let them pick what sounds good."),
