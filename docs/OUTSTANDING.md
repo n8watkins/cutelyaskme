@@ -17,6 +17,24 @@ Last verified: July 15, 2026.
 
 ## Requires Nathan
 
+### 0. Finish the move to `cutelyaskme.n8builds.dev`
+
+The app now lives at <https://cutelyaskme.n8builds.dev>, a Workers custom domain set in `wrangler.jsonc`.
+`cutelyaskme.vercel.app` still serves the old Vercel deployment, and the Vercel project is no longer connected to this repository, so pushes do not reach it.
+
+1. GitHub, Settings, Secrets and variables, Actions: add the `CLOUDFLARE_API_TOKEN` secret so pushes to `main` deploy on their own.
+   Create it from the "Edit Cloudflare Workers" token template, with the Cloudflare account and the `n8builds.dev` zone included, because the deploy manages the custom domain.
+2. Google Cloud Console, APIs and Services, Credentials, the browser key in `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`: if it has website restrictions, add `https://cutelyaskme.n8builds.dev/*`.
+   Keep the `vercel.app` and `workers.dev` entries until those addresses are retired.
+3. Clerk, development instance: nothing is required, because development instances accept any origin.
+   If Configure, Paths or a redirect allowlist names the old address, change it to `https://cutelyaskme.n8builds.dev`.
+4. Vercel: approve replacing the old deployment with a redirect, so `cutelyaskme.vercel.app` sends visitors to the new address.
+   That is a one-time `vercel deploy --prod` of a folder holding only a `vercel.json` with a permanent redirect of `/(.*)` to `https://cutelyaskme.n8builds.dev/$1`.
+   It also stops the Vercel Cron and Queue, which the Worker's Cron Trigger and Queue already replace.
+   Deleting the Vercel project afterwards is a separate decision.
+
+When the app moves to a Clerk production instance or verifies a Resend sending domain, use `cutelyaskme.n8builds.dev` (or `cutelyask.me` if it is bought) in steps 2 and 3 below.
+
 ### 1. Acquire and connect `cutelyask.me`
 
 The custom domain does not currently resolve in DNS.

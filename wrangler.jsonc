@@ -9,8 +9,12 @@
   "compatibility_date": "2026-10-20",
   // nodejs_compat is required by @opennextjs/cloudflare, and web-push uses node:crypto and node:https.
   "compatibility_flags": ["nodejs_compat"],
-  // No custom domain yet: the app is served at cutelyaskme.<account>.workers.dev
-  // until the owner picks one (see README "Hosting").
+  // Served at https://cutelyaskme.n8builds.dev, a Workers custom domain that
+  // Cloudflare creates the DNS record and certificate for on deploy. The
+  // workers.dev address stays on during the move off Vercel.
+  "routes": [
+    { "pattern": "cutelyaskme.n8builds.dev", "custom_domain": true }
+  ],
   "workers_dev": true,
   "preview_urls": false,
   "assets": {
