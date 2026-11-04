@@ -64,6 +64,8 @@ export function buildContentSecurityPolicy(
       ...clerkSources,
       "https://api.clerk.com",
       "https://clerk-telemetry.com",
+      // Clerk's bot protection probes these from the sign-in and sign-up forms.
+      "https://*.client.protect.clerk.com:*",
       "wss://*.clerk.accounts.dev",
       "wss://*.clerk.com",
       ...googleSources,

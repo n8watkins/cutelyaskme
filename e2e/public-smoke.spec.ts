@@ -24,7 +24,7 @@ test.describe("public experience", () => {
     );
     await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
-      "/login",
+      "/dashboard",
     );
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
