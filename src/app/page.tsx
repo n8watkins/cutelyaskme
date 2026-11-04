@@ -16,7 +16,7 @@ export default async function Home() {
       <div className="mt-8 flex gap-3">
         <Link
           href="/send"
-          className="rounded-full bg-[#ff7aaa] px-6 py-3 font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105"
+          className="rounded-full border-2 border-transparent bg-[#ff7aaa] px-6 py-3 font-black text-white shadow-[0_8px_20px_rgba(255,122,170,0.32)] hover:brightness-105"
         >
           Plan a date
         </Link>

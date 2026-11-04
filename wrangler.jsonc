@@ -51,7 +51,10 @@
   },
   "vars": {
     "EMAIL_FROM": "Date Night <onboarding@resend.dev>",
-    "VAPID_SUBJECT": "mailto:nathancwatkins23@gmail.com"
+    "VAPID_SUBJECT": "mailto:nathancwatkins23@gmail.com",
+    // Server errors go to Sentry (worker/sentry.ts). A DSN is public by design:
+    // it only lets a sender add events to this one project.
+    "SENTRY_DSN": "https://72ae785933d3a6720db0ad6ea4dd26c1@o4507767562371072.ingest.us.sentry.io/4512375298719745"
   },
   // Set with `wrangler secret put <NAME>`, never in this file. Deploys fail
   // until these are set. CRON_SECRET also authorizes the queue and cron calls

@@ -6,6 +6,9 @@ import { headers } from "next/headers";
 import { connection } from "next/server";
 import "./globals.css";
 
+// Set only by the deploy workflow, so local, CI and test builds count nothing.
+const analyticsToken = process.env.NEXT_PUBLIC_CF_WEB_ANALYTICS_TOKEN;
+
 const nunito = Nunito({
   variable: "--font-nunito",
   subsets: ["latin"],
@@ -48,7 +51,20 @@ export default async function RootLayout({
 
   const document = (
     <html lang="en" className={`${nunito.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        {analyticsToken ? (
+          // Cloudflare Web Analytics: cookie-free page counts. Rendered here
+          // with the nonce because the CSP's 'strict-dynamic' blocks the copy
+          // Cloudflare would inject at the edge.
+          <script
+            defer
+            src="https://static.cloudflareinsights.com/beacon.min.js"
+            data-cf-beacon={JSON.stringify({ token: analyticsToken, spa: true })}
+            nonce={nonce}
+          />
+        ) : null}
+      </body>
     </html>
   );
 
