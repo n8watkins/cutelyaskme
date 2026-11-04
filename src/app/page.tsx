@@ -21,7 +21,7 @@ export default async function Home() {
           Plan a date
         </Link>
         <Link
-          href="/login"
+          href="/dashboard"
           className="rounded-full border-2 border-[#ffd6e8] bg-white px-6 py-3 font-black text-[#8a6a78] hover:bg-[#fff7fb]"
         >
           Sign in

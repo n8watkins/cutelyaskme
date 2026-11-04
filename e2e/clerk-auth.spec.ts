@@ -58,10 +58,10 @@ async function deleteClerkUsersByEmail(email: string) {
   }
 }
 
-test("sign-in widget is styled and the page has no CSP violations", async ({ page }) => {
+test("sign-in modal is styled and the page has no CSP violations", async ({ page }) => {
   const violations = collectCspViolations(page);
-  await page.goto("/login");
-  const card = page.locator(".cl-card").first();
+  await page.goto("/dashboard");
+  const card = page.locator(".cl-modalContent .cl-card").first();
   await expect(card).toBeVisible({ timeout: 15_000 });
   // Unstyled Clerk markup has no box: the card only gets a background,
   // radius and shadow from Clerk's injected (nonce-carrying) styles.
@@ -71,24 +71,26 @@ test("sign-in widget is styled and the page has no CSP violations", async ({ pag
   });
   expect(cardStyle.radius).not.toBe("0px");
   expect(cardStyle.shadow).not.toBe("none");
-  await expect(page.getByRole("link", { name: "Sign up" })).toHaveAttribute(
-    "href",
-    /\/sign-up$/,
-  );
+  await expect(page.getByRole("link", { name: "Sign up" })).toBeVisible();
   expect(violations).toEqual([]);
 });
 
-test("signed-out visitors stay on the app's own sign-in page", async ({ page, baseURL }) => {
+test("signed-out visitors keep their page and get the sign-in modal", async ({ page }) => {
   const violations = collectCspViolations(page);
-  // The home page prefetches /send; a redirect to Clerk's hosted page broke
-  // that prefetch under the CSP.
+  // The home page prefetches /send; a redirect to Clerk's hosted page used to
+  // break that prefetch under the CSP.
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Plan a date" })).toBeVisible();
   await page.getByRole("link", { name: "Plan a date" }).click();
-  await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
-  expect(new URL(page.url()).origin).toBe(new URL(baseURL ?? page.url()).origin);
-  await expect(page.locator(".cl-card").first()).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/send$/);
+  const modal = page.locator(".cl-modalContent").first();
+  await expect(modal).toBeVisible({ timeout: 15_000 });
+  await expect(modal.locator(".cl-signIn-root")).toBeVisible();
   expect(violations).toEqual([]);
+});
+
+test("old /login links open the same modal", async ({ page }) => {
+  await page.goto("/login?redirect_url=/dashboard");
+  await expect(page.locator(".cl-modalContent").first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("a visitor can create an account with email and password", async ({ page }) => {
@@ -96,10 +98,11 @@ test("a visitor can create an account with email and password", async ({ page })
   const email = `cutely-e2e-${Date.now()}+clerk_test@example.com`;
   await bypassClerkBotProtection(page);
   try {
-    await page.goto("/login");
+    await page.goto("/dashboard");
     await page.getByRole("link", { name: "Sign up" }).click();
-    await expect(page).toHaveURL(/\/sign-up/);
-    await expect(page.getByRole("heading", { level: 1, name: "Join Cutely Ask Me" })).toBeVisible();
+    // Sign-up continues inside the same modal, on the same page.
+    await expect(page.locator(".cl-modalContent .cl-signUp-root")).toBeVisible();
+    await expect(page).toHaveURL(/\/dashboard$/);
     await page.getByLabel("Email address").fill(email);
     await page.getByLabel("Password", { exact: true }).fill(`Cutely-${crypto.randomUUID()}`);
     await page.getByRole("button", { name: "Continue", exact: true }).click();
