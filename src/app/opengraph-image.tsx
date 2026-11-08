@@ -67,7 +67,7 @@ function InviteCard({ mark }: { mark: string }) {
         boxShadow: "0 30px 70px rgba(255,122,170,0.30)",
       }}
     >
-      <img src={mark} width={112} height={112} alt="" />
+      <img src={mark} width={112} height={112} alt="" style={{ borderRadius: 28, boxShadow: "0 10px 26px rgba(255,122,170,0.22)" }} />
       <div style={{ display: "flex", marginTop: 22, fontSize: 17, fontWeight: 800, letterSpacing: 3, color: "#c0607f" }}>
         TINY DATE DELIVERY
       </div>
