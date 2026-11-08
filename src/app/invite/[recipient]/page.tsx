@@ -37,7 +37,7 @@ export async function generateMetadata({
     "Someone special planned something cute for you. Open the invite to answer.";
 
   return {
-    title: `${title} — CutelyAsk`,
+    title: `${title} - Cutely Ask Me`,
     description,
     openGraph: { title, description },
     twitter: { card: "summary_large_image", title, description },

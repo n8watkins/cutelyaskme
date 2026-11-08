@@ -13,7 +13,7 @@ test.describe("public experience", () => {
     await page.goto("/");
 
     await expect(
-      page.getByRole("heading", { level: 1, name: "Date Night" }),
+      page.getByRole("heading", { level: 1, name: "Cutely Ask Me" }),
     ).toBeVisible();
     await expect(
       page.getByText("Plan a date, send an invite, and let them pick what sounds good."),
@@ -24,7 +24,7 @@ test.describe("public experience", () => {
     );
     await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
-      "/login",
+      "/dashboard",
     );
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

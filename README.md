@@ -51,7 +51,7 @@ gracefully. Per-user defaults live at `/settings`.
 | Photos | Cloudinary (signed direct uploads) |
 | Notifications | Durable Resend email + web-push (VAPID) delivery queue |
 | Tests | Vitest (`npm test`) + Playwright (`npm run test:e2e`) |
-| Hosting | Cloudflare Workers via OpenNext (Vercel until the domain cutover) |
+| Hosting | Cloudflare Workers via OpenNext, at cutelyaskme.n8builds.dev |
 
 Every service runs on a free tier — see [`COSTS.md`](./COSTS.md).
 
@@ -74,7 +74,8 @@ On Cloudflare that is the `cutelyaskme-notification-delivery` queue and a Cron T
 
 ### Hosting
 
-The app runs on Cloudflare Workers, built with [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare), at https://cutelyaskme.nathancwatkins23.workers.dev until a custom domain is chosen.
+The app runs on Cloudflare Workers, built with [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare), at https://cutelyaskme.n8builds.dev, a Workers custom domain set in `routes`.
+It also answers at https://cutelyaskme.nathancwatkins23.workers.dev, and https://cutelyaskme.vercel.app is the old Vercel deployment until it is retired.
 [`wrangler.jsonc`](./wrangler.jsonc) holds the Worker config: bindings, the queue consumer, the daily Cron Trigger, plain variables and the list of required secrets.
 [`worker/index.ts`](./worker/index.ts) is the entry point.
 It serves the Next.js app and adds the queue and cron handlers from [`worker/handlers.ts`](./worker/handlers.ts), which call `/api/notifications/process` in-process with `CRON_SECRET`.

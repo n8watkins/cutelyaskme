@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 // Server-side geocoding so the browser never calls Nominatim directly (browsers
 // drop the required User-Agent header, and OSM rate-limits per client IP).
-const USER_AGENT = "CutelyAsk/1.0 (https://cutelyask.me)";
+const USER_AGENT = "CutelyAsk/1.0 (https://cutelyaskme.n8builds.dev)";
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — addresses don't move
 
 export async function GET(request: NextRequest) {

@@ -58,10 +58,10 @@ async function deleteClerkUsersByEmail(email: string) {
   }
 }
 
-test("sign-in widget is styled and the page has no CSP violations", async ({ page }) => {
+test("sign-in modal is styled and the page has no CSP violations", async ({ page }) => {
   const violations = collectCspViolations(page);
-  await page.goto("/login");
-  const card = page.locator(".cl-card").first();
+  await page.goto("/dashboard");
+  const card = page.locator(".cl-modalContent .cl-card").first();
   await expect(card).toBeVisible({ timeout: 15_000 });
   // Unstyled Clerk markup has no box: the card only gets a background,
   // radius and shadow from Clerk's injected (nonce-carrying) styles.
@@ -71,11 +71,25 @@ test("sign-in widget is styled and the page has no CSP violations", async ({ pag
   });
   expect(cardStyle.radius).not.toBe("0px");
   expect(cardStyle.shadow).not.toBe("none");
-  await expect(page.getByRole("link", { name: "Sign up" })).toHaveAttribute(
-    "href",
-    /\/sign-up$/,
-  );
   expect(violations).toEqual([]);
+});
+
+test("signed-out visitors keep their page and get the sign-in modal", async ({ page }) => {
+  const violations = collectCspViolations(page);
+  // The home page prefetches /send; a redirect to Clerk's hosted page used to
+  // break that prefetch under the CSP.
+  await page.goto("/");
+  await page.getByRole("link", { name: "Plan a date" }).click();
+  await expect(page).toHaveURL(/\/send$/);
+  const modal = page.locator(".cl-modalContent").first();
+  await expect(modal).toBeVisible({ timeout: 15_000 });
+  await expect(modal.locator(".cl-signIn-root")).toBeVisible();
+  expect(violations).toEqual([]);
+});
+
+test("old /login links open the same modal", async ({ page }) => {
+  await page.goto("/login?redirect_url=/dashboard");
+  await expect(page.locator(".cl-modalContent").first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("a visitor can create an account with email and password", async ({ page }) => {
@@ -83,19 +97,27 @@ test("a visitor can create an account with email and password", async ({ page })
   const email = `cutely-e2e-${Date.now()}+clerk_test@example.com`;
   await bypassClerkBotProtection(page);
   try {
-    await page.goto("/login");
-    await page.getByRole("link", { name: "Sign up" }).click();
-    await expect(page).toHaveURL(/\/sign-up/);
-    await expect(page.getByRole("heading", { level: 1, name: "Join Cutely Ask Me" })).toBeVisible();
-    await page.getByLabel("Email address").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(`Cutely-${crypto.randomUUID()}`);
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.goto("/dashboard");
+    // The modal signs in or signs up from one email field; a new address
+    // continues to sign-up inside the same modal, on the same page.
+    const modal = page.locator(".cl-modalContent").first();
+    await modal.getByLabel("Email address").fill(email);
+    await modal.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(modal.getByText("Create your account")).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await modal.getByLabel("Password", { exact: true }).fill(`Cutely-${crypto.randomUUID()}`);
+    await modal.getByRole("button", { name: "Continue", exact: true }).click();
     // Clerk test addresses (+clerk_test) accept the fixed code 424242.
     const code = page.locator('input[autocomplete="one-time-code"]').first();
     await expect(code).toBeVisible({ timeout: 15_000 });
     await code.click();
     await page.keyboard.type("424242");
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 20_000 });
+    // Signed in, the same address reloads (through Clerk's handshake in a
+    // development instance) as the real dashboard.
+    await expect(page).toHaveURL(/^[^?]*\/dashboard$/, { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Sign in to keep going" })).toHaveCount(0, {
+      timeout: 30_000,
+    });
     expect(violations).toEqual([]);
   } finally {
     await deleteClerkUsersByEmail(email);

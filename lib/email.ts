@@ -20,7 +20,7 @@ function staticMapImgHtml(url: string | null, alt: string): string {
 
 // NOTE: this domain must be verified in Resend (Domains → add cutelyask.me →
 // DNS records) before any email will actually send. Override via env if needed.
-const FROM = process.env.EMAIL_FROM ?? "Date Night <invites@cutelyask.me>";
+const FROM = process.env.EMAIL_FROM ?? "Cutely Ask Me <invites@cutelyask.me>";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 function authenticatedPlanUrl(planId: string): string {
@@ -168,7 +168,7 @@ export async function sendSpotReadyEmail({
       <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:#fff7fb;padding:32px;border-radius:24px;">
         <h1 style="color:#3a2530;font-size:24px;margin-bottom:8px;">Hey ${safeRecipientName}! 💌</h1>
         ${body}
-        <p style="color:#c0a0b0;font-size:12px;margin-top:24px;">Planned with Date Night App 🌸</p>
+        <p style="color:#c0a0b0;font-size:12px;margin-top:24px;">Planned with Cutely Ask Me 🌸</p>
       </div>
     `,
   }, deliveryKey ? { idempotencyKey: deliveryKey } : undefined);
@@ -205,7 +205,7 @@ export async function sendDateCanceledEmail({
         <p style="color:#c0a0b0;font-size:14px;margin-top:16px;">
           ${safeSenderName} will make it up to you. Promise.
         </p>
-        <p style="color:#c0a0b0;font-size:12px;margin-top:24px;">Planned with Date Night App 🌸</p>
+        <p style="color:#c0a0b0;font-size:12px;margin-top:24px;">Planned with Cutely Ask Me 🌸</p>
       </div>
     `,
   }, deliveryKey ? { idempotencyKey: deliveryKey } : undefined);

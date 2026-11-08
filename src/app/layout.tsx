@@ -15,8 +15,8 @@ const nunito = Nunito({
 export const metadata: Metadata = {
   // Absolute base so OG/twitter image URLs resolve correctly in unfurls. It
   // follows the deployment's public origin, wherever the app is hosted.
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://cutelyaskme.vercel.app"),
-  title: "Cutely Ask — Date Night",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://cutelyaskme.n8builds.dev"),
+  title: "Cutely Ask Me",
   description: "Plan the perfect date and keep the memory.",
   icons: {
     icon: "/icon-192.png",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   twitter: { card: "summary_large_image" },
   appleWebApp: {
     capable: true,
-    title: "Cutely Ask",
+    title: "Cutely Ask Me",
     statusBarStyle: "default",
   },
 };
