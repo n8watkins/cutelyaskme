@@ -22,6 +22,8 @@ export const metadata: Metadata = {
     icon: "/icon-192.png",
     apple: "/apple-touch-icon.png",
   },
+  // Large image cards on X; the image itself is app/twitter-image.tsx.
+  twitter: { card: "summary_large_image" },
   appleWebApp: {
     capable: true,
     title: "Cutely Ask Me",
