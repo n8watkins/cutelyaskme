@@ -41,6 +41,12 @@ jobs:
       NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
       NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: ${{ vars.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID }}
       NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ vars.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+      # Cloudflare Web Analytics (src/app/layout.tsx); optional, off when unset.
+      NEXT_PUBLIC_CF_WEB_ANALYTICS_TOKEN: ${{ vars.NEXT_PUBLIC_CF_WEB_ANALYTICS_TOKEN }}
+      # Browser errors go to Sentry (lib/error-reporting.ts). Only this build
+      # sets the DSN, so local, CI and test builds send nothing.
+      NEXT_PUBLIC_SENTRY_DSN: https://72ae785933d3a6720db0ad6ea4dd26c1@o4507767562371072.ingest.us.sentry.io/4512375298719745
+      NEXT_PUBLIC_SENTRY_RELEASE: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Check for the Cloudflare token
         id: token
