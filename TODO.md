@@ -97,3 +97,13 @@ Highlights — full detail lives in `docs/PLANNER_V2.md` + `docs/HANDOFF.md`:
 - **Photo storage:** Cloudinary chosen over Vercel Blob / Cloudflare R2
   (free credits + built-in optimization). Signed direct uploads; refs in
   `date_memories.photo_refs`; assets destroyed on removal.
+
+## Keys
+
+Checked 2026-11-09 against the secret names on the Worker and in GitHub Actions (names only, no values).
+New values go into the owner's pass-env store and are sent with `pass-env pipe <entry> -- <command>`; never commit or paste a value.
+
+- [ ] Before launch, new values for `CLERK_SECRET_KEY` (production Clerk instance), `RESEND_API_KEY` (verified domain) and `GOOGLE_PLACES_API_KEY` (restricted key).
+- [ ] `NOTIFICATION_WORKER_SECRET`, `STATIC_MAPS_EMAIL_KEY`: in the code and template but not on the Worker; set them or remove the code.
+- [ ] `CLOUDFLARE_API_TOKEN` Actions secret (missing): Deploy runs pass without deploying. Rerun `set-cloudflare-deploy-token`.
+- [x] Everything else on the Worker is set (Turso, Cloudinary, cron, plan, maps signing, VAPID, Gemini, Yelp).
