@@ -4,13 +4,7 @@ const mocks = vi.hoisted(() => ({
   send: vi.fn(),
 }));
 
-vi.mock("resend", () => ({
-  Resend: class {
-    emails = { send: mocks.send };
-  },
-}));
-
-process.env.RESEND_API_KEY = "test-key";
+vi.mock("@/lib/email-delivery", () => ({ deliverEmail: mocks.send }));
 
 const { sendInviteEmail, sendPlanNotificationEmail, sendSpotReadyEmail } =
   await import("./email");
@@ -18,7 +12,7 @@ const { sendInviteEmail, sendPlanNotificationEmail, sendSpotReadyEmail } =
 describe("email HTML rendering", () => {
   beforeEach(() => {
     mocks.send.mockReset();
-    mocks.send.mockResolvedValue({ error: null });
+    mocks.send.mockResolvedValue(undefined);
   });
 
   it("escapes invite names and encodes the capability token", async () => {
@@ -29,7 +23,7 @@ describe("email HTML rendering", () => {
       token: "../other?admin=true",
     });
 
-    const message = mocks.send.mock.calls[0][0] as { subject: string; html: string };
+    const message = mocks.send.mock.calls[0][1] as { subject: string; html: string };
     expect(message.subject).not.toMatch(/[\r\n]/);
     expect(message.html).not.toContain("<script>alert(1)</script>");
     expect(message.html).not.toContain("<img src=x");
@@ -37,7 +31,7 @@ describe("email HTML rendering", () => {
     expect(message.html).toContain("..%2Fother%3Fadmin%3Dtrue");
   });
 
-  it("passes the durable delivery key to Resend for retry idempotency", async () => {
+  it("passes the durable delivery key through for retry dedupe", async () => {
     await sendInviteEmail({
       recipientName: "Recipient",
       recipientEmail: "recipient@example.com",
@@ -47,8 +41,8 @@ describe("email HTML rendering", () => {
     });
 
     expect(mocks.send).toHaveBeenCalledWith(
-      expect.any(Object),
-      { idempotencyKey: "job-123" },
+      "invite",
+      expect.objectContaining({ deliveryKey: "job-123", to: "recipient@example.com" }),
     );
   });
 
@@ -60,7 +54,7 @@ describe("email HTML rendering", () => {
       planId: "plan-1",
     });
 
-    const message = mocks.send.mock.calls[0][0] as { html: string };
+    const message = mocks.send.mock.calls[0][1] as { html: string };
     expect(message.html).toContain("login?returnTo=%2Fplan%2Fplan-1");
     expect(message.html).not.toContain('href="http://localhost:3000/plan/plan-1"');
   });
@@ -77,7 +71,7 @@ describe("email HTML rendering", () => {
       venues: [{ name: "Cafe <script>x</script>", address: '1 Main "Street"' }],
     });
 
-    const message = mocks.send.mock.calls[0][0] as { html: string };
+    const message = mocks.send.mock.calls[0][1] as { html: string };
     expect(message.html).not.toContain("<svg onload=alert(1)>");
     expect(message.html).not.toContain("<script>x</script>");
     expect(message.html).toContain("Friday &lt;svg onload=alert(1)&gt;");
@@ -101,7 +95,7 @@ describe("email HTML rendering", () => {
       venues: [],
     });
 
-    const message = mocks.send.mock.calls[0][0] as { html: string };
+    const message = mocks.send.mock.calls[0][1] as { html: string };
     expect(message.html).toContain("api/invites/redeem?token=invite-token");
     expect(message.html).not.toContain("login?returnTo=");
   });

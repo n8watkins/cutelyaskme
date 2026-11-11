@@ -48,6 +48,8 @@ Current state to change:
 
 ---
 
+> Update: email now goes through Cloudflare Email Service from `cutelyaskme@n8builds.dev`, so the Resend steps below no longer apply.
+
 ## 2. Verify cutelyask.me in Resend (so emails reach HER)
 
 Right now `EMAIL_FROM` is Resend's shared `onboarding@resend.dev`, which **only

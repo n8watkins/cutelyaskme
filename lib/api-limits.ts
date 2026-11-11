@@ -32,6 +32,7 @@ export const API_LIMITS = [
   { service: "static-maps", label: "Static maps", shortLabel: "Static", monthlyCap: 10000, dailyBudget: 400 },
   { service: "maps-js-loads", label: "Map loads (Maps JS)", shortLabel: "Maps", monthlyCap: 10000, dailyBudget: 300 },
   { service: "overpass", label: "OpenStreetMap places (free, uncapped)", shortLabel: "OSM", monthlyCap: null, dailyBudget: null },
+  { service: "email", label: "Email (Cloudflare Email Service)", shortLabel: "Email", monthlyCap: 3000, dailyBudget: 100 },
   { service: "nws", label: "Weather (NWS, free, uncapped)", shortLabel: "Weather", monthlyCap: null, dailyBudget: null },
 ] as const satisfies readonly ApiLimit[];
 
