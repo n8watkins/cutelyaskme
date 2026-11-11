@@ -322,23 +322,26 @@ test.describe("invite celebration", () => {
 
     const accept = page.getByRole("button", { name: "Yes!" });
     const decline = page.getByRole("button", { name: "No", exact: true });
-    const expectSeparatedControls = async () => {
-      const [acceptBounds, declineBounds] = await Promise.all([
-        accept.boundingBox(),
-        decline.boundingBox(),
-      ]);
-      expect(acceptBounds).not.toBeNull();
-      expect(declineBounds).not.toBeNull();
-      expect(
-        acceptBounds!.x + acceptBounds!.width <= declineBounds!.x ||
-          declineBounds!.x + declineBounds!.width <= acceptBounds!.x ||
-          acceptBounds!.y + acceptBounds!.height <= declineBounds!.y ||
-          declineBounds!.y + declineBounds!.height <= acceptBounds!.y,
-      ).toBe(true);
-    };
+    // The card springs in and the No button springs between spots, so the
+    // controls are compared once they settle rather than mid-animation.
+    const expectSeparatedControls = () =>
+      expect(async () => {
+        const [acceptBounds, declineBounds] = await Promise.all([
+          accept.boundingBox(),
+          decline.boundingBox(),
+        ]);
+        expect(acceptBounds).not.toBeNull();
+        expect(declineBounds).not.toBeNull();
+        expect(
+          acceptBounds!.x + acceptBounds!.width <= declineBounds!.x ||
+            declineBounds!.x + declineBounds!.width <= acceptBounds!.x ||
+            acceptBounds!.y + acceptBounds!.height <= declineBounds!.y ||
+            declineBounds!.y + declineBounds!.height <= acceptBounds!.y,
+        ).toBe(true);
+      }).toPass({ timeout: 3_000 });
 
     await expectSeparatedControls();
-    await decline.dispatchEvent("touchstart");
+    await decline.dispatchEvent("pointerdown", { pointerType: "touch" });
     await expectSeparatedControls();
     await accept.click();
 
