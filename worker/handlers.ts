@@ -16,6 +16,15 @@ import {
   type NotificationWakeMessage,
 } from "../lib/notification-wake";
 import { errorSummary, logError, pathOf } from "../lib/log";
+import { cheapAnswer, mayUseEdgeCache } from "./edge-cache";
+
+/** The site's own host (wrangler.jsonc routes); only it reads and writes the edge cache. */
+export const SITE_HOST = "cutelyaskme.n8builds.dev";
+
+/** The cached entrypoint (worker/index.ts), reached through ctx.exports. */
+export type CachedPagesExports = {
+  exports: { CachedPages: { fetch(request: Request): Promise<Response> } };
+};
 
 export type FetchHandler = {
   fetch(request: Request, env: CloudflareEnv, ctx: ExecutionContext): Promise<Response>;
@@ -64,6 +73,11 @@ export function createWorker(app: FetchHandler) {
   return {
     async fetch(request, env, ctx) {
       try {
+        const cheap = cheapAnswer(request);
+        if (cheap) return cheap;
+        if (mayUseEdgeCache(request, SITE_HOST)) {
+          return await (ctx as ExecutionContext & CachedPagesExports).exports.CachedPages.fetch(request);
+        }
         return await app.fetch(request, env, ctx);
       } catch (err) {
         // Next reports its own errors (src/instrumentation.ts); this is for a
