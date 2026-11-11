@@ -25,7 +25,7 @@ The app now lives at <https://cutelyaskme.n8builds.dev>, a Workers custom domain
 1. GitHub, Settings, Secrets and variables, Actions: add the `CLOUDFLARE_API_TOKEN` secret so pushes to `main` deploy on their own.
    Create it from the "Edit Cloudflare Workers" token template, with the Cloudflare account and the `n8builds.dev` zone included, because the deploy manages the custom domain.
 2. Google Cloud Console, APIs and Services, Credentials, the browser key in `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`: if it has website restrictions, add `https://cutelyaskme.n8builds.dev/*`.
-   Keep the `vercel.app` and `workers.dev` entries until those addresses are retired.
+   Keep the `vercel.app` entry until that address is retired (the `workers.dev` address is off).
 3. Clerk, development instance: nothing is required, because development instances accept any origin.
    If Configure, Paths or a redirect allowlist names the old address, change it to `https://cutelyaskme.n8builds.dev`.
 4. Vercel: approve replacing the old deployment with a redirect, so `cutelyaskme.vercel.app` sends visitors to the new address.

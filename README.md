@@ -75,7 +75,8 @@ On Cloudflare that is the `cutelyaskme-notification-delivery` queue and a Cron T
 ### Hosting
 
 The app runs on Cloudflare Workers, built with [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare), at https://cutelyaskme.n8builds.dev, a Workers custom domain set in `routes`.
-It also answers at https://cutelyaskme.nathancwatkins23.workers.dev, and https://cutelyaskme.vercel.app is the old Vercel deployment until it is retired.
+The workers.dev address and version preview URLs are off (`workers_dev` and `preview_urls` in `wrangler.jsonc`), so all traffic goes through the zone.
+https://cutelyaskme.vercel.app is the old Vercel deployment until it is retired.
 [`wrangler.jsonc`](./wrangler.jsonc) holds the Worker config: bindings, the queue consumer, the daily Cron Trigger, plain variables and the list of required secrets.
 [`worker/index.ts`](./worker/index.ts) is the entry point.
 It serves the Next.js app and adds the queue and cron handlers from [`worker/handlers.ts`](./worker/handlers.ts), which call `/api/notifications/process` in-process with `CRON_SECRET`.
