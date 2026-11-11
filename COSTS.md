@@ -80,7 +80,7 @@ Every component in this app has a free tier that comfortably covers personal use
 | `GOOGLE_PLACES_API_KEY` | console.cloud.google.com | Free (billing account required) |
 | `GEMINI_API_KEY` | Google AI Studio | Free |
 | `CLERK_*` keys | clerk.com | Free |
-| `RESEND_API_KEY` | resend.com | Free |
+| Cloudflare Email Service | `send_email` binding, no key | Included with Workers Paid (3,000/mo) |
 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | turso.tech | Free |
 | `CLOUDINARY_*` keys | cloudinary.com | Free |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | console.cloud.google.com | Free (10k loads/mo) |

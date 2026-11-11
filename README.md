@@ -42,14 +42,14 @@ gracefully. Per-user defaults live at `/settings`.
 | Framework | Next.js 16 · React 19 · TypeScript · Tailwind v4 |
 | Auth | Clerk (email magic link + Google OAuth) |
 | Database | Turso (libSQL/SQLite) + Drizzle ORM |
-| Email | Resend |
+| Email | Cloudflare Email Service |
 | AI | Gemini 3.1 Flash Lite — activity ideas, itinerary notes/tips, memory poems |
 | Venues | Google Places API (New) (businesses) · Overpass/OpenStreetMap (natural places) |
 | Routing | Google Routes API (travel times, cached) |
 | Geocoding | Nominatim (OpenStreetMap) |
 | Map | Google Maps JavaScript API |
 | Photos | Cloudinary (signed direct uploads) |
-| Notifications | Durable Resend email + web-push (VAPID) delivery queue |
+| Notifications | Durable email (Cloudflare Email Service) + web-push (VAPID) delivery queue |
 | Tests | Vitest (`npm test`) + Playwright (`npm run test:e2e`) |
 | Hosting | Cloudflare Workers via OpenNext, at cutelyaskme.n8builds.dev |
 

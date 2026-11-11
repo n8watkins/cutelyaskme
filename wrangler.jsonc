@@ -53,8 +53,10 @@
   "triggers": {
     "crons": ["0 3 * * *"]
   },
+  // Email: Cloudflare Email Service, no API key. The binding may send from this one
+  // address only (lib/email-delivery.ts).
+  "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["cutelyaskme@n8builds.dev"] }],
   "vars": {
-    "EMAIL_FROM": "Cutely Ask Me <onboarding@resend.dev>",
     "VAPID_SUBJECT": "mailto:nathancwatkins23@gmail.com",
     // Server errors go to Sentry (worker/sentry.ts). A DSN is public by design:
     // it only lets a sender add events to this one project.
@@ -73,7 +75,7 @@
     ]
   }
   // Optional secrets; each feature turns itself off while its secret is missing:
-  //   RESEND_API_KEY (email), GEMINI_API_KEY (itinerary notes and poems),
+  //   GEMINI_API_KEY (itinerary notes and poems),
   //   GOOGLE_PLACES_API_KEY (venue search), CLOUDINARY_CLOUD_NAME,
   //   CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET (photos), VAPID_PRIVATE_KEY
   //   (web push), STATIC_MAPS_EMAIL_KEY and STATIC_MAPS_SIGNING_SECRET (map

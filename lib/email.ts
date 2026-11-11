@@ -1,12 +1,7 @@
-import { Resend } from "resend";
 import { emailAppUrl, emailSubject, emailText, emailUrl } from "@/lib/email-security";
 import { numberedStopMarkers, signedStaticMapUrl } from "@/lib/static-map";
 import { trackApiUsage } from "@/lib/api-usage";
-
-function getResend() {
-  if (!process.env.RESEND_API_KEY) throw new Error("RESEND_API_KEY not set");
-  return new Resend(process.env.RESEND_API_KEY);
-}
+import { deliverEmail } from "@/lib/email-delivery";
 
 // Email clients send no referrer, so only a SIGNED static map URL loads there
 // (the browser key's referrer restrictions reject referrer-less requests).
@@ -18,9 +13,6 @@ function staticMapImgHtml(url: string | null, alt: string): string {
   return `<img src="${emailUrl(url)}" alt="${emailText(alt)}" width="600" style="display:block;width:100%;max-width:480px;height:auto;border-radius:16px;margin:16px 0;border:2px solid #ffd6e8;" />`;
 }
 
-// NOTE: this domain must be verified in Resend (Domains → add cutelyask.me →
-// DNS records) before any email will actually send. Override via env if needed.
-const FROM = process.env.EMAIL_FROM ?? "Cutely Ask Me <invites@cutelyask.me>";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 function authenticatedPlanUrl(planId: string): string {
@@ -47,8 +39,7 @@ export async function sendPlanNotificationEmail({
   const safeRecipientName = emailText(recipientName);
   const safeDateLabel = selectedDateLabel ? emailText(selectedDateLabel) : null;
 
-  const { error: sendError } = await getResend().emails.send({
-    from: FROM,
+  await deliverEmail("plan-locked", {
     to: senderEmail,
     subject: emailSubject(`${recipientName} locked in the plan! 🎉`),
     html: `
@@ -66,8 +57,8 @@ export async function sendPlanNotificationEmail({
         </p>
       </div>
     `,
-  }, deliveryKey ? { idempotencyKey: deliveryKey } : undefined);
-  if (sendError) throw new Error(sendError.message);
+    deliveryKey,
+  });
 }
 
 export async function sendSpotReadyEmail({
@@ -160,8 +151,7 @@ export async function sendSpotReadyEmail({
           Open your date 🎁
         </a>`;
 
-  const { error: sendError } = await getResend().emails.send({
-    from: FROM,
+  await deliverEmail("spot-ready", {
     to: recipientEmail,
     subject,
     html: `
@@ -171,8 +161,8 @@ export async function sendSpotReadyEmail({
         <p style="color:#c0a0b0;font-size:12px;margin-top:24px;">Planned with Cutely Ask Me 🌸</p>
       </div>
     `,
-  }, deliveryKey ? { idempotencyKey: deliveryKey } : undefined);
-  if (sendError) throw new Error(sendError.message);
+    deliveryKey,
+  });
 }
 
 // F4: gentle heads-up when a shared date gets called off. No guilt, no details.
@@ -192,8 +182,7 @@ export async function sendDateCanceledEmail({
   const safeRecipientName = emailText(recipientName);
   const safeSenderName = emailText(senderName);
   const safeDateLabel = selectedDateLabel ? emailText(selectedDateLabel) : null;
-  const { error: sendError } = await getResend().emails.send({
-    from: FROM,
+  await deliverEmail("date-canceled", {
     to: recipientEmail,
     subject: `A little change of plans 💌`,
     html: `
@@ -208,8 +197,8 @@ export async function sendDateCanceledEmail({
         <p style="color:#c0a0b0;font-size:12px;margin-top:24px;">Planned with Cutely Ask Me 🌸</p>
       </div>
     `,
-  }, deliveryKey ? { idempotencyKey: deliveryKey } : undefined);
-  if (sendError) throw new Error(sendError.message);
+    deliveryKey,
+  });
 }
 
 export async function sendInviteEmail({
@@ -241,8 +230,7 @@ export async function sendInviteEmail({
       )
     : "";
 
-  const { error: sendError } = await getResend().emails.send({
-    from: FROM,
+  await deliverEmail("invite", {
     to: recipientEmail,
     subject: emailSubject(`${senderName} wants to plan a date with you 💌`),
     html: `
@@ -261,6 +249,6 @@ export async function sendInviteEmail({
         </p>
       </div>
     `,
-  }, deliveryKey ? { idempotencyKey: deliveryKey } : undefined);
-  if (sendError) throw new Error(sendError.message);
+    deliveryKey,
+  });
 }

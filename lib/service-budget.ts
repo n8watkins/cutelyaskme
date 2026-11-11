@@ -23,7 +23,7 @@ function assertPositiveInteger(value: number, name: string): void {
   }
 }
 
-function budgetKey(service: string, subjectId: string, windowStart: number): string {
+export function budgetKey(service: string, subjectId: string, windowStart: number): string {
   return JSON.stringify([service, subjectId, windowStart]);
 }
 
