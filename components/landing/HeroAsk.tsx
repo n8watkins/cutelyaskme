@@ -10,6 +10,7 @@ import { DEMO_ASK_PATH } from "@/lib/landing";
 // is saved; "Yes" only points on to the full demo ask.
 export function HeroAsk() {
   const yesButtonRef = useRef<HTMLButtonElement>(null);
+  const askAreaRef = useRef<HTMLDivElement>(null);
   const [attempts, setAttempts] = useState(0);
   const [commentary, setCommentary] = useState("");
   const [saidYes, setSaidYes] = useState(false);
@@ -21,7 +22,7 @@ export function HeroAsk() {
         className="absolute -inset-10 -z-10 rounded-full bg-[radial-gradient(circle,rgba(255,122,170,0.28),transparent_68%)] blur-2xl"
       />
       <div className="rounded-[44px] border border-white bg-white/60 p-2.5 shadow-[0_30px_80px_rgba(201,58,115,0.22)] backdrop-blur">
-        <div className="relative rounded-[36px] bg-gradient-to-b from-[#fff0f7] via-white to-[#f5f0ff] px-5 pb-6 pt-9 text-center">
+        <div data-phone-screen className="relative rounded-[36px] bg-gradient-to-b from-[#fff0f7] via-white to-[#f5f0ff] px-5 pb-6 pt-9 text-center">
           <span
             aria-hidden
             className="absolute left-1/2 top-3 h-1.5 w-16 -translate-x-1/2 rounded-full bg-petal"
@@ -68,7 +69,7 @@ export function HeroAsk() {
               <p className="mt-4 text-balance text-2xl font-black leading-tight text-ink">
                 Will you go on a date with me?
               </p>
-              <div className="relative mt-2 grid min-h-48 place-items-center">
+              <div ref={askAreaRef} className="relative -mx-2 mt-2 grid min-h-56 place-items-center">
                 <button
                   ref={yesButtonRef}
                   type="button"
@@ -82,6 +83,7 @@ export function HeroAsk() {
                   yesButtonRef={yesButtonRef}
                   onAttempt={() => setAttempts((n) => n + 1)}
                   onCommentary={setCommentary}
+                  boundsRef={askAreaRef}
                 />
               </div>
               <p aria-live="polite" className="min-h-6 text-sm font-black text-pink-strong">

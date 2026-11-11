@@ -210,7 +210,7 @@ export default async function Home() {
               Portfolio
             </a>
           </p>
-          <p>The waitlist is email only, and we only email you about launch.</p>
+          <p>We only email you about launch.</p>
         </div>
       </footer>
     </div>

@@ -54,7 +54,7 @@ test.describe("public experience", () => {
       "href",
       "https://portfolio.n8builds.dev",
     );
-    await expect(footer).toContainText("we only email you about launch");
+    await expect(footer).toContainText("We only email you about launch.");
 
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -70,6 +70,22 @@ test.describe("public experience", () => {
     // Keyboard attempts dodge once each and the button answers back.
     await hero.getByRole("button", { name: "No", exact: true }).press("Enter");
     await expect(hero.getByText(/^".+"$/)).toBeVisible();
+
+    // With motion on, every dodge keeps the whole No button inside the phone.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const frame = hero.locator("[data-phone-screen]");
+    const decline = hero.getByRole("button", { name: "No", exact: true });
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (attempt > 0) await decline.press("Enter");
+      await page.waitForTimeout(700);
+      const [screen, button] = await Promise.all([frame.boundingBox(), decline.boundingBox()]);
+      expect(screen).not.toBeNull();
+      expect(button).not.toBeNull();
+      expect(button!.x).toBeGreaterThanOrEqual(screen!.x);
+      expect(button!.y).toBeGreaterThanOrEqual(screen!.y);
+      expect(button!.x + button!.width).toBeLessThanOrEqual(screen!.x + screen!.width);
+      expect(button!.y + button!.height).toBeLessThanOrEqual(screen!.y + screen!.height);
+    }
 
     await hero.getByRole("button", { name: "Yes!" }).click();
     await expect(hero.getByRole("status")).toContainText("Yay!");
