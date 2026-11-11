@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { motion } from "framer-motion";
 import { noButtonLabels } from "@/lib/planner-copy";
 import { useHydratedReducedMotion } from "./useHydratedReducedMotion";
@@ -34,6 +34,12 @@ type EvasiveNoButtonProps = {
   yesButtonRef: RefObject<HTMLButtonElement | null>;
   onAttempt: () => void;
   onCommentary: (message: string) => void;
+  /**
+   * The box the No button must stay inside, centred on the Yes button (the
+   * button's positioned parent). Without it the button may roam a little
+   * outside its parent, which the full-page invite has room for.
+   */
+  boundsRef?: RefObject<HTMLElement | null>;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -43,11 +49,11 @@ function clamp(value: number, min: number, max: number) {
 function getDodgeHalfSize(
   yesButtonRef: RefObject<HTMLButtonElement | null>,
   noButton: HTMLButtonElement | null,
+  bounds?: HTMLElement | null,
 ) {
   const yesRect = yesButtonRef.current?.getBoundingClientRect();
   const noRect = noButton?.getBoundingClientRect();
-
-  return {
+  const halfSize = {
     x:
       (yesRect?.width ?? FALLBACK_YES_HALF_SIZE.x * 2) / 2 +
       (noRect?.width ?? FALLBACK_NO_HALF_SIZE.x * 2) / 2 +
@@ -56,6 +62,17 @@ function getDodgeHalfSize(
       (yesRect?.height ?? FALLBACK_YES_HALF_SIZE.y * 2) / 2 +
       (noRect?.height ?? FALLBACK_NO_HALF_SIZE.y * 2) / 2 +
       CONTROL_GAP,
+  };
+  if (!bounds) return halfSize;
+
+  // Keep the whole button inside the bounds: its centre may travel at most
+  // half the bounds minus half the button.
+  const boundsRect = bounds.getBoundingClientRect();
+  const noWidth = noRect?.width ?? FALLBACK_NO_HALF_SIZE.x * 2;
+  const noHeight = noRect?.height ?? FALLBACK_NO_HALF_SIZE.y * 2;
+  return {
+    x: Math.max(0, Math.min(halfSize.x, (boundsRect.width - noWidth) / 2)),
+    y: Math.max(0, Math.min(halfSize.y, (boundsRect.height - noHeight) / 2)),
   };
 }
 
@@ -136,10 +153,24 @@ export function EvasiveNoButton({
   yesButtonRef,
   onAttempt,
   onCommentary,
+  boundsRef,
 }: EvasiveNoButtonProps) {
   const reduceMotion = useHydratedReducedMotion();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [position, setPosition] = useState<Point>(INITIAL_POSITION);
+  // With bounds, move the resting spot inside them before the first paint
+  // (no spring), measured from the real button sizes.
+  const [settled, setSettled] = useState(!boundsRef);
+  useLayoutEffect(() => {
+    if (!boundsRef) return;
+    const halfSize = getDodgeHalfSize(yesButtonRef, buttonRef.current, boundsRef.current);
+    setPosition({ x: -halfSize.x, y: 0 });
+  }, [boundsRef, yesButtonRef]);
+  // Runs after the instant move above has rendered; dodges spring from here.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- flips once after the instant settle
+    setSettled(true);
+  }, []);
   const [remainingLabels, setRemainingLabels] = useState<string[]>(
     noButtonLabels.slice(1),
   );
@@ -165,7 +196,7 @@ export function EvasiveNoButton({
     setPosition((currentPosition) =>
       choosePerimeterDodgeTarget(
         currentPosition,
-        getDodgeHalfSize(yesButtonRef, buttonRef.current),
+        getDodgeHalfSize(yesButtonRef, buttonRef.current, boundsRef?.current),
       ),
     );
   }
@@ -180,17 +211,24 @@ export function EvasiveNoButton({
       }
       initial={reduceMotion ? false : { x: position.x, y: position.y }}
       animate={reduceMotion ? undefined : { x: position.x, y: position.y, scale }}
-      transition={{ type: "spring", stiffness: 420, damping: 26 }}
+      transition={settled ? { type: "spring", stiffness: 420, damping: 26 } : { duration: 0 }}
     >
       <button
         ref={buttonRef}
         type="button"
-        onPointerEnter={dodge}
-        onTouchStart={(event) => {
-          event.preventDefault();
-          dodge();
+        // One dodge per attempt: a mouse dodges on approach, a finger on touch
+        // down, and the keyboard on Enter or Space (a click with detail 0).
+        // React's touch listeners are passive, so preventDefault there only
+        // logged an error and a tap dodged up to three times.
+        onPointerEnter={(event) => {
+          if (event.pointerType !== "touch") dodge();
         }}
-        onClick={dodge}
+        onPointerDown={(event) => {
+          if (event.pointerType === "touch") dodge();
+        }}
+        onClick={(event) => {
+          if (event.detail === 0) dodge();
+        }}
         className="grid min-h-16 min-w-20 place-items-center rounded-full border-2 border-[#ffd6e8] bg-white px-6 py-4 text-xl font-black text-[#8a6a78] shadow-[0_12px_24px_rgba(255,122,170,0.18)] outline-none transition hover:border-[#ff7aaa] focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
         aria-label="No"
       >

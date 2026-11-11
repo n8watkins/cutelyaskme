@@ -9,26 +9,89 @@ test.describe("public experience", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
   });
 
-  test("home page presents the primary public actions", async ({ page }) => {
+  test("landing page tells the story and links its calls to action", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+
     await page.goto("/");
 
+    await expect(page).toHaveTitle("Cutely Ask Me: ask them cutely, plan it for real");
     await expect(
-      page.getByRole("heading", { level: 1, name: "Cutely Ask Me" }),
+      page.getByRole("heading", { level: 1, name: "Ask them cutely. Plan it for real." }),
     ).toBeVisible();
-    await expect(
-      page.getByText("Plan a date, send an invite, and let them pick what sounds good."),
-    ).toBeVisible();
-    await expect(page.getByRole("link", { name: "Plan a date" })).toHaveAttribute(
+    await expect(page.getByText("Send a cute invite with a No button that runs away.")).toBeVisible();
+    for (const step of ["You ask", "They pick", "You plan"]) {
+      await expect(page.getByRole("heading", { level: 3, name: step, exact: true })).toBeVisible();
+    }
+    await expect(page.getByRole("heading", { level: 2, name: "Keep the memory" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: "This is the handoff" })).toBeVisible();
+
+    const waitlist = page.getByRole("link", { name: "Join the waitlist" });
+    await expect(waitlist).toHaveCount(2);
+    for (const link of await waitlist.all()) {
+      await expect(link).toHaveAttribute(
+        "href",
+        "https://n8builds.dev/upcoming?interest=cutelyaskme#cutelyaskme",
+      );
+    }
+    const demo = page.getByRole("link", { name: "Try the demo ask Demo" });
+    await expect(demo).toHaveCount(2);
+    for (const link of await demo.all()) {
+      await expect(link).toHaveAttribute("href", "/invite/Your-Name");
+    }
+    await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/dashboard");
+
+    const footer = page.getByRole("contentinfo");
+    await expect(footer).toContainText("A small project by n8builds.dev");
+    await expect(footer.getByRole("link", { name: "n8builds.dev" })).toHaveAttribute(
       "href",
-      "/send",
+      "https://n8builds.dev",
     );
-    await expect(page.getByRole("link", { name: "Sign in" })).toHaveAttribute(
+    await expect(footer.getByRole("link", { name: "Portfolio" })).toHaveAttribute(
       "href",
-      "/dashboard",
+      "https://portfolio.n8builds.dev",
     );
+    await expect(footer).toContainText("We only email you about launch.");
+
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test("landing hero runs the real ask, then points on to the demo", async ({ page }) => {
+    await page.goto("/");
+
+    const hero = page.getByRole("figure", { name: "A preview of the ask" });
+    await expect(hero.getByText("Will you go on a date with me?")).toBeVisible();
+    // Keyboard attempts dodge once each and the button answers back.
+    await hero.getByRole("button", { name: "No", exact: true }).press("Enter");
+    await expect(hero.getByText(/^".+"$/)).toBeVisible();
+
+    // With motion on, every dodge keeps the whole No button inside the phone.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const frame = hero.locator("[data-phone-screen]");
+    const decline = hero.getByRole("button", { name: "No", exact: true });
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      if (attempt > 0) await decline.press("Enter");
+      await page.waitForTimeout(700);
+      const [screen, button] = await Promise.all([frame.boundingBox(), decline.boundingBox()]);
+      expect(screen).not.toBeNull();
+      expect(button).not.toBeNull();
+      expect(button!.x).toBeGreaterThanOrEqual(screen!.x);
+      expect(button!.y).toBeGreaterThanOrEqual(screen!.y);
+      expect(button!.x + button!.width).toBeLessThanOrEqual(screen!.x + screen!.width);
+      expect(button!.y + button!.height).toBeLessThanOrEqual(screen!.y + screen!.height);
+    }
+
+    await hero.getByRole("button", { name: "Yes!" }).click();
+    await expect(hero.getByRole("status")).toContainText("Yay!");
+    await hero.getByRole("link", { name: "Keep going in the demo" }).click();
+    await expect(page).toHaveURL(/\/invite\/Your-Name$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Your Name..." })).toBeVisible();
   });
 
   test("unknown paths answer 404 with the app's not-found page", async ({ page }) => {
@@ -259,23 +322,26 @@ test.describe("invite celebration", () => {
 
     const accept = page.getByRole("button", { name: "Yes!" });
     const decline = page.getByRole("button", { name: "No", exact: true });
-    const expectSeparatedControls = async () => {
-      const [acceptBounds, declineBounds] = await Promise.all([
-        accept.boundingBox(),
-        decline.boundingBox(),
-      ]);
-      expect(acceptBounds).not.toBeNull();
-      expect(declineBounds).not.toBeNull();
-      expect(
-        acceptBounds!.x + acceptBounds!.width <= declineBounds!.x ||
-          declineBounds!.x + declineBounds!.width <= acceptBounds!.x ||
-          acceptBounds!.y + acceptBounds!.height <= declineBounds!.y ||
-          declineBounds!.y + declineBounds!.height <= acceptBounds!.y,
-      ).toBe(true);
-    };
+    // The card springs in and the No button springs between spots, so the
+    // controls are compared once they settle rather than mid-animation.
+    const expectSeparatedControls = () =>
+      expect(async () => {
+        const [acceptBounds, declineBounds] = await Promise.all([
+          accept.boundingBox(),
+          decline.boundingBox(),
+        ]);
+        expect(acceptBounds).not.toBeNull();
+        expect(declineBounds).not.toBeNull();
+        expect(
+          acceptBounds!.x + acceptBounds!.width <= declineBounds!.x ||
+            declineBounds!.x + declineBounds!.width <= acceptBounds!.x ||
+            acceptBounds!.y + acceptBounds!.height <= declineBounds!.y ||
+            declineBounds!.y + declineBounds!.height <= acceptBounds!.y,
+        ).toBe(true);
+      }).toPass({ timeout: 3_000 });
 
     await expectSeparatedControls();
-    await decline.dispatchEvent("touchstart");
+    await decline.dispatchEvent("pointerdown", { pointerType: "touch" });
     await expectSeparatedControls();
     await accept.click();
 

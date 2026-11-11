@@ -76,11 +76,11 @@ test("sign-in modal is styled and the page has no CSP violations", async ({ page
 
 test("signed-out visitors keep their page and get the sign-in modal", async ({ page }) => {
   const violations = collectCspViolations(page);
-  // The home page prefetches /send; a redirect to Clerk's hosted page used to
-  // break that prefetch under the CSP.
+  // The landing page prefetches /dashboard; a redirect to Clerk's hosted page
+  // used to break that prefetch under the CSP.
   await page.goto("/");
-  await page.getByRole("link", { name: "Plan a date" }).click();
-  await expect(page).toHaveURL(/\/send$/);
+  await page.getByRole("link", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
   const modal = page.locator(".cl-modalContent").first();
   await expect(modal).toBeVisible({ timeout: 15_000 });
   await expect(modal.locator(".cl-signIn-root")).toBeVisible();
