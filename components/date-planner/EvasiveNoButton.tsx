@@ -185,12 +185,19 @@ export function EvasiveNoButton({
       <button
         ref={buttonRef}
         type="button"
-        onPointerEnter={dodge}
-        onTouchStart={(event) => {
-          event.preventDefault();
-          dodge();
+        // One dodge per attempt: a mouse dodges on approach, a finger on touch
+        // down, and the keyboard on Enter or Space (a click with detail 0).
+        // React's touch listeners are passive, so preventDefault there only
+        // logged an error and a tap dodged up to three times.
+        onPointerEnter={(event) => {
+          if (event.pointerType !== "touch") dodge();
         }}
-        onClick={dodge}
+        onPointerDown={(event) => {
+          if (event.pointerType === "touch") dodge();
+        }}
+        onClick={(event) => {
+          if (event.detail === 0) dodge();
+        }}
         className="grid min-h-16 min-w-20 place-items-center rounded-full border-2 border-[#ffd6e8] bg-white px-6 py-4 text-xl font-black text-[#8a6a78] shadow-[0_12px_24px_rgba(255,122,170,0.18)] outline-none transition hover:border-[#ff7aaa] focus-visible:ring-4 focus-visible:ring-[#ffd6e8]"
         aria-label="No"
       >
