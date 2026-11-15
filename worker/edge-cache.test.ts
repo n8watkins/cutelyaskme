@@ -46,8 +46,56 @@ describe("cheapAnswer", () => {
     for (const path of ["/.env", "/.git/config", "/wp-login.php", "/config/app.php"]) {
       expect(cheapAnswer(at(path))?.status).toBe(404);
     }
-    for (const path of ["/", "/.well-known/security.txt", "/invite/abc", "/api/plans"]) {
+    for (const path of ["/", "/invite/abc", "/api/plans"]) {
       expect(cheapAnswer(at(path))).toBeNull();
+    }
+  });
+
+  it("answers file-like paths that are not routes with a small, briefly cached 404", async () => {
+    for (const path of [
+      "/config.json",
+      "/.s3cfg",
+      "/secrets.json",
+      "/www.zip",
+      "/terraform.tfvars",
+      "/vercel.json",
+      "/backup.sql",
+      "/api/config.json",
+      "/_next/static/chunks/gone.js",
+      "/icon.svg",
+      "/sw.js.map",
+      "/.well-known/.env",
+      "/.well-known/security.txt",
+    ]) {
+      const response = cheapAnswer(at(path));
+      expect(response?.status, path).toBe(404);
+      expect(response?.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+      expect(response?.headers.get("Cache-Control")).toBe("public, max-age=60, s-maxage=300");
+      expect(response?.headers.get("Set-Cookie")).toBeNull();
+      expect(await response?.text()).toBe("Not found");
+    }
+  });
+
+  it("leaves every real dotted route, and every path without a dot, to the app", () => {
+    for (const path of [
+      "/favicon.ico",
+      "/manifest.webmanifest",
+      "/robots.txt",
+      "/apple-touch-icon.png",
+      "/icon-192.png",
+      "/icon-512.png",
+      "/sw.js",
+      "/opengraph-image",
+      "/twitter-image",
+      "/invite/cutelyaskme",
+      "/invite/j.r.-smith",
+      "/invite/0b9f6c1e-1c2d-4e5f-8a9b-0c1d2e3f4a5b/opengraph-image",
+      "/plan/0b9f6c1e-1c2d-4e5f-8a9b-0c1d2e3f4a5b",
+      "/api/places/ChIJabc123",
+      "/_next/image",
+      "/does-not-exist",
+    ]) {
+      expect(cheapAnswer(at(path)), path).toBeNull();
     }
   });
 });
