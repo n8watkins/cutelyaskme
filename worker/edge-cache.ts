@@ -72,7 +72,37 @@ export function forEdge(request: Request, response: Response): Response {
 /** Scanners probing for /.env, /.git/config, /wp-admin and *.php: answered before Next.js. */
 const PROBE = /^\/(?:\.(?!well-known\/)|wp-|.*\.php$)/i;
 
-/** A plain answer for the uptime check and for scanners, or null for everything else. */
+/** The metadata routes (src/app/) and the files in public/ whose paths contain a dot. */
+const DOTTED_ROUTES = new Set([
+  "/favicon.ico",
+  "/manifest.webmanifest",
+  "/robots.txt",
+  "/apple-touch-icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/sw.js",
+]);
+
+/**
+ * /invite/<name> takes any name a sender typed (a recipient is a free-form slug,
+ * src/app/invite/[recipient]), so its paths may hold a dot.
+ */
+const DOTTED_PREFIXES = ["/invite/"];
+
+/**
+ * A file-like path (a dot in any segment) that is not a known route or file.
+ * Static files (public/, /_next/static) are served before the Worker runs, so one
+ * that reaches it is a miss, and Next.js would spend a full render (about 100 to
+ * 150 ms of CPU) on the 404 page to say so. Paths without a dot never match, so
+ * the app's own not-found page still comes from Next.js for them.
+ */
+export function isMissingFile(pathname: string): boolean {
+  if (!pathname.includes(".")) return false;
+  if (DOTTED_ROUTES.has(pathname)) return false;
+  return !DOTTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+/** A plain answer for the uptime check and for scanners and missing files, or null for everything else. */
 export function cheapAnswer(request: Request): Response | null {
   const { pathname } = new URL(request.url);
   if (pathname === "/healthz") {
@@ -80,10 +110,14 @@ export function cheapAnswer(request: Request): Response | null {
       headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
     });
   }
-  if (PROBE.test(pathname)) {
+  if (PROBE.test(pathname) || isMissingFile(pathname)) {
+    // Small, no cookies, kept briefly by browsers and the edge so a scanner's repeat costs less.
     return new Response("Not found", {
       status: 404,
-      headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" },
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "public, max-age=60, s-maxage=300",
+      },
     });
   }
   return null;
